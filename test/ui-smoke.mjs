@@ -376,6 +376,11 @@ if (!/\d+s 后自动刷新/.test(String(document.getElementById('refreshNote').t
 // 顶部设置按钮 → 打开设置（含语音自检）；底部不再有 🔧 和状态文字
 const settingsBtn = document.getElementById('settingsBtn');
 if (!settingsBtn) failures.push('顶部没有设置按钮');
+if (/实时到站/.test(html.split('</header>')[0])) failures.push('顶部仍有「实时到站」标签');
+if (html.indexOf('id="loctext"') > html.indexOf('<div class="row">')) {
+  failures.push('定位信息没有移到标题后面');
+}
+if (!/class="homehead"/.test(html)) failures.push('头部没有改成一行布局');
 else {
   settingsBtn.onclick();
   if (String(document.getElementById('diag').className).includes('hidden')) {

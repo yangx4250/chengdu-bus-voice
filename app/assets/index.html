@@ -107,6 +107,15 @@
 
   .empty { color: var(--muted); font-size: 14px; text-align: center; padding: 24px 8px; }
 
+  .homehead { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+  .homehead h1 { flex: 0 0 auto; font-weight: 600; }
+  .headdot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: 0 0 auto; }
+  .headloc { flex: 1 1 auto; min-width: 0; font-size: var(--fs-sm); color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .headloc.err { color: var(--hot); }
+  .homehead .refreshnote { flex: 0 0 auto; margin-left: 0; }
+  .homehead .iconbtn { flex: 0 0 auto; }
+
   .locbar { font-size: 12px; color: var(--muted); margin: -6px 2px 12px; display: flex;
     align-items: center; gap: 6px; }
   .locbar.err { color: var(--hot); }
@@ -302,14 +311,14 @@
 <div id="fabSpeak" class="hidden">🔊</div>
 
 <div id="home">
-  <header>
-    <button id="settingsBtn" class="iconbtn" title="设置">⚙</button>
+  <header class="homehead">
     <h1>成都公交播报</h1>
-    <span class="tag">实时到站</span>
+    <span class="headdot"></span>
+    <span id="loctext" class="headloc">正在获取位置…</span>
+    <span id="refreshNote" class="refreshnote"></span>
+    <button id="settingsBtn" class="iconbtn" title="设置">⚙</button>
   </header>
 
-  <div id="locbar" class="locbar"><span class="dot"></span><span id="loctext">正在获取位置…</span>
-    <span id="refreshNote" class="refreshnote"></span></div>
 
   <section class="card">
     <div class="row">
@@ -497,9 +506,13 @@
   }
 
   function setLocbar(text, isError) {
-    var bar = $("locbar");
-    $("loctext").textContent = text;
-    bar.className = "locbar" + (isError ? " err" : "");
+    var loc = $("loctext");
+    if (loc) {
+      loc.textContent = text;
+      loc.className = "headloc" + (isError ? " err" : "");
+    }
+    var dot = document.querySelector ? document.querySelector(".headdot") : null;
+    if (dot) dot.style.background = isError ? "var(--hot)" : "var(--ok)";
   }
 
   /* 后台线程查询 + 轮询结果，避免同步调用卡住界面 */
