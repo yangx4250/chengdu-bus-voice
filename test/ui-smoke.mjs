@@ -710,6 +710,17 @@ else {
     stage5.push('悬浮按钮仍在 #home 内部，详情页会被隐藏');
   }
 
+  // 选中某站后再点悬浮按钮，应播报「选中的那个站」而不是打开详情时的站
+  if (typeof window.cdBusPickStation === 'function') {
+    window.cdBusPickStation(9, null);
+    await new Promise((r) => setTimeout(r, 400));
+    const beforePickSpeak = speakLog.length;
+    document.getElementById('fabSpeak').onclick();
+    const said = speakLog[speakLog.length - 1] || '';
+    if (speakLog.length <= beforePickSpeak) stage5.push('选中站后点悬浮播报没有出声');
+    else if (!/花园永泉/.test(said)) stage5.push('悬浮播报没有念选中的站（应为花园永泉）：' + said);
+  }
+
   // 悬浮播报按钮（左下角），播报当前站点
   if (html.includes('id="dspeak"')) stage5.push('头部仍残留 🔊 按钮');
   const fab = document.getElementById('fabSpeak');

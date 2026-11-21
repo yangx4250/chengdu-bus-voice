@@ -1621,6 +1621,7 @@
     if ($("fabSpeak")) $("fabSpeak").classList.toggle("hidden", name !== "detail");
     view.name = name;
     view.open = name !== "home";
+    if (name !== "detail") view.pickedStation = null;
     if (bridge && bridge.setView) { try { bridge.setView(name); } catch (e) {} }
   }
 
@@ -1810,6 +1811,28 @@
       setTimeout(function () { el.classList.remove("speaking"); }, 1500);
     }
   }
+
+  /* 选中某一站（不跳页）：高亮 + 更新同站其它 + 悬浮按钮播的就是它 */
+  function pickStation(order, rowEl) {
+    var st = null;
+    var list2 = (view.data && view.data.stations) || [];
+    for (var i = 0; i < list2.length; i++) {
+      if (Number(list2[i].order) === Number(order)) { st = list2[i]; break; }
+    }
+    if (!st) return;
+    view.pickedStation = { name: st.name, order: st.order, stationId: st.stationId, lat: st.lat, lng: st.lng };
+
+    var box = document.getElementById("dlist");
+    var rows2 = (box && box.children) || [];
+    for (var ri = 0; ri < rows2.length; ri++) rows2[ri].classList.remove("picked");
+    if (rowEl) rowEl.classList.add("picked");
+
+    run(function () {
+      return loadStationOthers({ stationId: st.stationId, name: st.name, lat: st.lat, lng: st.lng });
+    });
+  }
+
+  window.cdBusPickStation = pickStation;
 
   /* 同站其它线路：按当前站坐标查附近，取同一站的其它线路 */
   async function loadStationOthers(target) {
@@ -2034,21 +2057,7 @@
       (function (rowEl) {
         var order = parseInt(rowEl.getAttribute ? rowEl.getAttribute("data-order") : rowEl.dataset.order, 10);
         if (order === currentOrder) currentRow = rowEl;
-        rowEl.onclick = function () {
-          var st = null;
-          var list2 = (view.data && view.data.stations) || [];
-          for (var si3 = 0; si3 < list2.length; si3++) {
-            if (Number(list2[si3].order) === Number(order)) { st = list2[si3]; break; }
-          }
-          if (!st) return;
-          // 不跳页：把这一站的其它线路更新到「同站其它」那一行，并高亮本行
-          var rows2 = document.getElementById("dlist").children;
-          for (var ri = 0; ri < rows2.length; ri++) rows2[ri].classList.remove("picked");
-          rowEl.classList.add("picked");
-          run(function () {
-            return loadStationOthers({ stationId: st.stationId, name: st.name, lat: st.lat, lng: st.lng });
-          });
-        };
+        rowEl.onclick = function () { pickStation(order, rowEl); };
         var pinEl = rowEl.querySelector ? rowEl.querySelector(".stpin") : null;
         if (pinEl) {
           pinEl.onclick = function (ev) {
@@ -3044,21 +3053,27 @@
 
   function speakCurrentStation() {
     var lineName = view.lineName || (view.data && view.data.line && view.data.line.name) || "";
-    var stationName = view.stationName || "";
+    var picked = view.pickedStation;
+    var stationName = (picked && picked.name) || view.stationName || "";
+    var order = Number((picked && picked.order) || view.fromOrder);
     if (!stationName) { setStatus("还没有选站点", true); return; }
+
     var text = lineName + "路，" + stationLabel(stationName);
     var bus = (view.buses || [])[view.index];
     var slice = null;
     if (bus) {
-      (bus.times || []).forEach(function (t) { if (t.name === stationName) slice = t; });
+      (bus.times || []).forEach(function (t) { if (Number(t.order) === order) slice = t; });
     }
+
     if (slice && slice.passed) {
       text += "，已经过了。";
-    } else if (slice && slice.etaSeconds > 0) {
-      var away = Math.max(0, Number(view.fromOrder) - Number(bus.order));
+    } else if (bus && order === Number(bus.order)) {
+      text += "，已到站。";
+    } else if (slice && slice.etaSeconds !== null && Number(slice.etaSeconds) >= 0) {
+      var away = Math.max(0, order - Number(bus.order));
       text += "，还有 " + away + " 站，" + etaWords(slice.etaSeconds) + "。";
     } else {
-      text += "，当前没有即将到站的车辆。";
+      text += "，暂无到站时间。";
     }
     speak(text, true);
   }
@@ -3175,21 +3190,27 @@
 
   function speakCurrentStation() {
     var lineName = view.lineName || (view.data && view.data.line && view.data.line.name) || "";
-    var stationName = view.stationName || "";
+    var picked = view.pickedStation;
+    var stationName = (picked && picked.name) || view.stationName || "";
+    var order = Number((picked && picked.order) || view.fromOrder);
     if (!stationName) { setStatus("还没有选站点", true); return; }
+
     var text = lineName + "路，" + stationLabel(stationName);
     var bus = (view.buses || [])[view.index];
     var slice = null;
     if (bus) {
-      (bus.times || []).forEach(function (t) { if (t.name === stationName) slice = t; });
+      (bus.times || []).forEach(function (t) { if (Number(t.order) === order) slice = t; });
     }
+
     if (slice && slice.passed) {
       text += "，已经过了。";
-    } else if (slice && slice.etaSeconds > 0) {
-      var away = Math.max(0, Number(view.fromOrder) - Number(bus.order));
+    } else if (bus && order === Number(bus.order)) {
+      text += "，已到站。";
+    } else if (slice && slice.etaSeconds !== null && Number(slice.etaSeconds) >= 0) {
+      var away = Math.max(0, order - Number(bus.order));
       text += "，还有 " + away + " 站，" + etaWords(slice.etaSeconds) + "。";
     } else {
-      text += "，当前没有即将到站的车辆。";
+      text += "，暂无到站时间。";
     }
     speak(text, true);
   }
