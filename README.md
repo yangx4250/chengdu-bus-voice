@@ -15,6 +15,18 @@ $ cd-bus line 16路 --stop 天府广场南
 
 ---
 
+## 下载
+
+| 产物 | 说明 |
+|---|---|
+| **[APK（v6.9）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 72 KB，自签名；首次安装需允许「安装未知应用」 |
+| [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
+
+APK 签名指纹（后续版本可直接覆盖安装）：
+`SHA-256 b5c11b4d6f1a331a6c14b941470cb47b6f3a50aebcbef597ef5fa01a7e294450`
+
+---
+
 ## 1. 为什么不直接用那个 gist
 
 你给的 [gist](https://gist.github.com/Ancientwood/774898f4a3fac8a36dad3c466d4e4fdd) 是一个 PHP 版车来了客户端，调的是老 App 接口
