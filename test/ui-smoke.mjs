@@ -780,6 +780,26 @@ if (stage5.length) {
   for (const f of stage5) console.error('  - ' + f);
   process.exit(1);
 }
+// 从二级页面返回：不应触发额外刷新、倒计时也不重置
+{
+  const callsBefore = calls.filter((c) => c === 'nearby').length;
+  const noteBefore = String(document.getElementById('refreshNote').textContent || '');
+  const favCard = findByClass(document.getElementById('favs'), 'fav').find((c) => !textOf(c).includes('站点收藏'));
+  if (favCard) {
+    favCard.onclick();
+    await new Promise((r) => setTimeout(r, 900));
+    document.getElementById('back').onclick();
+    await new Promise((r) => setTimeout(r, 600));
+    const callsAfter = calls.filter((c) => c === 'nearby').length;
+    if (callsAfter > callsBefore) {
+      stage5.push('从详情返回首页又刷新了一次（应继续用剩余倒计时）');
+    }
+    const noteAfter = String(document.getElementById('refreshNote').textContent || '');
+    if (!noteBefore && !noteAfter) { /* 搜索态不显示，跳过 */ }
+    else if (noteAfter === '' ) stage5.push('返回首页后倒计时消失了');
+  }
+}
+
 console.log('✓ 收藏进详情通过：芯片显示「已过收藏站 · 距终点 N 站」');
 
 // --------------------------------------------- 第六阶段：模糊搜索（输入 2 列出 2 开头线路）

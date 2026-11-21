@@ -1651,6 +1651,7 @@
     view.name = name;
     view.open = name !== "home";
     if (name !== "detail") view.pickedStation = null;
+    if (name === "home") catchUpHome();
     if (bridge && bridge.setView) { try { bridge.setView(name); } catch (e) {} }
   }
 
@@ -2163,6 +2164,18 @@
     }
   }
 
+  /* 从二级页面回来：没过期就继续用剩下的倒计时，过期了才补一次刷新 */
+  function catchUpHome() {
+    if (!shouldAutoRefreshHome()) return;
+    if (homeRefreshDue()) {
+      setTimeout(function () {
+        if (shouldAutoRefreshHome()) refreshHome({});
+      }, 250);
+    } else {
+      paintCountdown();
+    }
+  }
+
   function closeDetail() {
     stopDetailAutoRefresh();
     showView("home");
@@ -2627,7 +2640,15 @@
   var autoCountdown = 30;
   var countdownTimer = null;
 
-  function resetCountdown() { autoCountdown = 30; }
+  function resetCountdown() {
+    autoCountdown = 30;
+    state.nextRefreshAt = Date.now() + 30000;
+  }
+
+  /* 首页数据是否已过期（离开过首页时计时继续走，回来只补一次） */
+  function homeRefreshDue() {
+    return Boolean(state.nextRefreshAt) && Date.now() >= state.nextRefreshAt;
+  }
 
   /* 倒计时只在首页显示（不看 busy，避免正在刷新时闪没） */
   function countdownVisible() {
@@ -2639,19 +2660,22 @@
   function paintCountdown() {
     var note = $("refreshNote");
     if (!note) return;
-    if (!countdownVisible()) { note.textContent = ""; autoCountdown = 30; return; }
-    note.textContent = String(autoCountdown);
-    note.title = autoCountdown + " 秒后自动刷新";
+    if (!countdownVisible()) { note.textContent = ""; return; }
+    var left = 30;
+    if (state.nextRefreshAt) {
+      left = Math.ceil((state.nextRefreshAt - Date.now()) / 1000);
+      if (left < 0) left = 0;
+      if (left > 30) left = 30;
+    }
+    autoCountdown = left;
+    note.textContent = String(left);
+    note.title = left + " 秒后自动刷新";
   }
 
   function startCountdown() {
     if (countdownTimer) clearInterval(countdownTimer);
     paintCountdown();
-    countdownTimer = setInterval(function () {
-      if (!countdownVisible()) { autoCountdown = 30; paintCountdown(); return; }
-      autoCountdown = autoCountdown <= 1 ? 30 : autoCountdown - 1;
-      paintCountdown();
-    }, 1000);
+    countdownTimer = setInterval(paintCountdown, 1000);
   }
 
   var homeTimer = null;
