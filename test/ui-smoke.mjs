@@ -271,6 +271,8 @@ const bridge = {
           distanceMeters: 1200, etaSeconds: 600, arrivalAt: Date.now() + 600000, arrived: false },
         { busId: 'b2', plate: '42517', order: 12, stationsAway: 10,
           distanceMeters: 5200, etaSeconds: 1500, arrivalAt: Date.now() + 1500000, arrived: false },
+        { busId: 'b3', plate: '42518', order: 9, stationsAway: 0,
+          distanceMeters: 0, etaSeconds: 0, arrivalAt: Date.now(), arrived: true },
       ];
       return JSON.stringify({ state: 'ok', data: two });
     }

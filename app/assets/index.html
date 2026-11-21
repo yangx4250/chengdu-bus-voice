@@ -1338,12 +1338,16 @@
     buses.forEach(function (bus, i) {
       var card = document.createElement("div");
       card.className = "bus tap";
-      var hot = bus.arrived || (bus.stationsAway !== null && bus.stationsAway <= 2);
+      var arrived = bus.arrived || Number(bus.stationsAway) === 0 ||
+        (bus.etaSeconds !== null && bus.etaSeconds !== undefined && Number(bus.etaSeconds) <= 0);
+      var hot = arrived || (bus.stationsAway !== null && bus.stationsAway <= 2);
       card.innerHTML =
         '<div class="head"><span class="line-name">' + (i === 0 ? "最近一辆" : "第 " + (i + 1) + " 辆") +
         '</span><span class="toward">' + (bus.plate || "未编号") + "</span></div>" +
-        '<div class="eta' + (hot ? " hot" : "") + '">' + fmtEta(bus.etaSeconds) + "</div>" +
-        '<div class="meta">还有 ' + bus.stationsAway + " 站 · 距站约 " + bus.distanceMeters + " 米 · 点开看这辆车到各站时间</div>";
+        '<div class="eta' + (hot ? " hot" : "") + '">' + (arrived ? "已到站" : fmtEta(bus.etaSeconds)) + "</div>" +
+        '<div class="meta">' + (arrived
+          ? "车已在本站 · 点开看这辆车到各站时间"
+          : "还有 " + bus.stationsAway + " 站 · 距站约 " + bus.distanceMeters + " 米 · 点开看这辆车到各站时间") + "</div>";
       card.onclick = function () {
         openDetail({
           lineId: state.detail.lineId,
