@@ -101,6 +101,7 @@
   .armeta { display: flex; align-items: center; gap: 6px; }
   .armeta .armain { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .armeta .arrow { flex: 0 0 auto; color: #56637d; }
+  .timesline { margin-top: 8px; font-size: var(--fs-sm); color: #8fa0bd; }
   .armeta .spk { flex: 0 0 auto; padding: 2px 8px; border: 1px solid var(--line);
     border-radius: 8px; font-size: 12px; line-height: 1; color: #b9c6dd; }
   .armeta .spk:active { background: #22304a; color: #fff; }
@@ -1027,16 +1028,46 @@
     title.textContent = "匹配到 " + lines.length + " 条线路，点一条查看";
     list.appendChild(title);
 
+    var timeCells = [];
+
     lines.forEach(function (line) {
       var card = document.createElement("div");
       card.className = "bus tap";
       card.innerHTML = '<div class="head"><span class="line-name">' + lineLabel(line) + "</span>" +
-        '<span class="toward">' + (line.startSn || "?") + " → " + (line.endSn || "?") + "</span></div>";
+        '<span class="toward">' + (line.startSn || "?") + " → " + (line.endSn || "?") + "</span></div>" +
+        '<div class="meta timesline">' + (line.firstTime && line.lastTime
+          ? "首班 " + line.firstTime + " · 末班 " + line.lastTime
+          : "首末班加载中…") + "</div>";
       card.onclick = function () {
         run(function () { return applyLine(line, stopName, true); });
       };
       list.appendChild(card);
+      if (!(line.firstTime && line.lastTime)) {
+        timeCells.push({ line: line, el: card.querySelector ? card.querySelector(".timesline") : null });
+      }
     });
+
+    // 搜索结果里没有首末班，逐条用（缓存的）线路详情补上
+    (function fillTimes() {
+      if (!timeCells.length) return;
+      var pending = timeCells.slice();
+      function next() {
+        var job = pending.shift();
+        if (!job || !job.el) return;
+        getDetail(job.line.lineId).then(function (detail) {
+          if (detail && detail.firstTime && detail.lastTime) {
+            job.el.textContent = "首班 " + detail.firstTime + " · 末班 " + detail.lastTime;
+          } else {
+            job.el.textContent = "首末班未知";
+          }
+        }).catch(function () {
+          if (job.el) job.el.textContent = "首末班未知";
+        }).then(function () {
+          next();
+        });
+      }
+      next();
+    })();
     setStatus("匹配 " + lines.length + " 条线路");
   }
 

@@ -865,6 +865,14 @@ if (stage7.length) {
   for (const f of stage7) console.error('  - ' + f);
   process.exit(1);
 }
+{
+  const pickText = textOf(document.getElementById('list'));
+  if (!/首班 \d{2}:\d{2} · 末班 \d{2}:\d{2}/.test(pickText)) {
+    console.error('✗ UI 冒烟失败：搜索结果没有首/末班时间：' + pickText.slice(0, 240));
+    process.exit(1);
+  }
+  console.log('✓ 搜索结果首末班通过：每条线路显示首班/末班');
+}
 console.log('✓ 包含匹配通过：输入 106 列出 P106 / T106 / 1060');
 
 // 搜索历史：刚搜过的关键字应出现在历史里，点它可再次搜索

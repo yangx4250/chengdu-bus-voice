@@ -247,6 +247,21 @@ Java 合成 mp3 → base64 → WebView <audio> 播放
   否则点终点站就只剩终点站，其余全被误标「已过」（v3.4 修）；
 - 并发从 4 提到 6（整条线要查的站变多了），长线路大约 1–3 秒。
 
+### 搜索结果显示首末班（v9.6）
+
+候选线路列表每条下面多一行：
+
+```
+106路                     九里堤公交站 → 东光小区
+首班 06:00 · 末班 23:30
+```
+
+实测 `query!nSearch` **不返回** `firstTime/lastTime`（都是空），所以：
+
+- 先显示「首末班加载中…」；
+- 再逐条用 `getDetail(lineId)` 补（线路详情带首末班，且有 3 天缓存），补到就原地替换；
+- 查不到就显示「首末班未知」，不会留一个假时间。
+
 ### 禁止长按选字（v9.5）
 
 - CSS：`body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none }`，
