@@ -1,0 +1,32 @@
+name: smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  ui:
+    name: UI 冒烟（桩数据，不联网）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 运行 UI 冒烟
+        run: node test/ui-smoke.mjs
+
+  api:
+    name: 接口冒烟（实时请求车来了，仅手动触发）
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 运行接口冒烟
+        run: node test/smoke.mjs
