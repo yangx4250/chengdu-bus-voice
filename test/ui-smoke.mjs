@@ -581,6 +581,12 @@ if (!watchServiceLog.some((x) => x[0] === 'start')) {
 }
 console.log('✓ 盯站通过：收藏卡 📌 → 进入盯站，底部开关同步，并启动前台服务');
 
+if (!/etaFront/.test(html)) {
+  console.error('✗ UI 冒烟失败：前台播报逻辑缺失（后台没起服务时会完全没声）');
+  process.exit(1);
+}
+console.log('✓ 前台播报通过：页面自身仍会按 10/5/2 播报，服务只在后台说话');
+
 // 模拟退到后台：应把盯站交给前台服务
 if (typeof window.cdBusStartBackgroundWatch === 'function') {
   window.cdBusStartBackgroundWatch();

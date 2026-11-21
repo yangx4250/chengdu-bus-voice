@@ -13,6 +13,9 @@ import android.webkit.WebViewClient;
  */
 public final class MainActivity extends Activity {
 
+    /** 供前台服务判断：界面当前是否可见（可见时由页面自己播，服务不抢）。 */
+    public static volatile boolean VISIBLE = false;
+
     private WebView web;
     private Speech speech;
     private BusBridge bridge;
@@ -98,6 +101,18 @@ public final class MainActivity extends Activity {
         } else {
             super.onBackPressed();
         }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        VISIBLE = true;
+    }
+
+    @Override
+    protected void onPause() {
+        VISIBLE = false;
+        super.onPause();
     }
 
     @Override

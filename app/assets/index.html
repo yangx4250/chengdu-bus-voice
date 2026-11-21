@@ -2267,7 +2267,29 @@
     });
     var first = buses && buses.length ? buses[0] : null;
 
-    // 播报由前台服务负责（后台也能响），这里只更新界面状态
+    // 前台由页面自己播（服务在界面可见时会跳过），后台由服务播
+    if (first && !document.hidden) {
+      if (String(first.busId || "") !== watchMarks.busId) {
+        watchMarks = { busId: String(first.busId || ""), ten: false, five: false, two: false };
+      }
+      var etaFront = Number(first.etaSeconds);
+      var awayFront = Number(first.stationsAway);
+      var headFront = t.lineName + "路，" + stationLabel(t.stationName) + "，";
+      if (etaFront > 0 && etaFront <= 600 && !watchMarks.ten) {
+        watchMarks.ten = true;
+        speak(headFront + "大约 10 分钟到站。", true);
+      }
+      if (etaFront > 0 && etaFront <= 300 && !watchMarks.five) {
+        watchMarks.five = true;
+        speak(headFront + "大约 5 分钟到站。", true);
+      }
+      if (awayFront >= 0 && awayFront <= 2 && !watchMarks.two) {
+        watchMarks.two = true;
+        speak(headFront + (awayFront <= 0 ? "马上就要进站。" : "还有 2 站到站。"), true);
+      }
+    } else if (!first) {
+      watchMarks = { busId: "", ten: false, five: false, two: false };
+    }
 
     watch.liveText = first ? describe(first) : "暂无车辆";
     updateWatchUI();

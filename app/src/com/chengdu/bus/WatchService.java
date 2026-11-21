@@ -237,6 +237,11 @@ public final class WatchService extends Service {
     }
 
     private void announce(String what) {
+        if (MainActivity.VISIBLE) {
+            // 界面在前台：由页面自己播，避免同一句念两遍
+            Log.i(TAG, "界面可见，交给页面播报");
+            return;
+        }
         String text = lineName + "路，" + stationName + "站，" + what + "。";
         Log.i(TAG, "播报：" + text);
         if (speech != null) {
