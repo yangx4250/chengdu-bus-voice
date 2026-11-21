@@ -166,6 +166,10 @@
   .fav .fe.off { color: var(--muted); font-weight: 400; }
   .fav .del { position: absolute; top: 6px; right: 6px; font-size: 12px; color: #56637d;
     padding: 4px; line-height: 1; }
+  .fav.pinned { border-color: var(--accent); }
+  .pin2 { display: inline-block; margin-right: 6px; font-size: 12px; color: #6b7c99;
+    padding: 0 4px; }
+  .pin2.on { color: var(--accent); font-weight: 700; }
   .fav .pin { position: absolute; top: 6px; right: 26px; font-size: 12px; padding: 4px;
     line-height: 1; opacity: .85; }
   .fav .pin:active { opacity: 1; }
@@ -2016,13 +2020,41 @@
     }
   }
 
+  function toggleFavPin(fav) {
+    var list = loadFavs();
+    for (var i = 0; i < list.length; i++) {
+      if (sameFav(list[i], fav)) {
+        list[i].pinned = !list[i].pinned;
+        saveFavs(list);
+        renderFavs();
+        setStatus(list[i].pinned ? "已置顶：" + (fav.stationName || "") : "已取消置顶");
+        return;
+      }
+    }
+  }
+
+  function makePinButton(fav) {
+    var pin = document.createElement("span");
+    pin.className = "pin2" + (fav.pinned ? " on" : "");
+    pin.textContent = fav.pinned ? "↑" : "↑";
+    pin.title = fav.pinned ? "取消置顶" : "置顶";
+    pin.onclick = function (ev) {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      toggleFavPin(fav);
+    };
+    return pin;
+  }
+
   function renderStationFavCard(fav, row) {
     var card = document.createElement("div");
-    card.className = "fav";
+    card.className = "fav" + (fav.pinned ? " pinned" : "");
 
     var head = document.createElement("div");
     head.className = "fl";
-    head.textContent = fav.stationName || "站点";
+    head.appendChild(makePinButton(fav));
+    var headText = document.createElement("span");
+    headText.textContent = fav.stationName || "站点";
+    head.appendChild(headText);
 
     var sub = document.createElement("div");
     sub.className = "fs";
@@ -2082,18 +2114,27 @@
     row.className = "favrow";
     box.appendChild(row);
 
-    favs.forEach(function (fav) {
+    var ordered = favs.slice().sort(function (a, b) {
+      var pa = a.pinned ? 0 : 1;
+      var pb = b.pinned ? 0 : 1;
+      return pa - pb;
+    });
+
+    ordered.forEach(function (fav) {
       if (favType(fav) === "station") {
         renderStationFavCard(fav, row);
         return;
       }
 
       var card = document.createElement("div");
-      card.className = "fav";
+      card.className = "fav" + (fav.pinned ? " pinned" : "");
 
       var head = document.createElement("div");
       head.className = "fl";
-      head.textContent = fav.lineName + "路";
+      head.appendChild(makePinButton(fav));
+      var headText = document.createElement("span");
+      headText.textContent = fav.lineName + "路";
+      head.appendChild(headText);
       var small = document.createElement("small");
       small.textContent = "往 " + (fav.endSn || "");
       head.appendChild(small);

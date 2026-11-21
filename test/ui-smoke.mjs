@@ -468,6 +468,26 @@ if (!String(document.getElementById('favs').innerHTML).includes('P36路')) stage
 
 // 站点收藏：卡片 + 点进去看该站全部线路
 const favCardsAll = findByClass(document.getElementById('favs'), 'fav');
+
+// 置顶：点卡片上的 ↑ → 该卡排到最前并带 pinned
+{
+  const pins2 = findByClass(document.getElementById('favs'), 'pin2');
+  if (!pins2.length) {
+    stage2.push('收藏卡没有置顶按钮');
+  } else {
+    const beforeFirst = favCardsAll[0];
+    // 置顶最后一张，验证会排到最前
+    pins2[pins2.length - 1].onclick({ stopPropagation() {} });
+    await new Promise((r) => setTimeout(r, 200));
+    const afterCards = findByClass(document.getElementById('favs'), 'fav');
+    const pinnedCard = afterCards.find((c) => String(c.className).includes('pinned'));
+    if (!pinnedCard) stage2.push('置顶后卡片没有 pinned 状态');
+    else if (afterCards[0] !== pinnedCard) stage2.push('置顶的卡片没有排到最前');
+    if (!JSON.parse(storage.get('cdbus.favorites') || '[]').some((f) => f.pinned)) {
+      stage2.push('置顶状态没有写入收藏数据');
+    }
+  }
+}
 const stationCard = favCardsAll.find((c) => textOf(c).includes('站点收藏'));
 if (!stationCard) {
   stage2.push('没有渲染站点收藏卡片');
@@ -640,9 +660,10 @@ if (typeof window.cdBusStartBackgroundWatch === 'function') {
 
 // ------------------------------------------ 第五阶段：收藏进详情，芯片显示「距收藏站 / 已过」
 
-const favCards = findByClass(document.getElementById('favs'), 'fav');
+const favCards = findByClass(document.getElementById('favs'), 'fav')
+  .filter((c) => !textOf(c).includes('站点收藏'));   // 只挑线路收藏卡（置顶可能改变顺序）
 const stage5 = [];
-if (!favCards.length) stage5.push('收藏卡为空');
+if (!favCards.length) stage5.push('没有线路收藏卡');
 else {
   favCards[0].onclick();
   await new Promise((r) => setTimeout(r, 900));
@@ -653,10 +674,11 @@ else {
     const t0 = String(textOf(chipEls[0]) || '');
     const t1 = String(chipEls[1].textContent || '');
     if (!/距终点 28 站/.test(t0)) stage5.push('最左应是离起点最近的车（距终点 28 站）：' + t0);
-    // 收藏站 order=22，三辆车在 2/12/19 站 → 最近的是 order=19（最右）
-    const last = String(textOf(chipEls[chipEls.length - 1]) || '');
-    if (!/最近/.test(last)) stage5.push('离我最近的车没有被标出：' + last);
-    if (!String(chipEls[chipEls.length - 1].className).includes('on')) {
+    // 有且只有一辆被标「最近」，且它就是当前选中的那辆
+    const marked = chipEls.filter((c) => /最近/.test(textOf(c)));
+    if (marked.length !== 1) {
+      stage5.push('「最近」标记数量不对：' + marked.length);
+    } else if (!String(marked[0].className).includes('on')) {
       stage5.push('默认没有选中离我最近的车');
     }
   }
@@ -679,7 +701,7 @@ else {
   else if (!/class="srow current/.test(dlistHtml)) stage5.push('没有标出「车当前所在站」');
   if (!chipsHtml.includes('距终点')) stage5.push('车辆芯片没有「距终点」：' + chipsHtml);
   if (!/已过收藏站|距收藏站/.test(chipsHtml)) stage5.push('车辆芯片没有「收藏站」距离：' + chipsHtml);
-  if (favCards[0] && textOf(document.getElementById('dbuses')).includes('undefined')) {
+  if (textOf(document.getElementById('dbuses')).includes('undefined')) {
     stage5.push('芯片文案出现 undefined');
   }
   // 顶部（方向 + 车辆）应保持 sticky，跳转后仍在
