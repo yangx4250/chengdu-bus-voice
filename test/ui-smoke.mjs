@@ -666,6 +666,10 @@ else {
   // 顶部（方向 + 车辆）应保持 sticky，跳转后仍在
   if (!document.getElementById('dtop')) stage5.push('详情页缺少 sticky 顶部容器');
   if (!/position:\s*sticky/.test(html)) stage5.push('顶部没有 sticky 样式');
+  if (!/class="dh-row"/.test(html)) stage5.push('详情页头部没有改成按钮行/标题行两段结构');
+  if (!/\.detail-head \.titles div:first-child \{[^}]*text-overflow/.test(html)) {
+    stage5.push('详情页标题没有省略号，长线路名会换行');
+  }
   if (!html.includes('startDetailAutoRefresh')) stage5.push('详情页没有 30 秒自动刷新');
 if (!/clamp\(/.test(html)) stage5.push('没有自适应字号（clamp）');
 if (!/flex-wrap:\s*wrap/.test(html)) stage5.push('窄屏没有放开换行');

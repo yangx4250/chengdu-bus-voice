@@ -120,7 +120,8 @@
   .selbar { display: flex; align-items: center; gap: 10px; background: var(--card);
     border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; margin-bottom: 10px; }
   .selbar.hidden { display: none; }
-  .selbar .seltext { flex: 1; font-size: 13px; color: #b9c6dd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .selbar .seltext { flex: 1; min-width: 0; font-size: var(--fs-sm); color: #b9c6dd;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .selbar button { padding: 8px 12px; font-size: 13px; white-space: nowrap; }
   #dwatchbar { cursor: pointer; }
   .dwatchstop { font-size: 12px; color: #6b7c99; padding: 4px 8px; border-radius: 8px;
@@ -161,11 +162,15 @@
 
   #dtop { position: sticky; top: 0; z-index: 20; background: var(--bg);
     margin: 0 -14px; padding: 2px 14px 8px; }
-  .detail-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-  .detail-head button { padding: 9px 13px; font-size: 14px; }
-  .detail-head .titles { flex: 1; min-width: 0; }
-  .detail-head .titles div:first-child { font-size: 17px; font-weight: 700; }
-  .detail-head .titles div:last-child { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .detail-head { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+  .detail-head .dh-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .detail-head .dh-actions { display: flex; gap: 8px; }
+  .detail-head button { padding: 8px 12px; font-size: var(--fs-sm); line-height: 1.2; }
+  .detail-head .titles { min-width: 0; }
+  .detail-head .titles div:first-child { font-size: var(--fs-lg); font-weight: 700;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .detail-head .titles div:last-child { font-size: var(--fs-sm); color: var(--muted);
+    margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   .dhead { color: var(--muted); font-size: 13px; margin: 6px 2px 10px; }
   .srow { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--card);
@@ -233,7 +238,11 @@
   .watchcard .wc-title { font-size: var(--fs); }
   .watchcard .wc-sub { font-size: var(--fs-sm); }
 
-  #dtop { margin: 0 calc(-1 * var(--pad)); padding: 2px var(--pad) 8px; }
+  #dtop { margin: 0 calc(-1 * var(--pad)); padding: 2px var(--pad) 6px; }
+  #dtop #ddirs, #dtop #dbuses { margin-bottom: 8px; }
+  #depbar { margin: 0 2px 8px; }
+  #deptext { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .srow .spk { flex: 0 0 auto; }
   .detail-head .titles div:first-child { font-size: var(--fs-lg); }
   .detail-head .titles div:last-child { font-size: var(--fs-sm); }
   footer .switch .lbl { font-size: var(--fs-sm); }
@@ -241,8 +250,6 @@
   /* 极窄屏（<360dp）：进一步压缩间距，主按钮占满整行 */
   @media (max-width: 360px) {
     :root { --pad: 10px; }
-    .detail-head { flex-wrap: wrap; }
-    .detail-head .titles { flex: 1 1 100%; order: -1; }
     button.primary { flex: 1 1 100%; }
     #near, #refreshHome { flex: 1 1 40%; }
   }
@@ -348,14 +355,18 @@
 <div id="detail" class="hidden">
   <div id="dtop">
     <div class="detail-head">
-      <button id="back">← 返回</button>
+      <div class="dh-row">
+        <button id="back">← 返回</button>
+        <div class="dh-actions">
+          <button id="dfav">☆</button>
+          <button id="dspeak">🔊</button>
+          <button id="drefresh">刷新</button>
+        </div>
+      </div>
       <div class="titles">
         <div id="dtitle">—</div>
         <div id="dsub"></div>
       </div>
-      <button id="dfav">☆</button>
-      <button id="dspeak">🔊</button>
-      <button id="drefresh">刷新</button>
     </div>
     <div id="dwatchbar" class="selbar hidden">
       <span class="seltext" id="dwatchtext"></span>
