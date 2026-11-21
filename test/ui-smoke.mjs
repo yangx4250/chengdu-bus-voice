@@ -575,7 +575,11 @@ if (stage4.length) {
   for (const f of stage4) console.error('  - ' + f);
   process.exit(1);
 }
-console.log('✓ 盯站通过：收藏卡 📌 → 进入盯站，底部开关同步');
+if (!watchServiceLog.some((x) => x[0] === 'start')) {
+  console.error('✗ UI 冒烟失败：开始盯站没有启动前台服务（后台会不播报）');
+  process.exit(1);
+}
+console.log('✓ 盯站通过：收藏卡 📌 → 进入盯站，底部开关同步，并启动前台服务');
 
 // 模拟退到后台：应把盯站交给前台服务
 if (typeof window.cdBusStartBackgroundWatch === 'function') {
@@ -610,6 +614,7 @@ else {
     }
   }
   const dlistHtml = textOf(document.getElementById('dlist'));
+  if (!/class="spk stpin"/.test(dlistHtml)) stage5.push('详情页站点行没有 📌 盯站按钮');
   if (!dlistHtml.includes('srow')) stage5.push('详情页没有渲染站点行');
   else if (!/class="srow current/.test(dlistHtml)) stage5.push('没有标出「车当前所在站」');
   if (!chipsHtml.includes('距终点')) stage5.push('车辆芯片没有「距终点」：' + chipsHtml);

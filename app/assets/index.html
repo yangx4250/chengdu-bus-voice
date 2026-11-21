@@ -1664,10 +1664,11 @@
       var clock = (t && !passed && t.arrivalAt) ? " · " + fmtClock(t.arrivalAt) : "";
       var isCurrent = station.order === currentOrder;
       html += '<div class="srow' + (isCurrent ? " current" : "") + (passed ? " passed" : hot ? " hot" : "") +
-        '" data-order="' + station.order + '">' +
+        '" data-order="' + station.order + '" data-name="' + station.name + '">' +
         '<span class="idx">' + station.order + "</span>" +
         '<span class="sname">' + station.name + "</span>" +
-        '<span class="swhen">' + when + clock + "</span></div>";
+        '<span class="swhen">' + when + clock + "</span>" +
+        '<span class="spk stpin" data-pin="' + station.order + '">📌</span></div>';
     });
     html += '<div class="dhead" style="margin-top:4px">点任一站名可单独播报；时间为预测，仅供参考</div>';
     list.innerHTML = html;
@@ -1683,6 +1684,30 @@
           if (!t) return;
           speakStationRow(t, rowEl);
         };
+        var pinEl = rowEl.querySelector ? rowEl.querySelector(".stpin") : null;
+        if (pinEl) {
+          pinEl.onclick = function (ev) {
+            if (ev && ev.stopPropagation) ev.stopPropagation();
+            var st = null;
+            var list = (view.data && view.data.stations) || [];
+            for (var si2 = 0; si2 < list.length; si2++) {
+              if (list[si2].order === order) { st = list[si2]; break; }
+            }
+            if (!st) return;
+            startWatch({
+              lineId: view.lineId,
+              lineName: view.lineName,
+              stationId: st.stationId,
+              stationName: st.name,
+              order: st.order,
+              lat: st.lat || 0,
+              lng: st.lng || 0,
+              toward: (view.data && view.data.line && view.data.line.endSn) || "",
+              firstTime: view.firstTime || "",
+              lastTime: view.lastTime || ""
+            });
+          };
+        }
       })(rows[i]);
     }
 
@@ -2176,13 +2201,8 @@
 
   window.cdBusStartBackgroundWatch = startBackgroundWatch;
 
-  document.addEventListener("visibilitychange", function () {
-    if (document.hidden) {
-      if (watch.on) startBackgroundWatch();   // 退到后台 → 前台服务接手播报
-    } else {
-      stopBackgroundWatch();                  // 回到前台 → JS 自己盯
-    }
-  });
+  /* 回到前台也不停服务：播报统一由服务负责，避免前后台两套逻辑抢占，
+     也避免 WebView 在退后台时来不及时机（之前后台不播就是这个问题）。 */
 
   function startWatch(target) {
     if (!target || !target.lineId || !target.stationId) {
@@ -2198,7 +2218,8 @@
       if (document.hidden) return;
       watchTick().catch(function () {});
     }, 30000);
-    setStatus("盯站中 · " + watchLabel(target) + " · 每 30 秒");
+    startBackgroundWatch();   // 交给前台服务，后台也能播
+    setStatus("盯站中 · " + watchLabel(target) + " · 每 30 秒（服务已启动）");
     updateWatchUI();
   }
 
@@ -2226,29 +2247,7 @@
     });
     var first = buses && buses.length ? buses[0] : null;
 
-    if (first) {
-      if (String(first.busId || "") !== watchMarks.busId) {
-        watchMarks = { busId: String(first.busId || ""), ten: false, five: false, two: false };
-      }
-      var eta = Number(first.etaSeconds);
-      var away = Number(first.stationsAway);
-      var head = t.lineName + "路，" + stationLabel(t.stationName) + "，";
-
-      if (eta > 0 && eta <= 600 && !watchMarks.ten) {
-        watchMarks.ten = true;
-        speak(head + "大约 10 分钟到站。", true);
-      }
-      if (eta > 0 && eta <= 300 && !watchMarks.five) {
-        watchMarks.five = true;
-        speak(head + "大约 5 分钟到站。", true);
-      }
-      if (away >= 0 && away <= 2 && !watchMarks.two) {
-        watchMarks.two = true;
-        speak(head + (away <= 0 ? "马上就要进站。" : "还有 2 站到站。"), true);
-      }
-    } else {
-      watchMarks = { busId: "", ten: false, five: false, two: false };
-    }
+    // 播报由前台服务负责（后台也能响），这里只更新界面状态
 
     if (!view.open) {
       setStatus(clockTime() + " 盯站 · " + (first ? describe(first) : "暂无车辆"));

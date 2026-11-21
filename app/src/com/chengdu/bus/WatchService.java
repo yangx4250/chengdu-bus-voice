@@ -71,7 +71,10 @@ public final class WatchService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
-        if (intent != null) {
+        if (intent == null || intent.getStringExtra("lineId") == null) {
+            // 服务被系统重启时 Intent 可能是空的：从 SharedPreferences 恢复
+            loadTarget();
+        } else {
             lineId = intent.getStringExtra("lineId");
             lineName = intent.getStringExtra("lineName");
             stationId = intent.getStringExtra("stationId");
@@ -85,6 +88,7 @@ public final class WatchService extends Service {
             if (stationId == null) stationId = "";
             if (stationName == null) stationName = "";
             if (toward == null) toward = "";
+            saveTarget();
         }
 
         currentBusId = "";
@@ -109,6 +113,31 @@ public final class WatchService extends Service {
     @Override
     public IBinder onBind(Intent intent) {
         return null;
+    }
+
+    private void saveTarget() {
+        getSharedPreferences("cdbus_watch", MODE_PRIVATE).edit()
+                .putString("lineId", lineId)
+                .putString("lineName", lineName)
+                .putString("stationId", stationId)
+                .putString("stationName", stationName)
+                .putString("toward", toward)
+                .putInt("order", order)
+                .putFloat("lat", (float) lat)
+                .putFloat("lng", (float) lng)
+                .apply();
+    }
+
+    private void loadTarget() {
+        android.content.SharedPreferences p = getSharedPreferences("cdbus_watch", MODE_PRIVATE);
+        lineId = p.getString("lineId", "");
+        lineName = p.getString("lineName", "");
+        stationId = p.getString("stationId", "");
+        stationName = p.getString("stationName", "");
+        toward = p.getString("toward", "");
+        order = p.getInt("order", 1);
+        lat = p.getFloat("lat", 0);
+        lng = p.getFloat("lng", 0);
     }
 
     private void createChannel() {
