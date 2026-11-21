@@ -212,6 +212,7 @@
   .srow.speaking { border-color: var(--accent); background: #1a2740; }
   .srow { scroll-margin-top: var(--top-h, 210px); }
   .srow.current { border-color: var(--accent); background: #17233a; }
+  .srow.picked { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
   .srow.current .sname { color: #fff; font-weight: 600; }
 
   /* 自检面板 */
@@ -1803,7 +1804,7 @@
   }
 
   /* 同站其它线路：按当前站坐标查附近，取同一站的其它线路 */
-  async function loadStationOthers() {
+  async function loadStationOthers(target) {
     var box = $("dothers");
     if (!box || !view.data) return;
     box.innerHTML = "";
@@ -1811,13 +1812,24 @@
 
     var station = null;
     var list = (view.data.stations || []);
-    // 先按 stationId 找（收藏进来时最准），再退回站序
-    for (var i = 0; i < list.length; i++) {
-      if (view.stationId && String(list[i].stationId) === String(view.stationId)) { station = list[i]; break; }
-    }
-    if (!station) {
-      for (var i2 = 0; i2 < list.length; i2++) {
-        if (Number(list[i2].order) === Number(view.fromOrder)) { station = list[i2]; break; }
+
+    if (target) {
+      // 点击某个站名：用那一站的坐标
+      station = {
+        stationId: target.stationId,
+        name: target.name || target.stationName,
+        lat: target.lat,
+        lng: target.lng
+      };
+    } else {
+      // 默认用当前详情页那一站：先按 stationId，再退回站序
+      for (var i = 0; i < list.length; i++) {
+        if (view.stationId && String(list[i].stationId) === String(view.stationId)) { station = list[i]; break; }
+      }
+      if (!station) {
+        for (var i2 = 0; i2 < list.length; i2++) {
+          if (Number(list[i2].order) === Number(view.fromOrder)) { station = list[i2]; break; }
+        }
       }
     }
     if (!station || !station.lat) return;
@@ -1849,7 +1861,7 @@
 
       var label = document.createElement("span");
       label.className = "others-label";
-      label.textContent = "同站其它";
+      label.textContent = "同站其它 · " + (station.name || "");
       box.appendChild(label);
 
       others.forEach(function (a) {
@@ -1907,6 +1919,7 @@
 
   window.cdBusWatchStation = watchStationByOrder;
   window.cdBusOpenStation = openStationView;
+  window.cdBusLoadOthers = loadStationOthers;
   window.cdBusRenderWatchCard = renderWatchCard;
 
   function renderTimes(options) {
@@ -1973,14 +1986,12 @@
             if (Number(list2[si3].order) === Number(order)) { st = list2[si3]; break; }
           }
           if (!st) return;
+          // 不跳页：把这一站的其它线路更新到「同站其它」那一行，并高亮本行
+          var rows2 = document.getElementById("dlist").children;
+          for (var ri = 0; ri < rows2.length; ri++) rows2[ri].classList.remove("picked");
+          rowEl.classList.add("picked");
           run(function () {
-            return openStationView({
-              type: "station",
-              stationId: st.stationId,
-              stationName: st.name,
-              lat: st.lat || 0,
-              lng: st.lng || 0
-            });
+            return loadStationOthers({ stationId: st.stationId, name: st.name, lat: st.lat, lng: st.lng });
           });
         };
         var pinEl = rowEl.querySelector ? rowEl.querySelector(".stpin") : null;

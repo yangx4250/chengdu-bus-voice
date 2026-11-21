@@ -716,16 +716,20 @@ else {
     else if (!/站/.test(speakLog[speakLog.length - 1])) stage5.push('悬浮播报没念站点：' + speakLog.slice(-1));
   }
 
-  // 点站名卡片 → 跳到该站的「同站其它线路」视图（不再播报）
-  if (typeof window.cdBusOpenStation === 'function') {
-    const before = speakLog.length;
-    await window.cdBusOpenStation({ type: 'station', stationId: '028-1', stationName: '花园永泉', lat: 30.7, lng: 103.95 });
+  // 点站名：留在详情页，只更新「同站其它」那一行，且不播报
+  if (typeof window.cdBusLoadOthers === 'function') {
+    const beforeSpeak = speakLog.length;
+    const wasDetail = !String(document.getElementById('detail').className).includes('hidden');
+    await window.cdBusLoadOthers({ stationId: '028-1', name: '花园永泉', lat: 30.7, lng: 103.95 });
     await new Promise((r) => setTimeout(r, 400));
-    const selTxt = String(document.getElementById('seltext').textContent || '');
-    if (!/站点 · /.test(selTxt)) stage5.push('点站名没有进入站点视图：' + selTxt);
-    if (speakLog.length !== before) stage5.push('点站名仍在播报（应只跳转）');
-    document.getElementById('exitSearch').onclick();
-    await new Promise((r) => setTimeout(r, 500));
+    if (String(document.getElementById('detail').className).includes('hidden')) {
+      stage5.push('点站名离开了详情页（应该在原页更新）');
+    }
+    const othersNow = textOf(document.getElementById('dothers'));
+    if (!/同站其它/.test(othersNow)) stage5.push('「同站其它」标签丢失');
+    if (!/716路/.test(othersNow)) stage5.push('点站名后没有列出该站的其它线路：' + othersNow.slice(0, 120));
+    if (speakLog.length !== beforeSpeak) stage5.push('点站名仍在播报（应只更新列表）');
+    if (!wasDetail) stage5.push('前置条件不对：本来就不在详情页');
   }
 
   // 顶部（方向 + 车辆）应保持 sticky，跳转后仍在
