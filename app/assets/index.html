@@ -62,6 +62,11 @@
     display: inline-flex; align-items: center; gap: 6px; }
   .vchip .v2 { font-size: var(--fs-sm); color: #9fb0cc; white-space: nowrap; }
   .vchip.on .v2 { color: #d6e2f7; }
+  .others-label { font-size: var(--fs-sm); color: var(--muted); align-self: center;
+    margin-right: 2px; white-space: nowrap; }
+  .otherline { border-color: #2c3b57; }
+  .otherline:active { background: #22304a; }
+
   .vbadge { font-style: normal; font-size: 10px; color: var(--accent);
     border: 1px solid var(--accent); border-radius: 999px; padding: 0 6px; line-height: 1.6; }
 
@@ -388,6 +393,7 @@
     </div>
     <div id="ddirs" class="chips"></div>
     <div id="dbuses" class="chips"></div>
+    <div id="dothers" class="chips hidden"></div>
     <div id="depbar" class="locbar"><span class="dot"></span><span id="deptext">发车预测</span></div>
   </div>
   <div id="dlist"></div>
@@ -1621,6 +1627,7 @@
     setTimeout(syncTopOffset, 30);
     startDetailAutoRefresh();
     await Promise.all([loadMatrix(), loadDetailDirections()]);
+    loadStationOthers();
   }
 
   async function loadDetailDirections() {
@@ -1663,6 +1670,7 @@
       $("dtitle").textContent = detail.name + "路 · " + (view.stationName || "");
       renderDetailDirections();
       await loadMatrix();
+      loadStationOthers();
     } catch (err) {
       $("dlist").innerHTML = '<div class="empty">' + (err.message || "切换失败") + "</div>";
     }
@@ -1783,6 +1791,80 @@
     if (el) {
       el.classList.add("speaking");
       setTimeout(function () { el.classList.remove("speaking"); }, 1500);
+    }
+  }
+
+  /* 同站其它线路：按当前站坐标查附近，取同一站的其它线路 */
+  async function loadStationOthers() {
+    var box = $("dothers");
+    if (!box || !view.data) return;
+    box.innerHTML = "";
+    box.className = "chips hidden";
+
+    var station = null;
+    var list = (view.data.stations || []);
+    // 先按 stationId 找（收藏进来时最准），再退回站序
+    for (var i = 0; i < list.length; i++) {
+      if (view.stationId && String(list[i].stationId) === String(view.stationId)) { station = list[i]; break; }
+    }
+    if (!station) {
+      for (var i2 = 0; i2 < list.length; i2++) {
+        if (Number(list[i2].order) === Number(view.fromOrder)) { station = list[i2]; break; }
+      }
+    }
+    if (!station || !station.lat) return;
+
+    try {
+      var data = await rpc("nearby", { lat: station.lat, lng: station.lng, limit: 6 });
+      var stops = data.stops || [];
+      var stop = null;
+      for (var k = 0; k < stops.length; k++) {
+        if (String(stops[k].stationId) === String(station.stationId)) { stop = stops[k]; break; }
+      }
+      if (!stop) {
+        for (var m = 0; m < stops.length; m++) {
+          if (stops[m].name === station.name) { stop = stops[m]; break; }
+        }
+      }
+      if (!stop) return;
+
+      var seen = {};
+      var others = (stop.arrivals || []).filter(function (a) {
+        if (String(a.lineId) === String(view.lineId)) return false;
+        if (String(a.lineName) === String(view.lineName)) return false;
+        if (seen[a.lineId]) return false;
+        seen[a.lineId] = true;
+        return true;
+      });
+
+      if (!others.length) return;
+
+      var label = document.createElement("span");
+      label.className = "others-label";
+      label.textContent = "同站其它";
+      box.appendChild(label);
+
+      others.forEach(function (a) {
+        var chip = document.createElement("div");
+        chip.className = "chip otherline";
+        var ended = outsideService(a.firstTime, a.lastTime);
+        chip.textContent = a.lineName + "路 " +
+          (ended ? "不在运营" : (a.etaSeconds !== null ? describe(a) : (a.preStartTime ? "待发车" : "暂无车")));
+        chip.onclick = function () {
+          openDetail({
+            lineId: a.lineId,
+            lineName: a.lineName,
+            stationId: a.stationId,
+            stationName: stop.name,
+            fromOrder: a.stationOrder,
+            title: a.lineName + "路 · " + stop.name
+          });
+        };
+        box.appendChild(chip);
+      });
+      box.className = "chips";
+    } catch (e) {
+      /* 拿不到就不显示 */
     }
   }
 
