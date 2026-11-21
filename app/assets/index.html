@@ -122,6 +122,11 @@
   .selbar.hidden { display: none; }
   .selbar .seltext { flex: 1; font-size: 13px; color: #b9c6dd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .selbar button { padding: 8px 12px; font-size: 13px; white-space: nowrap; }
+  #dwatchbar { cursor: pointer; }
+  .dwatchstop { font-size: 12px; color: #6b7c99; padding: 4px 8px; border-radius: 8px;
+    border: 1px solid var(--line); white-space: nowrap; }
+  .dwatchstop:active { background: #22304a; color: #fff; }
+  .stpin.off { opacity: .28; }
 
   .favtitle { font-size: 12px; color: var(--muted); margin: 2px 2px 8px; letter-spacing: .5px; }
   .favrow { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 12px; }
@@ -285,7 +290,7 @@
     </div>
     <div id="dwatchbar" class="selbar hidden">
       <span class="seltext" id="dwatchtext"></span>
-      <button id="dwatchBtn">📌 盯站</button>
+      <span id="dwatchStop" class="dwatchstop">停止</span>
     </div>
     <div id="ddirs" class="chips"></div>
     <div id="dbuses" class="chips"></div>
@@ -1625,6 +1630,37 @@
     }
   }
 
+  /* 按站序切盯站（详情页行内 📌 用） */
+  function watchStationByOrder(order) {
+    if (!view.data) return;
+    var list = view.data.stations || [];
+    var st = null;
+    for (var i = 0; i < list.length; i++) {
+      if (Number(list[i].order) === Number(order)) { st = list[i]; break; }
+    }
+    if (!st) return;
+    if (watch.on && watch.target &&
+        Number(watch.target.order) === Number(order) &&
+        String(watch.target.lineId) === String(view.lineId)) {
+      setStatus("已经在盯这一站", true);
+      return;
+    }
+    startWatch({
+      lineId: view.lineId,
+      lineName: view.lineName,
+      stationId: st.stationId,
+      stationName: st.name,
+      order: st.order,
+      lat: st.lat || 0,
+      lng: st.lng || 0,
+      toward: (view.data && view.data.line && view.data.line.endSn) || "",
+      firstTime: view.firstTime || "",
+      lastTime: view.lastTime || ""
+    });
+  }
+
+  window.cdBusWatchStation = watchStationByOrder;
+
   function renderTimes(options) {
     var doScroll = !options || options.scroll !== false;
     var data = view.data;
@@ -1668,7 +1704,10 @@
         '<span class="idx">' + station.order + "</span>" +
         '<span class="sname">' + station.name + "</span>" +
         '<span class="swhen">' + when + clock + "</span>" +
-        '<span class="spk stpin" data-pin="' + station.order + '">📌</span></div>';
+        '<span class="spk stpin' +
+          (watch.on && watch.target && watch.target.order === station.order &&
+           String(watch.target.lineId) === String(view.lineId) ? " off" : "") +
+          '" data-pin="' + station.order + '">📌</span></div>';
     });
     html += '<div class="dhead" style="margin-top:4px">点任一站名可单独播报；时间为预测，仅供参考</div>';
     list.innerHTML = html;
@@ -1688,24 +1727,7 @@
         if (pinEl) {
           pinEl.onclick = function (ev) {
             if (ev && ev.stopPropagation) ev.stopPropagation();
-            var st = null;
-            var list = (view.data && view.data.stations) || [];
-            for (var si2 = 0; si2 < list.length; si2++) {
-              if (list[si2].order === order) { st = list[si2]; break; }
-            }
-            if (!st) return;
-            startWatch({
-              lineId: view.lineId,
-              lineName: view.lineName,
-              stationId: st.stationId,
-              stationName: st.name,
-              order: st.order,
-              lat: st.lat || 0,
-              lng: st.lng || 0,
-              toward: (view.data && view.data.line && view.data.line.endSn) || "",
-              firstTime: view.firstTime || "",
-              lastTime: view.lastTime || ""
-            });
+            watchStationByOrder(order);
           };
         }
       })(rows[i]);
@@ -2163,19 +2185,15 @@
   function updateWatchUI() {
     var checkbox = $("watch");
     if (checkbox) checkbox.checked = watch.on;
-    var detailButton = $("dwatchBtn");
-    if (detailButton) detailButton.textContent = watch.on ? "📌 盯站中" : "📌 盯站";
     var bar = $("dwatchbar");
-    if (bar) {
-      if (watch.on && watch.target) {
-        bar.className = "selbar";
-        $("dwatchtext").textContent = "盯站：" + watchLabel(watch.target) + " · 每 30 秒";
-      } else if (view.open && view.lineName && view.stationName) {
-        bar.className = "selbar";
-        $("dwatchtext").textContent = "盯站：" + view.lineName + "路 · " + view.stationName;
-      } else {
-        bar.className = "selbar hidden";
-      }
+    if (!bar) return;
+    if (watch.on && watch.target) {
+      var text = "盯站：" + watchLabel(watch.target);
+      if (watch.liveText) text += " · " + watch.liveText;
+      $("dwatchtext").textContent = text;
+      bar.className = "selbar";
+    } else {
+      bar.className = "selbar hidden";
     }
   }
 
@@ -2221,6 +2239,7 @@
     startBackgroundWatch();   // 交给前台服务，后台也能播
     setStatus("盯站中 · " + watchLabel(target) + " · 每 30 秒（服务已启动）");
     updateWatchUI();
+    if (view.name === "detail" && view.data) renderTimes({ scroll: false });
   }
 
   function stopWatch() {
@@ -2232,6 +2251,7 @@
     setStatus("已停止盯站");
     stopBackgroundWatch();
     updateWatchUI();
+    if (view.name === "detail" && view.data) renderTimes({ scroll: false });
   }
 
   /* 30 秒一刷；同一辆车只在 10 分钟 / 5 分钟 / 2 站 各播一次 */
@@ -2249,8 +2269,10 @@
 
     // 播报由前台服务负责（后台也能响），这里只更新界面状态
 
+    watch.liveText = first ? describe(first) : "暂无车辆";
+    updateWatchUI();
     if (!view.open) {
-      setStatus(clockTime() + " 盯站 · " + (first ? describe(first) : "暂无车辆"));
+      setStatus(clockTime() + " 盯站 · " + watch.liveText);
     }
   }
 
@@ -2657,26 +2679,26 @@
     });
   };
 
-  $("dwatchBtn").onclick = function () {
-    if (watch.on) { stopWatch(); return; }
-    if (!view.lineId || !view.stationId) return;
-    var station = null;
-    var list = (view.data && view.data.stations) || [];
-    for (var i = 0; i < list.length; i++) {
-      if (list[i].order === view.fromOrder) { station = list[i]; break; }
+  $("dwatchbar").onclick = function (ev) {
+    if (ev && ev.target && ev.target.id === "dwatchStop") return;
+    if (!watch.target) return;
+    var rows = document.querySelectorAll ? document.querySelectorAll("#dlist .srow") : [];
+    for (var i = 0; i < rows.length; i++) {
+      if (Number(rows[i].getAttribute("data-order")) === Number(watch.target.order)) {
+        if (typeof rows[i].scrollIntoView === "function") {
+          rows[i].scrollIntoView({ block: "center", behavior: "smooth" });
+        }
+        rows[i].classList.add("current");
+        setStatus("已定位到盯站：" + watch.target.stationName);
+        return;
+      }
     }
-    startWatch({
-      lineId: view.lineId,
-      lineName: view.lineName,
-      stationId: view.stationId,
-      stationName: view.stationName,
-      order: view.fromOrder,
-      lat: station ? station.lat : 0,
-      lng: station ? station.lng : 0,
-      toward: (view.data && view.data.line && view.data.line.endSn) || "",
-      firstTime: view.firstTime || "",
-      lastTime: view.lastTime || ""
-    });
+    setStatus("盯站的是「" + watch.target.stationName + "」，当前方向列表里没有", true);
+  };
+
+  $("dwatchStop").onclick = function (ev) {
+    if (ev && ev.stopPropagation) ev.stopPropagation();
+    stopWatch();
   };
 
   setStatus(bridge ? "语音：" + bridge.backend() : "仅支持 App 内使用");

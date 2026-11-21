@@ -614,7 +614,20 @@ else {
     }
   }
   const dlistHtml = textOf(document.getElementById('dlist'));
-  if (!/class="spk stpin"/.test(dlistHtml)) stage5.push('详情页站点行没有 📌 盯站按钮');
+  if (!/class="spk stpin/.test(dlistHtml)) stage5.push('详情页站点行没有 📌 盯站按钮');
+
+  // 点某一站的 📌（走导出的接口）：应进入盯站、盯站条显示信息、该 📌 变灰
+  if (typeof window.cdBusWatchStation === 'function') {
+    window.cdBusWatchStation(9);
+    await new Promise((r) => setTimeout(r, 300));
+    const bar = document.getElementById('dwatchbar');
+    if (String(bar.className).includes('hidden')) stage5.push('盯站后盯站条没有显示');
+    const barText = String(document.getElementById('dwatchtext').textContent || '');
+    if (!/盯站：/.test(barText)) stage5.push('盯站条没有显示目标：' + barText);
+    const afterPin = textOf(document.getElementById('dlist'));
+    if (!/class="spk stpin off"/.test(afterPin)) stage5.push('正在盯的那一站 📌 没有变灰');
+    if (!document.getElementById('dwatchStop')) stage5.push('盯站条没有「停止」入口');
+  }
   if (!dlistHtml.includes('srow')) stage5.push('详情页没有渲染站点行');
   else if (!/class="srow current/.test(dlistHtml)) stage5.push('没有标出「车当前所在站」');
   if (!chipsHtml.includes('距终点')) stage5.push('车辆芯片没有「距终点」：' + chipsHtml);
