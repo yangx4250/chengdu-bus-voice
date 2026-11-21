@@ -62,6 +62,10 @@
     display: inline-flex; align-items: center; gap: 6px; }
   .vchip .v2 { font-size: var(--fs-sm); color: #9fb0cc; white-space: nowrap; }
   .vchip.on .v2 { color: #d6e2f7; }
+  #history { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  #history .chip { font-size: var(--fs-sm); padding: 6px 10px; }
+  #history .hclear { color: #6b7c99; border-style: dashed; }
+
   #dothers { display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
     overflow: visible; padding-bottom: 2px; }
   #dothers .others-label { grid-column: 1 / -1; }
@@ -311,6 +315,7 @@
     <div class="row">
       <input id="line" placeholder="线路号，如 16 或 2" autocomplete="off">
     </div>
+    <div id="history" class="chips hidden"></div>
     <div class="row">
       <button id="go" class="primary">查询并播报</button>
       <button id="near">当前位置</button>
@@ -1838,6 +1843,64 @@
 
   window.cdBusPickStation = pickStation;
 
+  /* 搜索历史：最近 8 条，点一下直接再搜 */
+  var HISTORY_KEY = "cdbus.history";
+
+  function loadHistory() {
+    var raw = null;
+    try { raw = localStorage.getItem(HISTORY_KEY); } catch (e) { raw = null; }
+    var list = [];
+    try { list = JSON.parse(raw || "[]"); } catch (e) { list = []; }
+    if (!Array.isArray(list)) list = [];
+    return list.filter(function (x) { return typeof x === "string" && x; }).slice(0, 8);
+  }
+
+  function recordHistory(key) {
+    key = String(key || "").trim();
+    if (!key) return;
+    var list = loadHistory().filter(function (x) { return x.toLowerCase() !== key.toLowerCase(); });
+    list.unshift(key);
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0, 8))); } catch (e) {}
+    renderHistory();
+  }
+
+  function clearHistory() {
+    try { localStorage.setItem(HISTORY_KEY, "[]"); } catch (e) {}
+    renderHistory();
+    setStatus("已清空搜索历史");
+  }
+
+  function renderHistory() {
+    var box = $("history");
+    if (!box) return;
+    var list = loadHistory();
+    box.innerHTML = "";
+    if (!list.length) { box.className = "chips hidden"; return; }
+    box.className = "chips";
+
+    list.forEach(function (key) {
+      var chip = document.createElement("div");
+      chip.className = "chip";
+      chip.textContent = key;
+      chip.onclick = function () {
+        $("line").value = key;
+        runSearchFromInput();
+      };
+      box.appendChild(chip);
+    });
+
+    var clear = document.createElement("div");
+    clear.className = "chip hclear";
+    clear.textContent = "清空";
+    clear.onclick = function (ev) {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      clearHistory();
+    };
+    box.appendChild(clear);
+  }
+
+  window.cdBusRenderHistory = renderHistory;
+
   /* 同站其它线路：按当前站坐标查附近，取同一站的其它线路 */
   async function loadStationOthers(target) {
     var box = $("dothers");
@@ -2993,7 +3056,13 @@
 
   /* ------------------------------------------------------------ 交互 */
 
-  $("go").onclick = function () { run(function () { return queryLine(true); }); };
+  function runSearchFromInput() {
+    var key = $("line") ? String($("line").value || "").trim() : "";
+    if (key) recordHistory(key);
+    run(function () { return queryLine(true); });
+  }
+
+  $("go").onclick = runSearchFromInput;
   $("near").onclick = function () { startAuto(true); };
   $("refreshHome").onclick = function () {
     run(function () {
@@ -3314,6 +3383,7 @@
   restoreVoiceSetting();
   bindVoiceSetting();
   renderFavs();
+  renderHistory();
   if (bridge) startAuto(false);
 })();
 </script>

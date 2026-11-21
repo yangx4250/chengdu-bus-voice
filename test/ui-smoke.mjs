@@ -835,6 +835,39 @@ if (stage7.length) {
 }
 console.log('✓ 包含匹配通过：输入 106 列出 P106 / T106 / 1060');
 
+// 搜索历史：刚搜过的关键字应出现在历史里，点它可再次搜索
+{
+  const histText = textOf(document.getElementById('history'));
+  if (!/106/.test(histText)) {
+    console.error('✗ UI 冒烟失败：搜索历史没有记录 106：' + histText);
+    process.exit(1);
+  }
+  const histChips = findByClass(document.getElementById('history'), 'chip').filter((c) => !String(c.className).includes('hclear'));
+  if (!histChips.length) {
+    console.error('✗ UI 冒烟失败：历史里没有可点的关键字');
+    process.exit(1);
+  }
+  document.getElementById('line').value = '';
+  histChips[0].onclick();
+  await new Promise((r) => setTimeout(r, 800));
+  if (!/P106|106/.test(textOf(document.getElementById('list')))) {
+    console.error('✗ UI 冒烟失败：点历史关键字没有触发搜索');
+    process.exit(1);
+  }
+  const clearChip = findByClass(document.getElementById('history'), 'chip').find((c) => String(c.className).includes('hclear'));
+  if (!clearChip) {
+    console.error('✗ UI 冒烟失败：历史没有「清空」按钮');
+    process.exit(1);
+  }
+  clearChip.onclick({ stopPropagation() {} });
+  await new Promise((r) => setTimeout(r, 100));
+  if (textOf(document.getElementById('history'))) {
+    console.error('✗ UI 冒烟失败：清空后历史仍有内容');
+    process.exit(1);
+  }
+  console.log('✓ 搜索历史通过：记录、点击重搜、清空');
+}
+
 // 退出查询后，自动刷新恢复
 document.getElementById('exitSearch').onclick();
 await new Promise((r) => setTimeout(r, 800));
