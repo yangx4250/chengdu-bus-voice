@@ -124,6 +124,39 @@ public final class BusBridge {
     }
 
     @JavascriptInterface
+    public void startWatchService(String payload) {
+        try {
+            JSONObject args = new JSONObject(payload == null ? "{}" : payload);
+            android.content.Intent intent = new android.content.Intent(activity, WatchService.class);
+            intent.setAction(WatchService.ACTION_START);
+            intent.putExtra("lineId", args.optString("lineId"));
+            intent.putExtra("lineName", args.optString("lineName"));
+            intent.putExtra("stationId", args.optString("stationId"));
+            intent.putExtra("stationName", args.optString("stationName"));
+            intent.putExtra("toward", args.optString("toward"));
+            intent.putExtra("order", args.optInt("order", 1));
+            intent.putExtra("lat", args.optDouble("lat", 0));
+            intent.putExtra("lng", args.optDouble("lng", 0));
+            if (android.os.Build.VERSION.SDK_INT >= 26) activity.startForegroundService(intent);
+            else activity.startService(intent);
+        } catch (Exception e) {
+            Log.w(TAG, "启动盯站服务失败", e);
+        }
+    }
+
+    @JavascriptInterface
+    public void stopWatchService() {
+        try {
+            android.content.Intent intent = new android.content.Intent(activity, WatchService.class);
+            intent.setAction(WatchService.ACTION_STOP);
+            activity.startService(intent);
+            activity.stopService(new android.content.Intent(activity, WatchService.class));
+        } catch (Exception e) {
+            Log.w(TAG, "停止盯站服务失败", e);
+        }
+    }
+
+    @JavascriptInterface
     public void note(String text) {
         speech.note(text);
     }

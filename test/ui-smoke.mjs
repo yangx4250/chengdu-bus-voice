@@ -171,6 +171,7 @@ const nearbyPayload = {
 
 const calls = [];
 const speakLog = [];
+const watchServiceLog = [];
 const payloads = new Map();
 let seq = 0;
 const bridge = {
@@ -277,6 +278,8 @@ const bridge = {
     return JSON.stringify({ state: 'ok', data: [] });
   },
   speak(text) { speakLog.push(String(text)); },
+  startWatchService(payload) { watchServiceLog.push(['start', String(payload || '')]); },
+  stopWatchService() { watchServiceLog.push(['stop', '']); },
   status() {
     return JSON.stringify({ ttsReady: true, backend: '系统语音', engines: 'com.xiaomi.tts', mediaVolume: 10, mediaMax: 29, ringerMode: 2, outputs: '扬声器', lastResult: '已交给系统 TTS' });
   },
@@ -573,6 +576,16 @@ if (stage4.length) {
   process.exit(1);
 }
 console.log('✓ 盯站通过：收藏卡 📌 → 进入盯站，底部开关同步');
+
+// 模拟退到后台：应把盯站交给前台服务
+if (typeof window.cdBusStartBackgroundWatch === 'function') {
+  window.cdBusStartBackgroundWatch();
+  if (!watchServiceLog.some((x) => x[0] === 'start')) {
+    console.error('✗ UI 冒烟失败：退到后台没有启动盯站服务');
+    process.exit(1);
+  }
+  console.log('✓ 后台常驻通过：退到后台会启动前台服务');
+}
 
 // ------------------------------------------ 第五阶段：收藏进详情，芯片显示「距收藏站 / 已过」
 

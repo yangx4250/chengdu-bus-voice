@@ -2154,6 +2154,36 @@
     }
   }
 
+  function watchPayload(target) {
+    return JSON.stringify({
+      lineId: target.lineId, lineName: target.lineName,
+      stationId: target.stationId, stationName: target.stationName,
+      toward: target.toward || "", order: target.order,
+      lat: target.lat || 0, lng: target.lng || 0
+    });
+  }
+
+  function startBackgroundWatch() {
+    if (!watch.on || !watch.target) return;
+    if (!bridge || !bridge.startWatchService) return;
+    try { bridge.startWatchService(watchPayload(watch.target)); } catch (e) {}
+  }
+
+  function stopBackgroundWatch() {
+    if (!bridge || !bridge.stopWatchService) return;
+    try { bridge.stopWatchService(); } catch (e) {}
+  }
+
+  window.cdBusStartBackgroundWatch = startBackgroundWatch;
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) {
+      if (watch.on) startBackgroundWatch();   // 退到后台 → 前台服务接手播报
+    } else {
+      stopBackgroundWatch();                  // 回到前台 → JS 自己盯
+    }
+  });
+
   function startWatch(target) {
     if (!target || !target.lineId || !target.stationId) {
       setStatus("先选一个站点再盯站", true);
@@ -2179,10 +2209,13 @@
     watch.target = null;
     watch.lastUrgent = false;
     setStatus("已停止盯站");
+    stopBackgroundWatch();
     updateWatchUI();
   }
 
-  /* 30 秒一刷：紧急（≤2 站 / ≤150 秒）立刻播，否则每 5 分钟提醒一次 */
+  /* 30 秒一刷；同一辆车只在 10 分钟 / 5 分钟 / 2 站 各播一次 */
+  var watchMarks = { busId: "", ten: false, five: false, two: false };
+
   async function watchTick() {
     var t = watch.target;
     if (!t) return;
@@ -2192,19 +2225,33 @@
                  lat: t.lat || 0, lng: t.lng || 0 }
     });
     var first = buses && buses.length ? buses[0] : null;
-    var urgent = isUrgent(first);
 
-    if (first && ((urgent && !watch.lastUrgent) || Date.now() - watch.lastSpoken > 300000)) {
-      var text = t.lineName + "路，" + stationLabel(t.stationName) + "，" +
-        (first ? describe(first) : "当前没有即将到站的车辆") + "。";
-      speak(text, true);
-      watch.lastSpoken = Date.now();
+    if (first) {
+      if (String(first.busId || "") !== watchMarks.busId) {
+        watchMarks = { busId: String(first.busId || ""), ten: false, five: false, two: false };
+      }
+      var eta = Number(first.etaSeconds);
+      var away = Number(first.stationsAway);
+      var head = t.lineName + "路，" + stationLabel(t.stationName) + "，";
+
+      if (eta > 0 && eta <= 600 && !watchMarks.ten) {
+        watchMarks.ten = true;
+        speak(head + "大约 10 分钟到站。", true);
+      }
+      if (eta > 0 && eta <= 300 && !watchMarks.five) {
+        watchMarks.five = true;
+        speak(head + "大约 5 分钟到站。", true);
+      }
+      if (away >= 0 && away <= 2 && !watchMarks.two) {
+        watchMarks.two = true;
+        speak(head + (away <= 0 ? "马上就要进站。" : "还有 2 站到站。"), true);
+      }
+    } else {
+      watchMarks = { busId: "", ten: false, five: false, two: false };
     }
-    watch.lastUrgent = urgent;
 
     if (!view.open) {
-      setStatus(clockTime() + " 盯站刷新 · " +
-        (first ? describe(first) : "暂无车辆"));
+      setStatus(clockTime() + " 盯站 · " + (first ? describe(first) : "暂无车辆"));
     }
   }
 

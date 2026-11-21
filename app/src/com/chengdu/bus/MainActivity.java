@@ -49,12 +49,24 @@ public final class MainActivity extends Activity {
         } else {
             notifyPermission(true);
         }
+
+        // Android 13+ 需要单独申请通知权限（前台服务通知要用）
+        if (android.os.Build.VERSION.SDK_INT >= 33 && !hasNotificationPermission()) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1002);
+        }
+    }
+
+    private boolean hasNotificationPermission() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return true;
+        return checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                == android.content.pm.PackageManager.PERMISSION_GRANTED;
     }
 
     /** 授权结果回传页面，让 JS 拿到权限后立刻重新定位。 */
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(requestCode, permissions, results);
+        if (requestCode == 1002) return;   // 通知权限，不影响页面
         if (requestCode != 1001) return;
         boolean granted = false;
         for (int result : results) {
