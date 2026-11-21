@@ -123,6 +123,13 @@
   #status { display: none; }
 
   /* 顶部浮动提示：替代原来右下角那行小字 */
+  #fabSpeak { position: fixed; left: 18px; bottom: 26px; width: 58px; height: 58px;
+    border-radius: 50%; background: var(--accent); color: #fff; font-size: 24px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 6px 18px rgba(79,140,255,.45); z-index: 45; }
+  #fabSpeak:active { transform: scale(.94); }
+  #fabSpeak.hidden { display: none; }
+
   #toast { position: fixed; left: 50%; top: 10px; transform: translateX(-50%) translateY(-6px);
     background: rgba(22,31,50,.97); border: 1px solid var(--line); color: var(--text);
     padding: 8px 14px; border-radius: 999px; font-size: 13px; max-width: 86vw;
@@ -324,6 +331,7 @@
     <span id="status" class="hidden">就绪</span>
   </footer>
 
+  <div id="fabSpeak" class="hidden">🔊</div>
   <div id="toast"></div>
 </div>
 
@@ -378,7 +386,6 @@
         <button id="back">← 返回</button>
         <div class="dh-actions">
           <button id="dfav">☆</button>
-          <button id="dspeak">🔊</button>
           <button id="drefresh">刷新</button>
         </div>
       </div>
@@ -1602,6 +1609,7 @@
     $("home").classList.toggle("hidden", name !== "home");
     $("detail").classList.toggle("hidden", name !== "detail");
     if ($("metro")) $("metro").classList.toggle("hidden", name !== "metro");
+    if ($("fabSpeak")) $("fabSpeak").classList.toggle("hidden", name !== "detail");
     view.name = name;
     view.open = name !== "home";
     if (bridge && bridge.setView) { try { bridge.setView(name); } catch (e) {} }
@@ -1898,6 +1906,7 @@
   }
 
   window.cdBusWatchStation = watchStationByOrder;
+  window.cdBusOpenStation = openStationView;
   window.cdBusRenderWatchCard = renderWatchCard;
 
   function renderTimes(options) {
@@ -1958,9 +1967,21 @@
         var order = parseInt(rowEl.getAttribute ? rowEl.getAttribute("data-order") : rowEl.dataset.order, 10);
         if (order === currentOrder) currentRow = rowEl;
         rowEl.onclick = function () {
-          var t = timesByOrder[order];
-          if (!t) return;
-          speakStationRow(t, rowEl);
+          var st = null;
+          var list2 = (view.data && view.data.stations) || [];
+          for (var si3 = 0; si3 < list2.length; si3++) {
+            if (Number(list2[si3].order) === Number(order)) { st = list2[si3]; break; }
+          }
+          if (!st) return;
+          run(function () {
+            return openStationView({
+              type: "station",
+              stationId: st.stationId,
+              stationName: st.name,
+              lat: st.lat || 0,
+              lng: st.lng || 0
+            });
+          });
         };
         var pinEl = rowEl.querySelector ? rowEl.querySelector(".stpin") : null;
         if (pinEl) {
@@ -2092,6 +2113,7 @@
       if (!stop) throw new Error("附近没有查到该站（可能不在 500 米内）");
 
       state.stationView = fav;
+      showView("home");
       renderStops([stop]);
       $("seltext").textContent = "站点 · " + stop.name;
       $("selbar").className = "selbar";
@@ -2953,7 +2975,30 @@
 
   $("back").onclick = closeDetail;
   $("drefresh").onclick = function () { loadMatrix(); };
-  $("dspeak").onclick = function () { speak(detailSpeakText(), true); };
+
+  function speakCurrentStation() {
+    var lineName = view.lineName || (view.data && view.data.line && view.data.line.name) || "";
+    var stationName = view.stationName || "";
+    if (!stationName) { setStatus("还没有选站点", true); return; }
+    var text = lineName + "路，" + stationLabel(stationName);
+    var bus = (view.buses || [])[view.index];
+    var slice = null;
+    if (bus) {
+      (bus.times || []).forEach(function (t) { if (t.name === stationName) slice = t; });
+    }
+    if (slice && slice.passed) {
+      text += "，已经过了。";
+    } else if (slice && slice.etaSeconds > 0) {
+      var away = Math.max(0, Number(view.fromOrder) - Number(bus.order));
+      text += "，还有 " + away + " 站，" + etaWords(slice.etaSeconds) + "。";
+    } else {
+      text += "，当前没有即将到站的车辆。";
+    }
+    speak(text, true);
+  }
+
+  $("fabSpeak").onclick = function () { speakCurrentStation(); };
+
   function exitSearchView() {
     searching = false;
     state.stationView = null;
@@ -3061,7 +3106,30 @@
 
   $("back").onclick = closeDetail;
   $("drefresh").onclick = function () { loadMatrix(); };
-  $("dspeak").onclick = function () { speak(detailSpeakText(), true); };
+
+  function speakCurrentStation() {
+    var lineName = view.lineName || (view.data && view.data.line && view.data.line.name) || "";
+    var stationName = view.stationName || "";
+    if (!stationName) { setStatus("还没有选站点", true); return; }
+    var text = lineName + "路，" + stationLabel(stationName);
+    var bus = (view.buses || [])[view.index];
+    var slice = null;
+    if (bus) {
+      (bus.times || []).forEach(function (t) { if (t.name === stationName) slice = t; });
+    }
+    if (slice && slice.passed) {
+      text += "，已经过了。";
+    } else if (slice && slice.etaSeconds > 0) {
+      var away = Math.max(0, Number(view.fromOrder) - Number(bus.order));
+      text += "，还有 " + away + " 站，" + etaWords(slice.etaSeconds) + "。";
+    } else {
+      text += "，当前没有即将到站的车辆。";
+    }
+    speak(text, true);
+  }
+
+  $("fabSpeak").onclick = function () { speakCurrentStation(); };
+
   function exitSearchView() {
     searching = false;
     state.stationView = null;

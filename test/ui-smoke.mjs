@@ -704,6 +704,30 @@ else {
   if (textOf(document.getElementById('dbuses')).includes('undefined')) {
     stage5.push('芯片文案出现 undefined');
   }
+  // 悬浮播报按钮（左下角），播报当前站点
+  if (html.includes('id="dspeak"')) stage5.push('头部仍残留 🔊 按钮');
+  const fab = document.getElementById('fabSpeak');
+  if (!fab) stage5.push('没有悬浮播报按钮');
+  else {
+    if (String(fab.className).includes('hidden')) stage5.push('详情页悬浮播报按钮没显示');
+    const speakBefore = speakLog.length;
+    fab.onclick();
+    if (speakLog.length <= speakBefore) stage5.push('点悬浮播报没有出声');
+    else if (!/站/.test(speakLog[speakLog.length - 1])) stage5.push('悬浮播报没念站点：' + speakLog.slice(-1));
+  }
+
+  // 点站名卡片 → 跳到该站的「同站其它线路」视图（不再播报）
+  if (typeof window.cdBusOpenStation === 'function') {
+    const before = speakLog.length;
+    await window.cdBusOpenStation({ type: 'station', stationId: '028-1', stationName: '花园永泉', lat: 30.7, lng: 103.95 });
+    await new Promise((r) => setTimeout(r, 400));
+    const selTxt = String(document.getElementById('seltext').textContent || '');
+    if (!/站点 · /.test(selTxt)) stage5.push('点站名没有进入站点视图：' + selTxt);
+    if (speakLog.length !== before) stage5.push('点站名仍在播报（应只跳转）');
+    document.getElementById('exitSearch').onclick();
+    await new Promise((r) => setTimeout(r, 500));
+  }
+
   // 顶部（方向 + 车辆）应保持 sticky，跳转后仍在
   if (!document.getElementById('dtop')) stage5.push('详情页缺少 sticky 顶部容器');
   if (!/position:\s*sticky/.test(html)) stage5.push('顶部没有 sticky 样式');
