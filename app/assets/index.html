@@ -1732,11 +1732,18 @@
         " · 全程 " + totalStations + " 站";
       var depTextEl = $("deptext");
       var depBar = $("depbar");
+      var shownBus = buses[view.index] || buses[nearestIndex] || null;
+      var arrivedNow = shownBus && Number(shownBus.stationsAway) === 0;
       if (depTextEl && depBar) {
-        depTextEl.textContent = dep.text
-          ? ("发车预测：" + dep.text)
-          : "发车预测：该线路此时段暂无预测";
-        depBar.className = "locbar" + (dep.text ? "" : " err");
+        if (arrivedNow) {
+          depTextEl.textContent = "🚏 车辆已到站" + (shownBus.plate ? "：" + shownBus.plate : "");
+          depBar.className = "locbar";
+        } else {
+          depTextEl.textContent = dep.text
+            ? ("发车预测：" + dep.text)
+            : "发车预测：该线路此时段暂无预测";
+          depBar.className = "locbar" + (dep.text ? "" : " err");
+        }
       }
       updateFavStar();
       renderBusChips();
@@ -1855,12 +1862,28 @@
       }
       if (!stop) return;
 
-      // 以「该站完整线路名列表」为准（lineNameList），有实时数据的带 ETA，没有的标暂无车
-      var arrivals = stop.arrivals || [];
-      var byName = {};
-      arrivals.forEach(function (a) { byName[String(a.lineName)] = a; });
+      // 同一个站可能分成好几个站台（同 id 或同/近名），把它们的线路合并，避免只拿到一侧
+      var merged = stops.filter(function (s2) {
+        return String(s2.stationId) === String(station.stationId) ||
+               nameDistance(String(s2.name || ""), String(station.name || "")) <= 1;
+      });
+      if (!merged.length) merged = [stop];
 
-      var names = (stop.lineNameList || []).slice();
+      var arrivals = [];
+      var nameSet = {};
+      var names = [];
+      merged.forEach(function (s2) {
+        (s2.lineNameList || []).forEach(function (n) {
+          if (nameSet[n]) return;
+          nameSet[n] = 1;
+          names.push(n);
+        });
+        (s2.arrivals || []).forEach(function (a) { arrivals.push(a); });
+      });
+
+      var byName = {};
+      arrivals.forEach(function (a) { if (!byName[String(a.lineName)]) byName[String(a.lineName)] = a; });
+
       if (!names.length) {
         names = arrivals.map(function (a) { return a.lineName + "路"; });
       }
