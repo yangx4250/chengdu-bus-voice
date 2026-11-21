@@ -387,6 +387,17 @@
     <span>网页播放</span>
     <span><label class="switch" style="display:inline-flex"><input type="checkbox" id="webMode"><span class="knob"></span>语音走 WebView</label></span>
   </div>
+  <div class="aboutbox">
+    <div class="abouttitle">关于</div>
+    <div id="aboutBody" class="aboutrows">
+      <div class="kv"><span>版本</span><span id="abVersion">—</span></div>
+      <div class="kv"><span>运行环境</span><span id="abEnv">—</span></div>
+      <div class="kv"><span>数据来源</span><span>车来了（公交实时）· OpenStreetMap（地铁/有轨站点）</span></div>
+      <div class="kv"><span>签名</span><span>b5c11b4d…（自签名，仅供个人使用）</span></div>
+      <div class="kv" style="border:none"><span>说明</span><span>到站时间为预测，仅供参考；地铁/有轨为静态站点，不含实时到站。</span></div>
+    </div>
+  </div>
+
   <div class="btns">
     <button id="dClose" style="background:#1b2436">关闭</button>
   </div>
@@ -2959,6 +2970,29 @@
       return '<div class="kv"><span>' + row[0] + "</span><span>" + String(row[1]) + "</span></div>";
     }).join("");
   }
+
+  /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
+  var APP_FALLBACK_VERSION = "9.4";
+
+  function fillAbout() {
+    var verEl = $("abVersion");
+    var envEl = $("abEnv");
+    if (!verEl || !envEl) return;
+    var info = null;
+    try {
+      info = bridge && bridge.appInfo ? JSON.parse(bridge.appInfo()) : null;
+    } catch (e) { info = null; }
+    if (info && info.version) {
+      verEl.textContent = "v" + info.version + "（" + info.code + "）";
+      envEl.textContent = (info.device || "") + " · Android " + (info.android || "") +
+        (info.sdk ? "（SDK " + info.sdk + "）" : "");
+    } else {
+      verEl.textContent = "v" + APP_FALLBACK_VERSION;
+      envEl.textContent = "网页预览模式";
+    }
+  }
+
+  window.cdBusFillAbout = fillAbout;
 
   function openDiag() {
     $("diag").classList.remove("hidden");

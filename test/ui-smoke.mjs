@@ -286,6 +286,9 @@ const bridge = {
   speak(text) { speakLog.push(String(text)); },
   startWatchService(payload) { watchServiceLog.push(['start', String(payload || '')]); },
   stopWatchService() { watchServiceLog.push(['stop', '']); },
+  appInfo() {
+    return JSON.stringify({ version: '9.4', code: 85, pkg: 'com.chengdu.bus', android: '15', sdk: 35, device: 'Redmi 2211133C' });
+  },
   status() {
     return JSON.stringify({ ttsReady: true, backend: '系统语音', engines: 'com.xiaomi.tts', mediaVolume: 10, mediaMax: 29, ringerMode: 2, outputs: '扬声器', lastResult: '已交给系统 TTS' });
   },
@@ -376,6 +379,7 @@ if (!/^\d+$/.test(String(document.getElementById('refreshNote').textContent || '
 // 顶部设置按钮 → 打开设置（含语音自检）；底部不再有 🔧 和状态文字
 const settingsBtn = document.getElementById('settingsBtn');
 if (!settingsBtn) failures.push('顶部没有设置按钮');
+if (!String(html).includes('aboutbox')) failures.push('设置里没有「关于」区块');
 if (/实时到站/.test(html.split('</header>')[0])) failures.push('顶部仍有「实时到站」标签');
 if (html.indexOf('id="loctext"') > html.indexOf('<div class="row">')) {
   failures.push('定位信息没有移到标题后面');

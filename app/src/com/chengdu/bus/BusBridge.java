@@ -124,6 +124,30 @@ public final class BusBridge {
     }
 
     @JavascriptInterface
+    public String appInfo() {
+        JSONObject out = new JSONObject();
+        try {
+            android.content.pm.PackageInfo info = activity.getPackageManager()
+                    .getPackageInfo(activity.getPackageName(), 0);
+            out.put("version", info.versionName == null ? "" : info.versionName);
+            long code;
+            if (android.os.Build.VERSION.SDK_INT >= 28) {
+                code = info.getLongVersionCode();
+            } else {
+                code = info.versionCode;
+            }
+            out.put("code", code);
+            out.put("pkg", activity.getPackageName());
+            out.put("android", android.os.Build.VERSION.RELEASE);
+            out.put("sdk", android.os.Build.VERSION.SDK_INT);
+            out.put("device", (android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL).trim());
+        } catch (Exception e) {
+            Log.w(TAG, "读取版本失败", e);
+        }
+        return out.toString();
+    }
+
+    @JavascriptInterface
     public void startWatchService(String payload) {
         try {
             JSONObject args = new JSONObject(payload == null ? "{}" : payload);
