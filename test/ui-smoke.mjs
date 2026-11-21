@@ -385,6 +385,8 @@ if (html.indexOf('id="loctext"') > html.indexOf('<div class="row">')) {
   failures.push('定位信息没有移到标题后面');
 }
 if (!/class="homehead"/.test(html)) failures.push('头部布局标记丢失');
+if (!/user-select:\s*none/.test(html)) failures.push('没有禁用长按选中文字');
+if (!/input, textarea \{ -webkit-user-select: text/.test(html)) failures.push('输入框应仍可选中/编辑');
 if (!/class="topline"/.test(html) || !/class="locline"/.test(html)) failures.push('头部没有拆成标题行/定位行两排');
 else {
   settingsBtn.onclick();

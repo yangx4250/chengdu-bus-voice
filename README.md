@@ -247,6 +247,13 @@ Java 合成 mp3 → base64 → WebView <audio> 播放
   否则点终点站就只剩终点站，其余全被误标「已过」（v3.4 修）；
 - 并发从 4 提到 6（整条线要查的站变多了），长线路大约 1–3 秒。
 
+### 禁止长按选字（v9.5）
+
+- CSS：`body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none }`，
+  但 `input, textarea` 保留 `user-select: text`（不然搜索框没法编辑）；
+- Java：`web.setLongClickable(false)` + `setOnLongClickListener(...return true)` + 关掉触感反馈，
+  长按不再弹「复制/全选」菜单。
+
 ### 设置里的「关于」（v9.4）
 
 设置面板底部新增「关于」区块，内容由原生 `appInfo()` 提供（`PackageManager` 读取真实版本）：

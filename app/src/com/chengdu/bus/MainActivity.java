@@ -36,6 +36,17 @@ public final class MainActivity extends Activity {
         settings.setSupportZoom(false);
         settings.setMediaPlaybackRequiresUserGesture(false);
         web.setBackgroundColor(Color.parseColor("#0B1220"));
+
+        // 长按不选文字、不弹菜单（页面里只用到点按）
+        web.setLongClickable(false);
+        web.setHapticFeedbackEnabled(false);
+        web.setOnLongClickListener(new android.view.View.OnLongClickListener() {
+            @Override
+            public boolean onLongClick(android.view.View v) {
+                return true;
+            }
+        });
+
         web.setWebViewClient(new WebViewClient());
 
         bridge = new BusBridge(this, speech);
