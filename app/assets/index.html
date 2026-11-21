@@ -1,0 +1,2644 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>成都公交播报</title>
+<style>
+  :root {
+    --bg: #0b1220;
+    --card: #151d2e;
+    --line: #26324a;
+    --text: #e8eefb;
+    --muted: #8b9ab5;
+    --accent: #4f8cff;
+    --hot: #ff6b5e;
+    --ok: #38d39f;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "PingFang SC", "Noto Sans CJK SC", sans-serif; }
+  body { padding: 14px 14px 96px; min-height: 100vh; }
+  .hidden { display: none !important; }
+
+  header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  header .iconbtn { padding: 6px 10px; font-size: 17px; line-height: 1; border-radius: 10px; }
+  header h1 { font-size: 21px; margin: 0; letter-spacing: .5px; }
+  header .tag { font-size: 11px; color: var(--accent); border: 1px solid var(--accent);
+    border-radius: 999px; padding: 2px 8px; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 14px; margin-bottom: 12px; }
+  .row { display: flex; gap: 10px; }
+  .row + .row { margin-top: 10px; }
+  input {
+    flex: 1; min-width: 0; background: #0e1626; border: 1px solid var(--line);
+    border-radius: 12px; padding: 13px 14px; color: var(--text); font-size: 16px; outline: none;
+  }
+  input::placeholder { color: #56637d; }
+  input:focus { border-color: var(--accent); }
+  button {
+    border: 1px solid var(--line); background: #1b2436; color: var(--text);
+    border-radius: 12px; padding: 13px 16px; font-size: 15px; font-weight: 500;
+  }
+  button:active { transform: scale(.98); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; flex: 1; font-weight: 600; }
+  button:disabled { opacity: .5; }
+
+  .chips { display: flex; flex-wrap: nowrap; gap: 8px; margin-bottom: 12px;
+    overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex: 0 0 auto; display: flex; align-items: center; background: #1b2436;
+    border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px;
+    font-size: 13px; color: #b9c6dd; white-space: nowrap; line-height: 1.25;
+    min-height: 34px; }
+  .chip.on { border-color: var(--accent); color: #fff; }
+
+  /* 站名芯片竖排（像车来了的站点条）：横向滑动、每个站名从上往下读 */
+  .chips.vertical { align-items: flex-start; }
+  .chips.vertical .chip { writing-mode: vertical-rl; text-orientation: upright;
+    display: inline-flex; align-items: center; justify-content: flex-start;
+    padding: 10px 7px; min-height: 96px; max-height: 172px; overflow: hidden;
+    line-height: 1.15; letter-spacing: 1px; font-size: 13px; }
+
+  .bus { background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 14px; margin-bottom: 10px; }
+  .bus.tap:active { background: #1a2336; }
+  .bus .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .bus .line-name { font-size: 19px; font-weight: 700; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .bus .toward { color: var(--muted); font-size: 13px; }
+  .bus .eta { font-size: 26px; font-weight: 700; margin-top: 8px; color: var(--accent); }
+  .bus .eta.hot { color: var(--hot); }
+  .bus .meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .armeta { display: flex; align-items: center; gap: 6px; }
+  .armeta .armain { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .armeta .arrow { flex: 0 0 auto; color: #56637d; }
+  .armeta .spk { flex: 0 0 auto; padding: 2px 8px; border: 1px solid var(--line);
+    border-radius: 8px; font-size: 12px; line-height: 1; color: #b9c6dd; }
+  .armeta .spk:active { background: #22304a; color: #fff; }
+  .stop-title { font-size: 16px; font-weight: 600; margin: 4px 2px 8px; }
+  .stop-title small { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 6px; }
+
+  .empty { color: var(--muted); font-size: 14px; text-align: center; padding: 24px 8px; }
+
+  .locbar { font-size: 12px; color: var(--muted); margin: -6px 2px 12px; display: flex;
+    align-items: center; gap: 6px; }
+  .locbar.err { color: var(--hot); }
+  .locbar .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: 0 0 auto; }
+  .refreshnote { margin-left: auto; font-size: 11px; color: #5f6f8c; white-space: nowrap; }
+  .locbar.err .dot { background: var(--hot); }
+
+  footer {
+    position: fixed; left: 0; right: 0; bottom: 0; background: rgba(11,18,32,.94);
+    border-top: 1px solid var(--line); padding: 12px 10px 14px; display: flex;
+    align-items: center; gap: 8px; font-size: 13px; backdrop-filter: blur(8px);
+  }
+  footer .switch { flex: 1 1 0; justify-content: center; gap: 8px; padding: 6px 0; }
+  footer .switch .lbl { font-size: 13px; white-space: nowrap; }
+  .switch { display: flex; align-items: center; gap: 6px; color: #b9c6dd; }
+  .switch input { width: 0; height: 0; opacity: 0; position: absolute; }
+  .knob { width: 42px; height: 24px; border-radius: 999px; background: #2a3550; position: relative; transition: .18s; }
+  .knob::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+    border-radius: 50%; background: #8b9ab5; transition: .18s; }
+  .switch input:checked + .knob { background: var(--accent); }
+  .switch input:checked + .knob::after { left: 21px; background: #fff; }
+
+  #status { display: none; }
+
+  /* 顶部浮动提示：替代原来右下角那行小字 */
+  #toast { position: fixed; left: 50%; top: 10px; transform: translateX(-50%) translateY(-6px);
+    background: rgba(22,31,50,.97); border: 1px solid var(--line); color: var(--text);
+    padding: 8px 14px; border-radius: 999px; font-size: 13px; max-width: 86vw;
+    text-align: center; opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s;
+    z-index: 60; }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #toast.err { border-color: var(--hot); color: var(--hot); }
+
+  /* 车辆详情页 */
+  .selbar { display: flex; align-items: center; gap: 10px; background: var(--card);
+    border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; margin-bottom: 10px; }
+  .selbar.hidden { display: none; }
+  .selbar .seltext { flex: 1; font-size: 13px; color: #b9c6dd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .selbar button { padding: 8px 12px; font-size: 13px; white-space: nowrap; }
+
+  .favtitle { font-size: 12px; color: var(--muted); margin: 2px 2px 8px; letter-spacing: .5px; }
+  .favrow { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 12px; }
+  .fav { flex: 0 0 auto; min-width: 168px; max-width: 82vw; background: var(--card);
+    border: 1px solid var(--line); border-radius: 14px; padding: 12px 44px 12px 12px;
+    position: relative; }
+  .fav:active { background: #1a2336; }
+  .fav .fl { font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; }
+  .fav .fl small { display: block; font-weight: 400; font-size: 11px; color: var(--muted);
+    margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fav .fs { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .fav .fe { font-size: 13px; font-weight: 600; color: var(--accent); margin-top: 6px; }
+  .fav .fe.hot { color: var(--hot); }
+  .fav .fe.off { color: var(--muted); font-weight: 400; }
+  .fav .del { position: absolute; top: 6px; right: 6px; font-size: 12px; color: #56637d;
+    padding: 4px; line-height: 1; }
+  .fav .pin { position: absolute; top: 6px; right: 26px; font-size: 12px; padding: 4px;
+    line-height: 1; opacity: .85; }
+  .fav .pin:active { opacity: 1; }
+
+  #dtop { position: sticky; top: 0; z-index: 20; background: var(--bg);
+    margin: 0 -14px; padding: 2px 14px 8px; }
+  .detail-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .detail-head button { padding: 9px 13px; font-size: 14px; }
+  .detail-head .titles { flex: 1; min-width: 0; }
+  .detail-head .titles div:first-child { font-size: 17px; font-weight: 700; }
+  .detail-head .titles div:last-child { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .dhead { color: var(--muted); font-size: 13px; margin: 6px 2px 10px; }
+  .srow { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--card);
+    border: 1px solid var(--line); border-radius: 12px; margin-bottom: 8px; }
+  .srow .sname { flex: 1; min-width: 0; font-size: 15px; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  .srow .swhen { flex: 0 0 auto; font-size: 15px; font-weight: 600; color: var(--accent);
+    white-space: nowrap; }
+  .srow.hot .swhen { color: var(--hot); }
+  .srow.passed { opacity: .45; }
+  .srow.passed .swhen { color: var(--muted); font-weight: 400; }
+  .srow .idx { color: var(--muted); font-size: 12px; width: 22px; text-align: right; }
+  .srow.speaking { border-color: var(--accent); background: #1a2740; }
+  .srow { scroll-margin-top: 210px; }
+  .srow.current { border-color: var(--accent); background: #17233a; }
+  .srow.current .sname { color: #fff; font-weight: 600; }
+
+  /* 自检面板 */
+  #diag { position: fixed; inset: 0; background: rgba(6,10,20,.96); z-index: 50;
+    padding: 16px 14px 20px; overflow-y: auto; }
+  #diag h2 { font-size: 17px; margin: 4px 0 12px; }
+  #diag .kv { display: flex; gap: 8px; font-size: 13px; padding: 7px 0;
+    border-bottom: 1px solid #1d273b; }
+  #diag .kv span:first-child { color: var(--muted); width: 96px; flex: 0 0 auto; }
+  #diag .kv span:last-child { word-break: break-all; }
+  #diag .btns { display: flex; gap: 10px; margin: 14px 0; flex-wrap: wrap; }
+  #diag .btns button { flex: 1; min-width: 120px; }
+  .srow:active { background: #1a2336; }
+</style>
+</head>
+<body>
+
+<div id="home">
+  <header>
+    <button id="settingsBtn" class="iconbtn" title="设置">⚙</button>
+    <h1>成都公交播报</h1>
+    <span class="tag">实时到站</span>
+  </header>
+
+  <div id="locbar" class="locbar"><span class="dot"></span><span id="loctext">正在获取位置…</span>
+    <span id="refreshNote" class="refreshnote"></span></div>
+
+  <section class="card">
+    <div class="row">
+      <input id="line" placeholder="线路号，如 16 或 2" autocomplete="off">
+    </div>
+    <div class="row">
+      <button id="go" class="primary">查询并播报</button>
+      <button id="near">当前位置</button>
+      <button id="refreshHome" style="padding:13px 14px">↻</button>
+    </div>
+  </section>
+
+  <div id="metroEntry" class="selbar">
+    <span class="seltext">🚇 地铁 / 有轨电车 · 站点查询（静态）</span>
+    <button id="openMetro">查看</button>
+  </div>
+
+  <div id="favs"></div>
+  <div id="selbar" class="selbar hidden">
+    <span class="seltext" id="seltext"></span>
+    <button id="hfav">☆ 收藏</button>
+    <button id="exitSearch">← 退出</button>
+  </div>
+  <div id="dirs" class="chips"></div>
+  <div id="chips" class="chips vertical"></div>
+  <main id="list"><div class="empty">正在获取附近公交站…</div></main>
+
+  <footer>
+    <label class="switch"><input type="checkbox" id="voice"><span class="knob"></span><span class="lbl">自动播报</span></label>
+    <label class="switch"><input type="checkbox" id="watch"><span class="knob"></span><span class="lbl">盯站</span></label>
+    <span id="status" class="hidden">就绪</span>
+  </footer>
+
+  <div id="toast"></div>
+</div>
+
+<div id="diag" class="hidden">
+  <h2>设置 · 语音自检</h2>
+  <div id="diagRows"></div>
+  <div class="btns">
+    <button id="dVolume">调大媒体音量</button>
+    <button id="dTone">测试音·播放器</button>
+  </div>
+  <div class="btns">
+    <button id="dPcm">测试·PCM 直出</button>
+    <button id="dSys">测试·系统音效</button>
+  </div>
+  <div class="btns">
+    <button id="dSysWeb">测试·网页播放</button>
+    <button id="dSpeak">试播一句话</button>
+  </div>
+  <div class="btns">
+    <button id="dSample">示例播报（3 种场景）</button>
+    <button id="dMp3">测试·MP3 网页</button>
+  </div>
+  <div class="kv" style="border:none">
+    <span>网页播放</span>
+    <span><label class="switch" style="display:inline-flex"><input type="checkbox" id="webMode"><span class="knob"></span>语音走 WebView</label></span>
+  </div>
+  <div class="btns">
+    <button id="dClose" style="background:#1b2436">关闭</button>
+  </div>
+  <div class="dhead">测试音不联网：能听到「嘀——」说明音量/扬声器正常，问题在语音链路；听不到就要去按音量键或检查是否静音。</div>
+</div>
+
+<div id="metro" class="hidden">
+  <div id="mtop">
+    <div class="detail-head">
+      <button id="mback">← 返回</button>
+      <div class="titles">
+        <div id="mtitle">地铁 / 有轨电车</div>
+        <div id="msub">静态站点数据 · OpenStreetMap</div>
+      </div>
+    </div>
+    <div id="mlines" class="chips"></div>
+  </div>
+  <div id="mstation"></div>
+  <div id="mlist"><div class="empty">选一条线路查看站点</div></div>
+</div>
+
+<div id="detail" class="hidden">
+  <div id="dtop">
+    <div class="detail-head">
+      <button id="back">← 返回</button>
+      <div class="titles">
+        <div id="dtitle">—</div>
+        <div id="dsub"></div>
+      </div>
+      <button id="dfav">☆</button>
+      <button id="dspeak">🔊</button>
+      <button id="drefresh">刷新</button>
+    </div>
+    <div id="dwatchbar" class="selbar hidden">
+      <span class="seltext" id="dwatchtext"></span>
+      <button id="dwatchBtn">📌 盯站</button>
+    </div>
+    <div id="ddirs" class="chips"></div>
+    <div id="dbuses" class="chips"></div>
+    <div id="depbar" class="locbar"><span class="dot"></span><span id="deptext">发车预测</span></div>
+  </div>
+  <div id="dlist"></div>
+</div>
+
+<script type="application/json" id="metroData">{"updated":"2026-11-21","source":"OpenStreetMap (ODbL)","lines":[{"id":"1","name":"成都地铁1号线: 韦家碾 => 科学城","kind":"metro","colour":"#10069F","from":"韦家碾","to":"科学城","stations":[{"name":"韦家碾","lat":30.7201878,"lng":104.0843914},{"name":"升仙湖","lat":30.7069866,"lng":104.0808645},{"name":"火车北站","lat":30.6980694,"lng":104.0713208},{"name":"人民北路","lat":30.687455,"lng":104.0704668},{"name":"文殊院","lat":30.6745161,"lng":104.0651092},{"name":"骡马市","lat":30.6686498,"lng":104.0630187},{"name":"天府广场","lat":30.6598599,"lng":104.063717},{"name":"锦江宾馆","lat":30.6519551,"lng":104.0635614},{"name":"华西坝","lat":30.6453125,"lng":104.0637128},{"name":"省体育馆","lat":30.6355425,"lng":104.0638974},{"name":"倪家桥","lat":30.6272148,"lng":104.0642676},{"name":"桐梓林","lat":30.6177373,"lng":104.0645862},{"name":"火车南站","lat":30.6076395,"lng":104.0640905},{"name":"高新","lat":30.5966354,"lng":104.061401},{"name":"金融城","lat":30.584902,"lng":104.0614167},{"name":"孵化园","lat":30.5776372,"lng":104.0616502},{"name":"锦城广场","lat":30.5713996,"lng":104.0633616},{"name":"世纪城","lat":30.5573268,"lng":104.0660349},{"name":"天府三街","lat":30.5492052,"lng":104.0662185},{"name":"天府五街","lat":30.5396241,"lng":104.0665519},{"name":"华府大道","lat":30.5282794,"lng":104.0668985},{"name":"四河","lat":30.5194319,"lng":104.0670511},{"name":"华阳","lat":30.5057754,"lng":104.0675792},{"name":"海昌路","lat":30.4948178,"lng":104.0677236},{"name":"广福","lat":30.4807786,"lng":104.0672611},{"name":"红石公园","lat":30.4667384,"lng":104.0703263},{"name":"麓湖","lat":30.4568359,"lng":104.0705993},{"name":"武汉路","lat":30.4448201,"lng":104.0709351},{"name":"天府公园","lat":30.4355859,"lng":104.0750968},{"name":"西博城","lat":30.4268322,"lng":104.0744179},{"name":"广州路","lat":30.4210107,"lng":104.0744282},{"name":"兴隆湖","lat":30.4076096,"lng":104.0736689},{"name":"科学城","lat":30.3939201,"lng":104.0701945}]},{"id":"2","name":"成都地铁2号线: 犀浦 → 龙泉驿","kind":"metro","colour":"#FF5C39","from":"犀浦","to":"龙泉驿","stations":[{"name":"犀浦","lat":30.7607166,"lng":103.9692243},{"name":"天河路","lat":30.7484256,"lng":103.9740193},{"name":"百草路","lat":30.7355855,"lng":103.9771484},{"name":"金周路","lat":30.7240944,"lng":103.9938032},{"name":"金科北路","lat":30.7232443,"lng":104.0042136},{"name":"迎宾大道","lat":30.7159527,"lng":104.0110017},{"name":"茶店子客运站","lat":30.7077872,"lng":104.0097177},{"name":"羊犀立交","lat":30.696723,"lng":104.0100809},{"name":"一品天下","lat":30.6912136,"lng":104.0176346},{"name":"蜀汉路东","lat":30.6850862,"lng":104.0271176},{"name":"白果林","lat":30.6766552,"lng":104.0309161},{"name":"中医大·省医院","lat":30.6685672,"lng":104.0382417},{"name":"通惠门","lat":30.6647426,"lng":104.0458473},{"name":"人民公园","lat":30.6618826,"lng":104.0541094},{"name":"天府广场","lat":30.6598834,"lng":104.063826},{"name":"春熙路","lat":30.655928,"lng":104.0770301},{"name":"东门大桥","lat":30.6505066,"lng":104.0849175},{"name":"牛王庙","lat":30.6474304,"lng":104.0917493},{"name":"牛市口","lat":30.6400592,"lng":104.1051624},{"name":"东大路","lat":30.6356434,"lng":104.1100731},{"name":"塔子山公园","lat":30.6318334,"lng":104.1202341},{"name":"成都东客站","lat":30.6316093,"lng":104.1375485},{"name":"成渝立交","lat":30.6273326,"lng":104.1446201},{"name":"惠王陵","lat":30.6144314,"lng":104.1495961},{"name":"洪河","lat":30.6073228,"lng":104.1549613},{"name":"成都行政学院","lat":30.5995737,"lng":104.1681935},{"name":"龙泉驿火车站","lat":30.597605,"lng":104.194132},{"name":"大面铺","lat":30.5949733,"lng":104.198931},{"name":"连山坡","lat":30.5901158,"lng":104.2104647},{"name":"界牌","lat":30.5853424,"lng":104.2228355},{"name":"书房","lat":30.5781458,"lng":104.2397245},{"name":"龙平路","lat":30.5755224,"lng":104.2564976},{"name":"龙泉驿","lat":30.5628791,"lng":104.2659034}]},{"id":"4","name":"成都地铁4号线: 万盛 => 西河","kind":"metro","colour":"#44AF52","from":"万盛","to":"西河","stations":[{"name":"万盛","lat":30.677921,"lng":103.816824},{"name":"杨柳河","lat":30.6834968,"lng":103.8290775},{"name":"凤溪河","lat":30.688723,"lng":103.841051},{"name":"南熏大道","lat":30.6921987,"lng":103.8496735},{"name":"光华公园","lat":30.6869895,"lng":103.8586008},{"name":"涌泉","lat":30.6810883,"lng":103.871377},{"name":"凤凰大街","lat":30.6798074,"lng":103.8870836},{"name":"马厂坝","lat":30.6801415,"lng":103.9117294},{"name":"非遗博览园","lat":30.6767304,"lng":103.920427},{"name":"蔡桥","lat":30.6721303,"lng":103.9429335},{"name":"中坝","lat":30.6759957,"lng":103.9618731},{"name":"成都西站","lat":30.6865766,"lng":103.9749981},{"name":"清江西路","lat":30.6790972,"lng":103.9963288},{"name":"文化宫","lat":30.6745873,"lng":104.0074564},{"name":"西南财大","lat":30.6728492,"lng":104.0180084},{"name":"草堂北路","lat":30.6715248,"lng":104.0259673},{"name":"中医大·省医院","lat":30.6685108,"lng":104.0382049},{"name":"宽窄巷子","lat":30.6677163,"lng":104.0479077},{"name":"骡马市","lat":30.6694304,"lng":104.0637071},{"name":"太升南路","lat":30.6671909,"lng":104.0739399},{"name":"市二医院","lat":30.6627842,"lng":104.0820747},{"name":"玉双路","lat":30.6558299,"lng":104.0967488},{"name":"双桥路","lat":30.6491717,"lng":104.110925},{"name":"万年场","lat":30.6465919,"lng":104.1165055},{"name":"槐树店","lat":30.6511872,"lng":104.1366618},{"name":"来龙","lat":30.6492334,"lng":104.1619897},{"name":"十陵","lat":30.6482795,"lng":104.1702625},{"name":"成都大学","lat":30.6490115,"lng":104.1785118},{"name":"明蜀王陵","lat":30.650711,"lng":104.1941248},{"name":"西河","lat":30.6497489,"lng":104.2178875}]},{"id":"3","name":"成都地铁3号线: 成都医学院 => 双流西站","kind":"metro","colour":"#D40F7D","from":"成都医学院","to":"双流西站","stations":[{"name":"成都医学院","lat":30.8193229,"lng":104.1921402},{"name":"石油大学","lat":30.8211232,"lng":104.1839383},{"name":"钟楼","lat":30.8231352,"lng":104.1723976},{"name":"马超西路","lat":30.8152431,"lng":104.1622706},{"name":"团结新区","lat":30.8062238,"lng":104.1560738},{"name":"锦水河","lat":30.7996248,"lng":104.1510913},{"name":"三河场","lat":30.7870805,"lng":104.1365631},{"name":"金华寺东路","lat":30.7728264,"lng":104.1229451},{"name":"植物园","lat":30.7657574,"lng":104.1188397},{"name":"军区总医院","lat":30.7470119,"lng":104.1116006},{"name":"熊猫大道","lat":30.7280582,"lng":104.1055666},{"name":"动物园","lat":30.7160165,"lng":104.100717},{"name":"昭觉寺南路","lat":30.7055342,"lng":104.0944642},{"name":"驷马桥","lat":30.6980236,"lng":104.0908007},{"name":"李家沱","lat":30.6917507,"lng":104.0922219},{"name":"前锋路","lat":30.6813722,"lng":104.0896857},{"name":"红星桥","lat":30.6736546,"lng":104.0879308},{"name":"市二医院","lat":30.6631517,"lng":104.081418},{"name":"春熙路","lat":30.6560599,"lng":104.0768609},{"name":"新南门","lat":30.6466162,"lng":104.0725077},{"name":"磨子桥","lat":30.6399664,"lng":104.0733697},{"name":"省体育馆","lat":30.6359382,"lng":104.0636955},{"name":"衣冠庙","lat":30.6369871,"lng":104.049623},{"name":"高升桥","lat":30.6419878,"lng":104.0401149},{"name":"红牌楼","lat":30.637593,"lng":104.0277462},{"name":"太平园","lat":30.6282357,"lng":104.0191674},{"name":"川藏立交","lat":30.6258489,"lng":104.004247},{"name":"武侯立交","lat":30.6294805,"lng":103.9913132},{"name":"武青南路","lat":30.6254143,"lng":103.9823516},{"name":"双凤桥","lat":30.6186975,"lng":103.9675715},{"name":"龙桥路","lat":30.6067099,"lng":103.9416659},{"name":"航都大街","lat":30.5938521,"lng":103.9348108},{"name":"迎春桥","lat":30.58244,"lng":103.931823},{"name":"东升","lat":30.5740532,"lng":103.9232945},{"name":"双流广场","lat":30.5677136,"lng":103.9185309},{"name":"三里坝","lat":30.5565303,"lng":103.9126096},{"name":"双流西站","lat":30.5460614,"lng":103.9148125}]},{"id":"7","name":"成都地铁7号线: 内环","kind":"metro","colour":"#6AD1E3","from":"崔家店","to":"崔家店","stations":[{"name":"崔家店","lat":30.6678034,"lng":104.1337736},{"name":"双店路","lat":30.6599514,"lng":104.133957},{"name":"槐树店","lat":30.6529739,"lng":104.1369791},{"name":"迎晖路","lat":30.640452,"lng":104.1366343},{"name":"成都东客站","lat":30.6318924,"lng":104.1371505},{"name":"大观","lat":30.6240062,"lng":104.1301039},{"name":"狮子山","lat":30.6187588,"lng":104.1219002},{"name":"四川师大","lat":30.6119925,"lng":104.1138966},{"name":"琉璃场","lat":30.6100175,"lng":104.0980919},{"name":"三瓦窑","lat":30.6066844,"lng":104.0750554},{"name":"火车南站","lat":30.6077537,"lng":104.0637603},{"name":"神仙树","lat":30.612023,"lng":104.0454215},{"name":"高朋大道","lat":30.6193957,"lng":104.0308744},{"name":"太平园","lat":30.6278625,"lng":104.0189332},{"name":"武侯大道","lat":30.6399267,"lng":104.0104155},{"name":"龙爪堰","lat":30.6533666,"lng":104.0061787},{"name":"东坡路","lat":30.6633843,"lng":104.0059859},{"name":"文化宫","lat":30.6738894,"lng":104.0071453},{"name":"金沙博物馆","lat":30.6800202,"lng":104.0102211},{"name":"一品天下","lat":30.6915995,"lng":104.0187366},{"name":"茶店子","lat":30.6988809,"lng":104.0289404},{"name":"花照壁","lat":30.6990063,"lng":104.0383352},{"name":"西南交大","lat":30.6967821,"lng":104.0462973},{"name":"九里堤","lat":30.697051,"lng":104.0548295},{"name":"北站西二路","lat":30.6969574,"lng":104.0633722},{"name":"火车北站","lat":30.6976776,"lng":104.0717881},{"name":"驷马桥","lat":30.6978052,"lng":104.0918609},{"name":"府青路","lat":30.6965325,"lng":104.1042296},{"name":"八里庄","lat":30.6892086,"lng":104.1154377},{"name":"二仙桥","lat":30.683051,"lng":104.1237045},{"name":"理工大学","lat":30.6765393,"lng":104.1324746},{"name":"崔家店","lat":30.6678034,"lng":104.1337736}]},{"id":"10","name":"成都地铁10号线: 武侯祠站 → 新平","kind":"metro","colour":"#003DA5","from":"武侯祠站","to":"新平","stations":[{"name":"武侯祠","lat":30.6475237,"lng":104.0489576},{"name":"红牌楼","lat":30.6373359,"lng":104.0278718},{"name":"太平园","lat":30.6279967,"lng":104.019454},{"name":"簇锦","lat":30.6138099,"lng":104.0059568},{"name":"华兴","lat":30.6013512,"lng":103.9989423},{"name":"金花","lat":30.5942623,"lng":103.9678621},{"name":"双流机场1航站楼","lat":30.58134,"lng":103.9572694},{"name":"双流机场2航站楼","lat":30.5722939,"lng":103.9540351},{"name":"双流西站","lat":30.5457527,"lng":103.9149808},{"name":"应天寺","lat":30.5385382,"lng":103.9026726},{"name":"黄水","lat":30.521909,"lng":103.8891967},{"name":"花源","lat":30.4881459,"lng":103.878762},{"name":"新津站","lat":30.4658357,"lng":103.8711948},{"name":"花桥","lat":30.444471,"lng":103.8551451},{"name":"五津","lat":30.4261196,"lng":103.8108142},{"name":"儒林路","lat":30.4191823,"lng":103.8011404},{"name":"刘家碾","lat":30.4180515,"lng":103.7891832},{"name":"新平","lat":30.4111882,"lng":103.7793515}]},{"id":"9","name":"成都地铁9号线: 金融城东 → 黄田坝","kind":"metro","colour":"#FFB81C","from":"金融城东","to":"黄田坝","stations":[{"name":"金融城东","lat":30.5816846,"lng":104.0827267},{"name":"心岛","lat":30.5782999,"lng":104.0703138},{"name":"孵化园","lat":30.5779529,"lng":104.0637295},{"name":"锦城大道","lat":30.5777683,"lng":104.0479485},{"name":"三元","lat":30.5842522,"lng":104.0232377},{"name":"太平寺","lat":30.5937338,"lng":104.0099336},{"name":"华兴","lat":30.6010223,"lng":103.9998179},{"name":"簇桥","lat":30.6097109,"lng":103.9882033},{"name":"武青南路","lat":30.6243288,"lng":103.9830013},{"name":"机投桥","lat":30.6489641,"lng":103.9759479},{"name":"培风","lat":30.6631987,"lng":103.9750161},{"name":"成都西站","lat":30.6873793,"lng":103.9733705},{"name":"黄田坝","lat":30.7007235,"lng":103.9690805}]},{"id":"6","name":"成都地铁6号线: 望丛祠 => 兰家沟","kind":"metro","colour":"#B36924","from":"望丛祠","to":"兰家沟","stations":[{"name":"望丛祠","lat":30.810321,"lng":103.8756255},{"name":"和平街","lat":30.8031805,"lng":103.8850951},{"name":"郫筒","lat":30.7987574,"lng":103.8924363},{"name":"蜀新大道","lat":30.7937435,"lng":103.9013524},{"name":"檬梓","lat":30.7874005,"lng":103.912234},{"name":"尚锦路","lat":30.7797558,"lng":103.9217692},{"name":"红高路","lat":30.7724112,"lng":103.9346483},{"name":"天宇路","lat":30.7573646,"lng":103.9512337},{"name":"犀浦","lat":30.7602123,"lng":103.9674556},{"name":"兴业北街","lat":30.7611983,"lng":103.9810918},{"name":"梓潼宫","lat":30.7504718,"lng":103.991033},{"name":"侯家桥","lat":30.7392441,"lng":104.0024391},{"name":"兴盛","lat":30.7333136,"lng":104.019226},{"name":"青杠","lat":30.7279693,"lng":104.0235658},{"name":"西华大道","lat":30.7211933,"lng":104.0293966},{"name":"金府","lat":30.7139015,"lng":104.0347776},{"name":"星河","lat":30.7046997,"lng":104.0416738},{"name":"西南交大","lat":30.6979528,"lng":104.0465931},{"name":"沙湾","lat":30.6920103,"lng":104.0486229},{"name":"西北桥","lat":30.6881616,"lng":104.055615},{"name":"人民北路","lat":30.6882245,"lng":104.0690827},{"name":"梁家巷","lat":30.6848302,"lng":104.0804706},{"name":"前锋路","lat":30.6800949,"lng":104.0904262},{"name":"建设北路","lat":30.673541,"lng":104.0962441},{"name":"新鸿路","lat":30.6654211,"lng":104.0994982},{"name":"玉双路","lat":30.6564439,"lng":104.0962773},{"name":"牛王庙","lat":30.6469279,"lng":104.0901723},{"name":"顺江路","lat":30.6374647,"lng":104.0905214},{"name":"三官堂","lat":30.6308188,"lng":104.0920026},{"name":"东光","lat":30.6220484,"lng":104.0959259},{"name":"琉璃场","lat":30.6094533,"lng":104.0961538},{"name":"琉三路","lat":30.6030207,"lng":104.0955379},{"name":"金石路","lat":30.5926021,"lng":104.0865207},{"name":"金融城东","lat":30.5821205,"lng":104.0816238},{"name":"中和","lat":30.5604588,"lng":104.0939431},{"name":"张家寺","lat":30.552023,"lng":104.0958028},{"name":"陆肖","lat":30.5415535,"lng":104.0957528},{"name":"观东","lat":30.533372,"lng":104.0958376},{"name":"新通大道","lat":30.5239933,"lng":104.0958891},{"name":"新川路","lat":30.5179009,"lng":104.0981379},{"name":"龙灯山","lat":30.5114622,"lng":104.098687},{"name":"蒲草塘","lat":30.5042091,"lng":104.0959124},{"name":"万安","lat":30.4975144,"lng":104.0968356},{"name":"麓山大道","lat":30.4854916,"lng":104.1007431},{"name":"沈阳路","lat":30.470026,"lng":104.0989332},{"name":"青岛路","lat":30.4615586,"lng":104.0997956},{"name":"昌公堰","lat":30.4510972,"lng":104.0921074},{"name":"杭州路","lat":30.441511,"lng":104.086857},{"name":"天府商务区","lat":30.4326026,"lng":104.0838678},{"name":"西博城","lat":30.4273041,"lng":104.0731573},{"name":"秦皇寺","lat":30.4269939,"lng":104.0593392},{"name":"松林","lat":30.4286295,"lng":104.0437976},{"name":"芦角","lat":30.4341472,"lng":104.0353406},{"name":"钓鱼嘴","lat":30.4389949,"lng":104.0301742},{"name":"回龙","lat":30.4465288,"lng":104.0108408},{"name":"兰家沟","lat":30.4459248,"lng":103.9943827}]},{"id":"5","name":"成都地铁5号线: 华桂路 => 回龙","kind":"metro","colour":"#BB29BB","from":"华桂路","to":"回龙","stations":[{"name":"华桂路","lat":30.8275136,"lng":104.0958633},{"name":"柏水场","lat":30.8178332,"lng":104.0916924},{"name":"廖家湾","lat":30.8107396,"lng":104.0884932},{"name":"北部商贸城","lat":30.7934602,"lng":104.0864065},{"name":"幸福桥","lat":30.7792892,"lng":104.0857256},{"name":"九道堰","lat":30.7739392,"lng":104.0801705},{"name":"杜家碾","lat":30.7739916,"lng":104.0723604},{"name":"大丰","lat":30.7740301,"lng":104.0632174},{"name":"石犀公园","lat":30.7622278,"lng":104.057267},{"name":"皇花园","lat":30.7548306,"lng":104.0572142},{"name":"陆家桥","lat":30.7449423,"lng":104.0565927},{"name":"泉水路","lat":30.7325359,"lng":104.0558661},{"name":"洞子口","lat":30.7238673,"lng":104.0559366},{"name":"福宁路","lat":30.7169111,"lng":104.0572821},{"name":"五块石","lat":30.709243,"lng":104.0625609},{"name":"赛云台","lat":30.7033306,"lng":104.0640318},{"name":"北站西二路","lat":30.6961737,"lng":104.0637964},{"name":"西北桥","lat":30.6881146,"lng":104.0556324},{"name":"花牌坊","lat":30.6860285,"lng":104.0462712},{"name":"抚琴","lat":30.6790788,"lng":104.0392008},{"name":"中医大·省医院","lat":30.6684416,"lng":104.038053},{"name":"青羊宫","lat":30.663072,"lng":104.0383144},{"name":"省骨科医院","lat":30.6537137,"lng":104.0385789},{"name":"高升桥","lat":30.6419785,"lng":104.0394231},{"name":"科园","lat":30.6301761,"lng":104.0353119},{"name":"九兴大道","lat":30.6231189,"lng":104.0377191},{"name":"神仙树","lat":30.6130419,"lng":104.0455517},{"name":"石羊立交","lat":30.5979817,"lng":104.0483009},{"name":"市一医院","lat":30.5922415,"lng":104.0479365},{"name":"交子大道","lat":30.5841824,"lng":104.0476334},{"name":"锦城大道","lat":30.5766236,"lng":104.0478897},{"name":"锦城湖","lat":30.5669125,"lng":104.0440279},{"name":"大源","lat":30.5518858,"lng":104.0442314},{"name":"民乐","lat":30.5429048,"lng":104.0443216},{"name":"骑龙","lat":30.5269243,"lng":104.0418605},{"name":"警官学院","lat":30.5158374,"lng":104.0379398},{"name":"二江寺","lat":30.5022704,"lng":104.0332471},{"name":"南湖立交","lat":30.4911792,"lng":104.0308256},{"name":"怡心湖","lat":30.4732506,"lng":104.0243717},{"name":"龙马路","lat":30.4601657,"lng":104.0171757},{"name":"回龙","lat":30.4474098,"lng":104.0096671}]},{"id":"8","name":"成都地铁8号线: 桂龙路 → 龙港","kind":"metro","colour":"#88DD00","from":"同乐","to":"龙港","stations":[{"name":"桂龙路","lat":30.7193592,"lng":104.1862675},{"name":"桂林","lat":30.7193169,"lng":104.1766851},{"name":"同乐","lat":30.7143433,"lng":104.1678116},{"name":"龙潭寺","lat":30.7043928,"lng":104.1624554},{"name":"龙潭立交","lat":30.6967258,"lng":104.1551565},{"name":"圣灯公园","lat":30.6900114,"lng":104.1488015},{"name":"十里店","lat":30.6816536,"lng":104.1413874},{"name":"理工大学","lat":30.676003,"lng":104.1356618},{"name":"东郊记忆","lat":30.6708891,"lng":104.1263072},{"name":"杉板桥","lat":30.666714,"lng":104.116862},{"name":"万年路","lat":30.6573418,"lng":104.1123993},{"name":"双桥路","lat":30.648352,"lng":104.111189},{"name":"东大路","lat":30.6359016,"lng":104.1094445},{"name":"净居寺","lat":30.6248965,"lng":104.1018014},{"name":"东光","lat":30.6220587,"lng":104.0953158},{"name":"东湖公园","lat":30.622063,"lng":104.0853412},{"name":"川大望江校区","lat":30.6276469,"lng":104.0730489},{"name":"倪家桥","lat":30.6273869,"lng":104.0624697},{"name":"芳草街","lat":30.6283427,"lng":104.0500625},{"name":"永丰","lat":30.6307327,"lng":104.0443138},{"name":"九兴大道","lat":30.6254538,"lng":104.0362172},{"name":"高朋大道","lat":30.6193719,"lng":104.0322734},{"name":"殷家林","lat":30.6087609,"lng":104.0317748},{"name":"庆安","lat":30.6008651,"lng":104.0315273},{"name":"石羊","lat":30.5872173,"lng":104.0280988},{"name":"三元","lat":30.583437,"lng":104.0236488},{"name":"顺风","lat":30.5795109,"lng":104.0087991},{"name":"珠江路","lat":30.5689544,"lng":104.005467},{"name":"川大江安校区","lat":30.5578592,"lng":104.0046675},{"name":"文星","lat":30.5533182,"lng":103.9883441},{"name":"莲花","lat":30.5486089,"lng":103.9770306},{"name":"龙港","lat":30.5373654,"lng":103.9715713}]},{"id":"17","name":"成都地铁17号线: 九江北 → 高洪","kind":"metro","colour":"#80E0A7","from":"九江北","to":"高洪","stations":[{"name":"九江北","lat":30.6372754,"lng":103.9195117},{"name":"白佛桥","lat":30.6439724,"lng":103.9619135},{"name":"机投桥","lat":30.6474818,"lng":103.9757943},{"name":"阳公桥","lat":30.651842,"lng":103.9938207},{"name":"龙爪堰","lat":30.6545417,"lng":104.0069742},{"name":"清水河大桥","lat":30.6542736,"lng":104.0181247},{"name":"浣花里","lat":30.6533072,"lng":104.0295866},{"name":"省骨科医院","lat":30.654216,"lng":104.0396784},{"name":"小南街","lat":30.6557475,"lng":104.0501211},{"name":"人民公园","lat":30.6610425,"lng":104.0531458},{"name":"西大街","lat":30.6766286,"lng":104.0564109},{"name":"城隍庙","lat":30.681652,"lng":104.0773608},{"name":"红星桥","lat":30.6762562,"lng":104.0881751},{"name":"建设北路","lat":30.6751631,"lng":104.0976328},{"name":"踏水桥","lat":30.6775555,"lng":104.1057248},{"name":"二仙桥","lat":30.6840606,"lng":104.1245084},{"name":"机车厂","lat":30.6903082,"lng":104.130999},{"name":"人民塘","lat":30.6929982,"lng":104.1484058},{"name":"航天路","lat":30.6910694,"lng":104.1630922},{"name":"威灵","lat":30.691751,"lng":104.1771856},{"name":"高洪","lat":30.69257,"lng":104.1924036}]},{"id":"18","name":"成都地铁18号线: 火车南站 => 天府机场北","kind":"metro","colour":"#006272","from":"火车南站","to":"天府机场北","stations":[{"name":"火车南站","lat":30.6054862,"lng":104.06526},{"name":"孵化园","lat":30.579055,"lng":104.0654712},{"name":"锦城广场东","lat":30.5712234,"lng":104.0666403},{"name":"世纪城","lat":30.5573138,"lng":104.0666488},{"name":"海昌路","lat":30.4953144,"lng":104.0689899},{"name":"西博城","lat":30.4263663,"lng":104.0718429},{"name":"兴隆","lat":30.4120691,"lng":104.1001254},{"name":"天府站","lat":30.3927325,"lng":104.1485773},{"name":"三岔","lat":30.3138383,"lng":104.31463},{"name":"福田","lat":30.2806126,"lng":104.3847591},{"name":"天府机场3号4号航站楼","lat":30.2941604,"lng":104.4326789},{"name":"天府机场1号2号航站楼","lat":30.3153663,"lng":104.4425804},{"name":"天府机场北","lat":30.3369355,"lng":104.452756}]},{"id":"S3","name":"成都市域铁路S3资阳线: 资阳北站 → 福田","kind":"metro","colour":"#9D9D9E","from":"资阳北站","to":"福田","stations":[{"name":"资阳北站","lat":30.1294604,"lng":104.6785458},{"name":"宝台","lat":30.1167704,"lng":104.6712633},{"name":"苌弘广场","lat":30.1119242,"lng":104.6482143},{"name":"幸福大道","lat":30.1301549,"lng":104.6192895},{"name":"资阳临空","lat":30.1757467,"lng":104.582575},{"name":"福田","lat":30.2807738,"lng":104.3848546}]},{"id":"13","name":"成都地铁13号线: 龙安 → 瓦窑滩","kind":"metro","colour":"#C5A900","from":"龙安","to":"瓦窑滩","stations":[{"name":"龙安","lat":30.5662359,"lng":104.1933156},{"name":"龙华寺","lat":30.5737365,"lng":104.1775746},{"name":"三圣花乡","lat":30.5868917,"lng":104.1504923},{"name":"幸福梅林","lat":30.5949224,"lng":104.1373377},{"name":"娇子立交","lat":30.6028722,"lng":104.124432},{"name":"四川师大","lat":30.6100545,"lng":104.1143763},{"name":"净居寺","lat":30.6252704,"lng":104.1027155},{"name":"三官堂","lat":30.6310798,"lng":104.0937137},{"name":"九眼桥站","lat":30.6419703,"lng":104.0856864},{"name":"新南门","lat":30.6464331,"lng":104.0736599},{"name":"华西坝","lat":30.646918,"lng":104.0618882},{"name":"文翁石室","lat":30.6521173,"lng":104.0539535},{"name":"小南街","lat":30.6555278,"lng":104.0483432},{"name":"青羊宫","lat":30.6618312,"lng":104.0374954},{"name":"杜甫草堂","lat":30.6650067,"lng":104.0281104},{"name":"光华村","lat":30.6647874,"lng":104.0193023},{"name":"东坡路","lat":30.66356,"lng":104.0061291},{"name":"万寿桥","lat":30.663986,"lng":103.9905463},{"name":"培风","lat":30.6646886,"lng":103.9743626},{"name":"万家湾","lat":30.665534,"lng":103.9609594},{"name":"瓦窑滩","lat":30.6647956,"lng":103.9461163}]},{"id":"27","name":"成都地铁27号线: 石佛 => 蜀鑫路","kind":"metro","colour":"#00A3E0","from":"石佛","to":"蜀鑫路","stations":[{"name":"石佛","lat":30.8274755,"lng":104.109228},{"name":"慈义","lat":30.8199052,"lng":104.1122343},{"name":"兴城大道","lat":30.8125041,"lng":104.107592},{"name":"旃檀寺","lat":30.8018869,"lng":104.1029532},{"name":"石门坎","lat":30.779112,"lng":104.0990645},{"name":"三圣寺","lat":30.7725798,"lng":104.0992042},{"name":"范家巷","lat":30.7627178,"lng":104.0997746},{"name":"鲤鱼湾","lat":30.7549312,"lng":104.0966279},{"name":"赖家店","lat":30.735157,"lng":104.0865083},{"name":"韦家碾","lat":30.7202267,"lng":104.083805},{"name":"双水碾","lat":30.7154391,"lng":104.0737235},{"name":"王贾桥","lat":30.7195363,"lng":104.0663659},{"name":"洞子口","lat":30.7244763,"lng":104.0567978},{"name":"沙河源","lat":30.7252206,"lng":104.0481681},{"name":"新桥","lat":30.7192568,"lng":104.0414672},{"name":"金府","lat":30.7145623,"lng":104.0350075},{"name":"花照壁北","lat":30.7107078,"lng":104.0276919},{"name":"金牛公园","lat":30.7069458,"lng":104.0205434},{"name":"羊犀立交","lat":30.6959839,"lng":104.0094828},{"name":"黄忠","lat":30.6899991,"lng":104.0053697},{"name":"金沙滨河公园","lat":30.68885,"lng":103.9991671},{"name":"蜀鑫路","lat":30.6920302,"lng":103.9914007}]},{"id":"19","name":"成都地铁19号线: 金星 => 天府机场北","kind":"metro","colour":"#5c88db","from":"天府机场北","to":"金星","stations":[{"name":"天府机场北","lat":30.3369355,"lng":104.452756},{"name":"天府机场1号2号航站楼","lat":30.3153663,"lng":104.4425804},{"name":"天府机场3号4号航站楼","lat":30.2941604,"lng":104.4326789},{"name":"福田","lat":30.2806126,"lng":104.3847591},{"name":"三岔","lat":30.3138383,"lng":104.31463},{"name":"天府站","lat":30.3926126,"lng":104.1485145},{"name":"蓝家店","lat":30.420154,"lng":104.1065631},{"name":"天府商务区","lat":30.4325489,"lng":104.0837672},{"name":"红莲","lat":30.4351609,"lng":104.0598008},{"name":"正兴湾","lat":30.455075,"lng":104.0389561},{"name":"怡心湖","lat":30.4734744,"lng":104.0233436},{"name":"牧华路","lat":30.4867202,"lng":104.0088916},{"name":"温家山","lat":30.5014778,"lng":104.0067429},{"name":"龙港","lat":30.5382362,"lng":103.9714146},{"name":"双流机场2航站楼东","lat":30.5717727,"lng":103.9556491},{"name":"龙桥路","lat":30.6087035,"lng":103.9429309},{"name":"九江北","lat":30.6371718,"lng":103.9195148},{"name":"明光","lat":30.661234,"lng":103.8662379},{"name":"温泉大道","lat":30.6751744,"lng":103.8533747},{"name":"凤溪河","lat":30.6905793,"lng":103.8409754},{"name":"市五医院","lat":30.7019352,"lng":103.8269442},{"name":"黄石","lat":30.7242344,"lng":103.8117265},{"name":"金星","lat":30.7586198,"lng":103.7917902}]},{"id":"30","name":"成都地铁30号线: 龙泉驿火车站南 → 双流机场2航站楼东","kind":"metro","colour":"#f63676","from":"龙泉驿火车站南","to":"双流机场2航站楼东","stations":[{"name":"龙泉驿火车站南","lat":30.5957903,"lng":104.1941553},{"name":"玉虹路","lat":30.6093795,"lng":104.1836363},{"name":"分水","lat":30.6142791,"lng":104.1748213},{"name":"玉石","lat":30.615063,"lng":104.1647632},{"name":"惠王陵","lat":30.6158646,"lng":104.1503798},{"name":"航天立交","lat":30.6155149,"lng":104.1404791},{"name":"海桐街","lat":30.6084458,"lng":104.1351073},{"name":"娇子立交","lat":30.602405,"lng":104.1261038},{"name":"锦逸","lat":30.5982842,"lng":104.1113141},{"name":"棬子树","lat":30.5970109,"lng":104.1000702},{"name":"金石路","lat":30.5929701,"lng":104.086116},{"name":"府城桥","lat":30.5912769,"lng":104.0731875},{"name":"金融城北","lat":30.5910068,"lng":104.0672093},{"name":"益州大道","lat":30.5910484,"lng":104.0579647},{"name":"市一医院","lat":30.5909545,"lng":104.0494611},{"name":"新园大道","lat":30.5904794,"lng":104.0372783},{"name":"石羊东","lat":30.586455,"lng":104.0306541},{"name":"大同","lat":30.5752522,"lng":104.0146206},{"name":"珠江路","lat":30.5690335,"lng":104.0053084},{"name":"谢家渡","lat":30.566724,"lng":103.9971578},{"name":"光明","lat":30.5643171,"lng":103.984238},{"name":"星月","lat":30.5644963,"lng":103.9756984},{"name":"寺圣","lat":30.5630183,"lng":103.967274},{"name":"双流机场2航站楼东","lat":30.5716274,"lng":103.9560228}]},{"id":"T2","name":"成都有轨电车蓉2号线: 成都西站 => 郫县西站","kind":"tram","colour":"#6A911A","from":"成都西站","to":"郫县西站","stations":[{"name":"合信路","lat":30.7531956,"lng":103.9199676},{"name":"合作路","lat":30.75631,"lng":103.9227207},{"name":"天欣路","lat":30.7603307,"lng":103.9186924},{"name":"安埠","lat":30.7672026,"lng":103.9128024},{"name":"天映路","lat":30.7609181,"lng":103.9018531},{"name":"天源路","lat":30.7687741,"lng":103.8943136},{"name":"德富大道","lat":30.7779392,"lng":103.8583068},{"name":"红旗大道","lat":30.7773804,"lng":103.8531409},{"name":"红展东路","lat":30.779829,"lng":103.8503303},{"name":"大禹东路","lat":30.7868516,"lng":103.8564054},{"name":"花石","lat":30.7926599,"lng":103.8611147},{"name":"晨光","lat":30.800641,"lng":103.8678215},{"name":"何公路","lat":30.8054287,"lng":103.8750085},{"name":"望丛祠","lat":30.8098283,"lng":103.8759878},{"name":"梨园路","lat":30.8187623,"lng":103.8775058},{"name":"郫县西站","lat":30.8254738,"lng":103.8783707},{"name":"成都西站","lat":30.6869415,"lng":103.9759146},{"name":"联工","lat":30.6972153,"lng":103.9748322},{"name":"土龙路","lat":30.7166973,"lng":103.9663355},{"name":"新业路","lat":30.7268277,"lng":103.9546647},{"name":"锦城学院","lat":30.7326869,"lng":103.9478134},{"name":"电子科大","lat":30.7447922,"lng":103.9261716}]},{"id":"T2B","name":"成都有轨电车蓉2号线（支线）: 新业路 => 仁和","kind":"tram","colour":"#6A911A","from":"仁和","to":"新业路","stations":[{"name":"仁和","lat":30.80203,"lng":103.9544021},{"name":"技师学院","lat":30.7977332,"lng":103.9581753},{"name":"金土","lat":30.7922014,"lng":103.9558638},{"name":"双林村","lat":30.7889065,"lng":103.9628298},{"name":"西华大学","lat":30.7821374,"lng":103.9616299},{"name":"大田","lat":30.7777618,"lng":103.9624953},{"name":"国宁","lat":30.7687497,"lng":103.966164},{"name":"犀方路","lat":30.7692228,"lng":103.9748279},{"name":"交大犀浦校区","lat":30.7648888,"lng":103.9781998},{"name":"龙吟","lat":30.7573397,"lng":103.9830233},{"name":"天河路","lat":30.7482284,"lng":103.9737462},{"name":"晨风","lat":30.742376,"lng":103.9691077},{"name":"百叶路","lat":30.7347777,"lng":103.9604425},{"name":"新业路","lat":30.7284332,"lng":103.9548672}]},{"id":"M-TR","name":"都江堰M-TR旅游客运专线","kind":"tram","colour":"","from":"青城山站","to":"新益","stations":[{"name":"青城山站","lat":30.8964284,"lng":103.6042515},{"name":"白鸽路","lat":30.9024782,"lng":103.6040921},{"name":"合乐（预留）","lat":30.9066459,"lng":103.6026772},{"name":"新益","lat":30.9113881,"lng":103.6069568}]}],"transfers":{"韦家碾":["1","27"],"火车北站":["1","7"],"人民北路":["1","6"],"骡马市":["1","4"],"天府广场":["1","2"],"华西坝":["1","13"],"省体育馆":["1","3"],"倪家桥":["1","8"],"火车南站":["1","18","7"],"孵化园":["1","18","9"],"世纪城":["1","18"],"海昌路":["1","18"],"西博城":["1","18","6"],"犀浦":["2","6"],"天河路":["2","T2B"],"羊犀立交":["2","27"],"一品天下":["2","7"],"中医大·省医院":["2","4","5"],"人民公园":["17","2"],"春熙路":["2","3"],"牛王庙":["2","6"],"东大路":["2","8"],"成都东客站":["2","7"],"惠王陵":["2","30"],"凤溪河":["19","4"],"成都西站":["4","9","T2"],"文化宫":["4","7"],"市二医院":["3","4"],"玉双路":["4","6"],"双桥路":["4","8"],"槐树店":["4","7"],"驷马桥":["3","7"],"前锋路":["3","6"],"红星桥":["17","3"],"新南门":["13","3"],"高升桥":["3","5"],"红牌楼":["10","3"],"太平园":["10","3","7"],"武青南路":["3","9"],"龙桥路":["19","3"],"双流西站":["10","3"],"四川师大":["13","7"],"琉璃场":["6","7"],"神仙树":["5","7"],"高朋大道":["7","8"],"龙爪堰":["17","7"],"东坡路":["13","7"],"西南交大":["6","7"],"北站西二路":["5","7"],"二仙桥":["17","7"],"理工大学":["7","8"],"华兴":["10","9"],"金融城东":["6","9"],"锦城大道":["5","9"],"三元":["8","9"],"机投桥":["17","9"],"培风":["13","9"],"望丛祠":["6","T2"],"金府":["27","6"],"西北桥":["5","6"],"建设北路":["17","6"],"三官堂":["13","6"],"东光":["6","8"],"金石路":["30","6"],"天府商务区":["19","6"],"回龙":["5","6"],"洞子口":["27","5"],"青羊宫":["13","5"],"省骨科医院":["17","5"],"九兴大道":["5","8"],"市一医院":["30","5"],"怡心湖":["19","5"],"净居寺":["13","8"],"珠江路":["30","8"],"龙港":["19","8"],"九江北":["17","19"],"小南街":["13","17"],"天府站":["18","19"],"三岔":["18","19"],"福田":["18","19","S3"],"天府机场3号4号航站楼":["18","19"],"天府机场1号2号航站楼":["18","19"],"天府机场北":["18","19"],"娇子立交":["13","30"],"双流机场2航站楼东":["19","30"],"新业路":["T2","T2B"]}}</script>
+<script>
+(function () {
+  "use strict";
+
+  var DEFAULT_LAT = 30.657, DEFAULT_LNG = 104.065;
+  var bridge = window.AndroidBus || null;
+
+  var state = {
+    detail: null,
+    directions: [],
+    station: null,
+    buses: [],
+    first: null,
+    fix: null,
+    timer: null,
+    lastSpoken: 0,
+    lastUrgent: false,
+    busy: false
+  };
+
+  var view = {
+    open: false,
+    lineId: null,
+    lineName: null,
+    stationId: null,
+    stationName: null,
+    fromOrder: 0,
+    directions: [],
+    data: null,
+    index: 0
+  };
+
+  function $(id) { return document.getElementById(id); }
+  function voiceOn() { return Boolean($("voice") && $("voice").checked); }
+
+  /* 自动播报开关：首次安装默认关闭，之后记住用户的选择 */
+  var VOICE_KEY = "cdbus.voiceAuto";
+
+  function restoreVoiceSetting() {
+    try {
+      var saved = localStorage.getItem(VOICE_KEY);
+      if ($("voice")) $("voice").checked = saved === "1";
+    } catch (e) {}
+  }
+
+  function bindVoiceSetting() {
+    var box = $("voice");
+    if (!box) return;
+    box.onchange = function () {
+      try { localStorage.setItem(VOICE_KEY, box.checked ? "1" : "0"); } catch (e) {}
+      setStatus(box.checked ? "已开启自动播报（打开 App 会念一次）" : "已关闭自动播报");
+    };
+  }
+
+  var toastTimer = null;
+
+  function showToast(text, isError) {
+    var toast = $("toast");
+    if (!toast) return;
+    var important = isError || /收藏|盯站|停止|回到首页|失败|错误|不可用|未授权|不在运营/.test(text);
+    if (!important) return;
+    toast.textContent = text;
+    toast.className = "show" + (isError ? " err" : "");
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toast.className = ""; }, 2200);
+  }
+
+  function setStatus(text, isError) {
+    var el = $("status");
+    if (el) {
+      el.textContent = text;
+      el.className = "hidden" + (isError ? " err" : "");   // 始终隐藏，只给测试/无障碍读
+    }
+    showToast(text, isError);
+  }
+
+  function setLocbar(text, isError) {
+    var bar = $("locbar");
+    $("loctext").textContent = text;
+    bar.className = "locbar" + (isError ? " err" : "");
+  }
+
+  /* 后台线程查询 + 轮询结果，避免同步调用卡住界面 */
+  function rpc(method, payload) {
+    return new Promise(function (resolve, reject) {
+      if (!bridge) { reject(new Error("仅支持在 App 内使用")); return; }
+      var id;
+      try { id = bridge.start(method, JSON.stringify(payload || {})); }
+      catch (e) { reject(e); return; }
+      (function tick() {
+        var res;
+        try { res = JSON.parse(bridge.poll(id)); }
+        catch (e) { reject(e); return; }
+        if (res.state === "running") { setTimeout(tick, 120); return; }
+        if (res.state === "error") { reject(new Error(res.error || "查询失败")); return; }
+        resolve(res.data);
+      })();
+    });
+  }
+
+  /* ------------------------------------------------------------ 文案 */
+
+  /* 预估时间按 30 秒粒度显示：90 秒 →「1 分 30 秒」，600 秒 →「10 分钟」 */
+  function fmtEta(seconds) {
+    if (seconds === null || seconds === undefined || !(seconds > 0)) return "暂无预测";
+    var half = Math.round(seconds / 30);
+    if (half <= 1) return "30 秒内";
+    var m = Math.floor(half / 2);
+    var r = half % 2;
+    return r ? m + " 分 30 秒" : m + " 分钟";
+  }
+
+  function fmtClock(ms) {
+    if (!ms) return "";
+    var d = new Date(ms);
+    return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  }
+
+  function describe(bus) {
+    if (!bus) return "暂无车辆";
+    if (bus.arrived) return "即将进站";
+    var stations = bus.stationsAway;
+    var eta = bus.etaSeconds;
+    if (stations !== null && stations >= 4) return "还有 " + stations + " 站";
+    var parts = [];
+    if (stations !== null && stations > 0) parts.push("还有 " + stations + " 站");
+    if (eta !== null && eta !== undefined && eta > 0) parts.push(fmtEta(eta));
+    return parts.length ? parts.join("，") : "正在接近本站";
+  }
+
+  function isUrgent(bus) {
+    if (!bus) return false;
+    if (bus.arrived) return true;
+    return (bus.stationsAway !== null && bus.stationsAway >= 0 && bus.stationsAway <= 2) ||
+           (bus.etaSeconds !== null && bus.etaSeconds > 0 && bus.etaSeconds <= 150);
+  }
+
+  function stationText(buses) {
+    var name = state.detail ? state.detail.name : "";
+    var toward = state.detail ? state.detail.endSn : "";
+    var at = state.station ? state.station.name : "";
+    var head = name + "路，" + stationLabel(at);
+    if (state.detail && outsideService(state.detail.firstTime, state.detail.lastTime)) {
+      return head + "，不在运营时段。";
+    }
+    if (!buses.length) return head + "，当前没有即将到站的车辆。";
+    var spoken = buses.slice(0, 3).map(function (bus, i) {
+      return (i === 0 ? "最近一辆" : "下一辆") + describe(bus);
+    });
+    var first = buses[0];
+    var lead = (first.arrived || (first.stationsAway !== null && first.stationsAway <= 1))
+      ? "请注意，" + name + "路即将进站。" : "";
+    return lead + head + "，" + spoken.join("；") + "。开往" + toward + "。";
+  }
+
+  /* ------------------------------------------------------------ 网页播放 */
+
+  var WEB_MODE_KEY = "cdbus.webAudio";
+  var currentAudio = null;
+  var speechCache = {};
+
+  function ttsInfo() {
+    try { return bridge && bridge.status ? JSON.parse(bridge.status()) : {}; } catch (e) { return {}; }
+  }
+
+  function hasSystemTts() {
+    var info = ttsInfo();
+    var engines = String(info.engines || "");
+    return !!info.ttsReady || (engines && engines !== "无" && engines !== "null");
+  }
+
+  /* 默认策略：有系统 TTS 就走系统 TTS（离线、音质好）；
+     没有（或用户手动打开开关）才走 WebView 播放。 */
+  function webAudioOn() {
+    try {
+      var saved = localStorage.getItem(WEB_MODE_KEY);
+      if (saved === "1") return true;
+      if (saved === "0") return false;
+      return !hasSystemTts();
+    } catch (e) { return !hasSystemTts(); }
+  }
+
+  function setWebAudio(on) {
+    try { localStorage.setItem(WEB_MODE_KEY, on ? "1" : "0"); } catch (e) {}
+  }
+
+  function note(text) {
+    try { if (bridge && bridge.note) bridge.note(String(text).slice(0, 200)); } catch (e) {}
+  }
+
+  /* 在 JS 里生成 1.5 秒 660Hz 的 wav，交给 WebView 的 <audio> 播 */
+  function testWavBase64() {
+    var rate = 22050, seconds = 1.5;
+    var n = Math.floor(rate * seconds);
+    var buffer = new ArrayBuffer(44 + n * 2);
+    var view = new DataView(buffer);
+    function ascii(offset, text) {
+      for (var i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i));
+    }
+    ascii(0, "RIFF"); view.setUint32(4, 36 + n * 2, true); ascii(8, "WAVE"); ascii(12, "fmt ");
+    view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+    view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true);
+    view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+    ascii(36, "data"); view.setUint32(40, n * 2, true);
+    for (var i = 0; i < n; i++) {
+      var t = i / rate;
+      var fade = Math.min(1, Math.min(i / (rate * 0.05), (n - i) / (rate * 0.15)));
+      view.setInt16(44 + i * 2, Math.sin(2 * Math.PI * 660 * t) * 12000 * fade, true);
+    }
+    var bytes = new Uint8Array(buffer);
+    var binary = "";
+    for (var k = 0; k < bytes.length; k += 0x8000) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(k, k + 0x8000));
+    }
+    return btoa(binary);
+  }
+
+  function b64ToBlobUrl(base64, type) {
+    var binary = atob(base64);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return URL.createObjectURL(new Blob([bytes], { type: type }));
+  }
+
+  function playBytes(base64, mime, label, onFail) {
+    var url;
+    try { url = b64ToBlobUrl(base64, mime); }
+    catch (e) { url = "data:" + mime + ";base64," + base64; }
+    playUrl(url, label, onFail);
+  }
+
+  /* 统一的 WebView 播放：带失败回调，失败后可以自动换格式重试 */
+  function playUrl(url, label, onFail) {
+    if (currentAudio) {
+      try { currentAudio.pause(); } catch (e) { /* 忽略 */ }
+      currentAudio = null;
+    }
+    var audio = new Audio();
+    currentAudio = audio;
+    var failed = false;
+    var kind = url.slice(0, 5) === "data:" ? "dataURI" : "blobURL";
+
+    function fail(reason) {
+      if (failed) return;
+      failed = true;
+      note(label + " 失败：" + reason);
+      setStatus(label + " 失败：" + reason, true);
+      if (onFail) onFail(reason);
+    }
+
+    note(label + " 加载中（" + kind + "，" + Math.round(url.length / 1024) + "KB）");
+    audio.onerror = function () {
+      var code = audio.error ? audio.error.code : -1;
+      var names = { 1: "ABORTED", 2: "NETWORK", 3: "DECODE", 4: "SRC_NOT_SUPPORTED" };
+      fail(names[code] || ("code" + code));
+    };
+    audio.oncanplay = function () {
+      note(label + " 已解码，时长 " + (Math.round(audio.duration * 10) / 10) + " 秒");
+    };
+    audio.onplaying = function () {
+      note(label + " 正在播放");
+      setStatus("播报中…");
+    };
+    audio.onended = function () {
+      if (currentAudio === audio) currentAudio = null;
+      note(label + " 播放结束");
+      setStatus("播报完成");
+    };
+
+    audio.src = url;
+    var p = audio.play();
+    if (p && p.catch) {
+      p.catch(function (reason) { fail("play() " + (reason && reason.name ? reason.name : reason)); });
+    }
+    setStatus("播报中…");
+
+    setTimeout(function () {
+      if (currentAudio !== audio || failed) return;
+      if (audio.paused) fail("1.5 秒后仍暂停(readyState=" + audio.readyState + ")");
+    }, 1500);
+  }
+
+  /* MP3 播不出来（WebView 缺解码器）时自动转 WAV 再播 */
+  async function wavFallback(text) {
+    setStatus("MP3 播不出，转 WAV…");
+    try {
+      var res = await rpc("synthwav", { text: text });
+      if (!res || !res.base64) throw new Error("WAV 结果为空");
+      speechCache[text] = { mime: "audio/wav", b64: res.base64, at: Date.now() };
+      playBytes(res.base64, "audio/wav", "播报(WAV)", null);
+    } catch (e) {
+      note("WAV 转换失败：" + e.message);
+      setStatus("WAV 转换失败：" + e.message, true);
+    }
+  }
+
+  function playCached(entry, text) {
+    var isWav = entry.mime === "audio/wav";
+    playBytes(entry.b64, entry.mime, isWav ? "播报(WAV)" : "播报(MP3)", function () {
+      if (isWav) return;
+      wavFallback(text);
+    });
+  }
+
+  async function webSpeak(text) {
+    var cached = speechCache[text];
+    if (cached && Date.now() - cached.at < 120000) {
+      playCached(cached, text);
+      return;
+    }
+    setStatus("网页合成中…");
+    try {
+      var res = await rpc("synth", { text: text });
+      if (!res || !res.base64) throw new Error("合成结果为空");
+      speechCache[text] = { mime: "audio/mpeg", b64: res.base64, at: Date.now() };
+      playCached(speechCache[text], text);
+    } catch (e) {
+      note("合成失败：" + e.message);
+      setStatus("合成失败：" + e.message, true);
+    }
+  }
+
+  /* ------------------------------------------------------------ 小工具 */
+
+  function minutesOf(hhmm) {
+    var m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || ""));
+    return m ? (parseInt(m[1], 10) * 60 + parseInt(m[2], 10)) : null;
+  }
+
+  /* 现在是否在运营时段内（支持跨夜线路，如 22:00—01:30） */
+  function outsideService(firstTime, lastTime) {
+    var first = minutesOf(firstTime), last = minutesOf(lastTime);
+    if (first === null || last === null) return false;
+    var now = new Date();
+    var cur = now.getHours() * 60 + now.getMinutes();
+    if (last >= first) return !(cur >= first - 30 && cur <= last + 5);
+    return !(cur >= first - 30 || cur <= last + 5);
+  }
+
+  function stationLabel(name) {
+    var text = String(name || "");
+    return /站$/.test(text) ? text : text + "站";
+  }
+
+  function etaWords(seconds) {
+    if (!(seconds > 0)) return "暂无预测";
+    var half = Math.round(seconds / 30);
+    if (half <= 1) return "30 秒内";
+    var m = Math.floor(half / 2);
+    var r = half % 2;
+    return "大约 " + (r ? m + " 分 30 秒" : m + " 分钟");
+  }
+
+  var DIGITS = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+
+  /* 车牌、线路号要逐位念，否则 TTS 会读成「四万二千五百一十六」 */
+  function speakDigits(value) {
+    return String(value).split("").map(function (ch) {
+      return /[0-9]/.test(ch) ? DIGITS[Number(ch)] : ch;
+    }).join("");
+  }
+
+  /* 详情页这辆车要念的内容：到当前站还有几站几分钟 + 后面几站 */
+  function detailSpeakText() {
+    var data = view.data;
+    var name = (data && data.line.name) || view.lineName || "";
+    if (!data || !data.buses.length) {
+      return name + "路，" + stationLabel(view.stationName) + "，当前没有在途车辆。";
+    }
+    var ordered = view.buses || data.buses || [];
+    var bus = ordered[view.index] || ordered[0];
+    var parts = [];
+    parts.push(name + "路" + (data.line.endSn ? "，往 " + data.line.endSn : "") + "。");
+    if (bus.plate) parts.push("车牌 " + speakDigits(bus.plate) + "。");
+    else if (bus.busId) parts.push("车辆编号 " + speakDigits(String(bus.busId).slice(-4)) + "。");
+    parts.push("现在在第 " + bus.order + " 站。");
+
+    var target = null;
+    bus.times.forEach(function (t) { if (t.name === view.stationName) target = t; });
+
+    if (target && target.passed) {
+      parts.push("已经过了 " + stationLabel(view.stationName) + "。");
+    } else if (!target && bus.order > (view.fromOrder || 0)) {
+      parts.push("已经过了 " + stationLabel(view.stationName) + "。");
+    } else if (target && target.etaSeconds > 0) {
+      var away = Math.max(0, (view.fromOrder || target.order) - bus.order);
+      parts.push("到" + stationLabel(view.stationName) + "还有 " + away + " 站，" + etaWords(target.etaSeconds) +
+        (target.arrivalAt ? "，预计 " + fmtClock(target.arrivalAt) : "") + "。");
+    }
+
+    var upcoming = bus.times.filter(function (t) {
+      return !t.passed && t.etaSeconds > 0 && !(target && t.name === target.name);
+    }).slice(0, 3);
+    if (upcoming.length) {
+      parts.push("再往后：" + upcoming.map(function (t) {
+        return t.name + " " + etaWords(t.etaSeconds);
+      }).join("；") + "。");
+    }
+    return parts.join("");
+  }
+
+  function nearbyText(groups) {
+    var lines = [];
+    (groups || []).slice(0, 3).forEach(function (group) {
+      var live = (group.arrivals || []).filter(function (a) {
+        if (outsideService(a.firstTime, a.lastTime)) return false;
+        return (a.stationsAway !== null && a.stationsAway >= 0 && a.etaSeconds !== null) ||
+               Boolean(a.preStartTime);
+      });
+      if (!live.length) {
+        lines.push(stationLabel(group.name) + "，暂无实时车辆");
+        return;
+      }
+      // 同一线路两个方向都要念到，各自报方向
+      var spoken = live.slice(0, 4).map(function (a) {
+        var toward = a.toward ? "往" + a.toward : "";
+        if (a.etaSeconds === null && a.preStartTime) {
+          return a.lineName + "路" + toward + "待发车 " + a.preStartTime;
+        }
+        return a.lineName + "路" + toward + describe(a);
+      });
+      lines.push(stationLabel(group.name) + "，" + spoken.join("，"));
+    });
+    return lines.join("。") + (lines.length ? "。" : "");
+  }
+
+  function speak(text, force) {
+    if (!bridge) return;
+    if (!force && !voiceOn()) return;
+    if (webAudioOn()) { webSpeak(text); return; }
+    /* 关闭「语音走 WebView」时才用系统 TTS / 在线合成 + MediaPlayer */
+    try { bridge.speak(text); } catch (e) { return; }
+    // 播完回读一次状态：到底交给系统 TTS 了、还是在线合成、媒体音量是不是 0
+    setTimeout(function () {
+      try {
+        var info = JSON.parse(bridge.status());
+        if (info && info.lastResult) setStatus(info.lastResult, /失败|无效|报错|为 0/.test(info.lastResult));
+      } catch (e) { /* 忽略 */ }
+    }, 1400);
+  }
+
+
+
+  /* ------------------------------------------------------------ 方向 */
+
+  /* 同号线路的所有走向（上行 / 下行 / 环线变体） */
+  async function loadDirections(lineName) {
+    var name = String(lineName);
+    var keys = [name.replace(/路$/, ""), name.replace(/[路线]$/, "")];
+    var all = [];
+    for (var i = 0; i < keys.length; i++) {
+      if (!keys[i]) continue;
+      var found = await rpc("lines", { key: keys[i] });
+      all = all.concat(found);
+      var exact = all.filter(function (l) { return String(l.name) === name; });
+      if (exact.length) return exact;
+    }
+    return all.filter(function (l) { return l.name && String(l.name).indexOf(keys[0]) === 0; });
+  }
+
+  function centerActiveChip(box) {
+    if (!box || typeof box.querySelector !== "function") return;
+    var active = box.querySelector(".chip.on");
+    if (active && typeof active.scrollIntoView === "function") {
+      active.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+    }
+  }
+
+  /* 车来了的发车预测：优先用起点下一班的绝对时间，其次用发车间隔 */
+  function departureText(line) {
+    if (!line) return { text: "" };
+    var now = Date.now();
+    var left = Number(line.departLeft) || 0;
+    if (left > now && left < now + 12 * 3600 * 1000) {
+      var d = new Date(left);
+      var hh = String(d.getHours()).padStart(2, "0");
+      var mm = String(d.getMinutes()).padStart(2, "0");
+      var interval = Number(line.depIntervalM) > 0 ? "，发车间隔约 " + line.depIntervalM + " 分钟" : "";
+      return { text: "预计 " + hh + ":" + mm + " 发车" + interval };
+    }
+    var pre = String(line.preArrivalTime || "").trim();
+    if (pre) {
+      var interval2 = Number(line.depIntervalM) > 0 ? "，发车间隔约 " + line.depIntervalM + " 分钟" : "";
+      return { text: "预计 " + pre + " 发车" + interval2 };
+    }
+    var il = Number(line.intervalLeft), ir = Number(line.intervalRight);
+    if (il > 0 && ir > 0 && ir >= il) return { text: "发车间隔 " + il + "–" + ir + " 分钟" };
+    if (Number(line.depIntervalM) > 0) return { text: "发车间隔约 " + line.depIntervalM + " 分钟" };
+    return { text: "" };
+  }
+
+  /* 首页行用的短文案：待发车 HH:MM / 发车间隔 X 分钟 */
+  function departureShort(line) {
+    if (!line) return "";
+    var now = Date.now();
+    var left = Number(line.departLeft) || 0;
+    if (left > now && left < now + 12 * 3600 * 1000) {
+      var d = new Date(left);
+      return "待发车 " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+    }
+    var pre = String(line.preArrivalTime || "").trim();
+    if (pre) return "待发车 " + pre;
+    var il = Number(line.intervalLeft), ir = Number(line.intervalRight);
+    if (il > 0 && ir > 0 && ir >= il) return "发车间隔 " + il + "–" + ir + " 分钟";
+    if (Number(line.depIntervalM) > 0) return "发车间隔约 " + line.depIntervalM + " 分钟";
+    return "";
+  }
+
+  function lineLabel(line) {
+    var name = String((line && line.name) || "");
+    return /[路线]$/.test(name) ? name : name + "路";
+  }
+
+  /* 模糊搜索：接口一次只回 8 条，短数字前缀就并行展开（输入 2 → 查 20…29）
+     缓存里只存「原始合并池」，过滤和排序在读取时现算，方便以后改匹配规则 */
+  async function searchLinesFuzzy(key) {
+    var cacheKey = "cdbus.lines2." + key;      // v2：避免读到旧版「前缀过滤」缓存
+    var hit = cacheGet(cacheKey);
+    var pool;
+
+    if (hit && Date.now() - hit.at < 86400000 && Array.isArray(hit.list)) {
+      pool = hit.list;
+    } else {
+      var queries = [key];
+      if (/^\d{1,2}$/.test(key)) {
+        for (var i = 0; i <= 9; i++) queries.push(key + i);
+      }
+      var lists = await Promise.all(queries.map(function (q) {
+        return rpc("lines", { key: q }).catch(function () { return []; });
+      }));
+
+      var seen = {};
+      pool = [];
+      lists.forEach(function (list) {
+        (list || []).forEach(function (line) {
+          if (!line || !line.lineId || seen[line.lineId]) return;
+          seen[line.lineId] = true;
+          pool.push(line);
+        });
+      });
+      if (pool.length) cacheSet(cacheKey, { at: Date.now(), list: pool });
+    }
+
+    var upperKey = String(key).toUpperCase();
+    var matches = pool.filter(function (line) {
+      return String(line.name).toUpperCase().includes(upperKey);
+    });
+
+    function rank(line) {
+      var name = String(line.name).toUpperCase();
+      if (name === upperKey) return 0;
+      if (name.indexOf(upperKey) === 0) return 1;
+      return 2;
+    }
+    matches.sort(function (a, b) {
+      var ra = rank(a), rb = rank(b);
+      if (ra !== rb) return ra - rb;
+      var na = String(a.name), nb = String(b.name);
+      if (na.length !== nb.length) return na.length - nb.length;
+      return na.localeCompare(nb, "zh");
+    });
+    return matches;
+  }
+
+  /* 多条匹配时列出候选线路，点一条再进站名选择 */
+  function renderLinePicker(lines, stopName) {
+    searching = true;
+    var list = $("list");
+    list.innerHTML = "";
+    var title = document.createElement("div");
+    title.className = "stop-title";
+    title.textContent = "匹配到 " + lines.length + " 条线路，点一条查看";
+    list.appendChild(title);
+
+    lines.forEach(function (line) {
+      var card = document.createElement("div");
+      card.className = "bus tap";
+      card.innerHTML = '<div class="head"><span class="line-name">' + lineLabel(line) + "</span>" +
+        '<span class="toward">' + (line.startSn || "?") + " → " + (line.endSn || "?") + "</span></div>";
+      card.onclick = function () {
+        run(function () { return applyLine(line, stopName, true); });
+      };
+      list.appendChild(card);
+    });
+    setStatus("匹配 " + lines.length + " 条线路");
+  }
+
+  function dirLabel(l) {
+    return "往 " + (l.endSn || "?" );
+  }
+
+  /* ------------------------------------------------------------ 缓存 */
+
+  var searching = false;   // 正在看搜索结果（候选线路 / 某线路的站名）
+
+  var memCache = {};
+
+  function cacheGet(key) {
+    if (memCache[key]) return memCache[key];
+    try {
+      var raw = localStorage.getItem(key);
+      if (!raw) return null;
+      var value = JSON.parse(raw);
+      memCache[key] = value;
+      return value;
+    } catch (e) { return null; }
+  }
+
+  function cacheSet(key, value) {
+    memCache[key] = value;
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
+  }
+
+  /* 同号线路的所有方向：缓存 1 天 */
+  async function getDirections(lineName) {
+    var key = "cdbus.dir." + lineName;
+    var hit = cacheGet(key);
+    if (hit && Date.now() - hit.at < 86400000) return hit.list;
+    var list = await loadDirections(lineName);
+    cacheSet(key, { at: Date.now(), list: list });
+    return list;
+  }
+
+  /* 线路详情（站点表很少变）：缓存 3 天，换向时只多 1 次到站请求 */
+  async function getDetail(lineId) {
+    var key = "cdbus.ld." + lineId;
+    var hit = cacheGet(key);
+    if (hit && Date.now() - hit.at < 3 * 86400000) return hit.data;
+    var data = await rpc("detail", { lineId: lineId });
+    var slim = {
+      lineId: data.lineId,
+      name: data.name,
+      endSn: data.endSn,
+      startSn: data.startSn,
+      firstTime: data.firstTime,
+      lastTime: data.lastTime,
+      departLeft: data.departLeft,
+      departRight: data.departRight,
+      depIntervalM: data.depIntervalM,
+      intervalLeft: data.intervalLeft,
+      intervalRight: data.intervalRight,
+      preArrivalTime: data.preArrivalTime,
+      stations: data.stations
+    };
+    cacheSet(key, { at: Date.now(), data: slim });
+    return slim;
+  }
+
+  function pickStation(detail, stationId, name) {
+    var list = (detail && detail.stations) || [];
+    for (var i = 0; i < list.length; i++) if (list[i].stationId === stationId) return list[i];
+    for (var k = 0; k < list.length; k++) if (list[k].name === name) return list[k];
+    return null;
+  }
+
+  /* 同一个方向可能有多辆车：补上「下一辆」 */
+  async function enrichRow(mainEl, arrival, groupName) {
+    try {
+      var detail = await getDetail(arrival.lineId);
+      var station = pickStation(detail, arrival.stationId, groupName);
+      if (!station) return;
+      var buses = await rpc("arrivals", {
+        lineId: arrival.lineId,
+        station: { stationId: station.stationId, order: station.order, name: station.name,
+                   lat: station.lat || 0, lng: station.lng || 0 }
+      });
+      if (!buses || !buses.length) {
+        // 没有在途车 → 显示起点站的预估发车时间（车来了的发车预测）
+        var short = departureShort(detail);
+        if (short) {
+          mainEl.textContent = arrival.lineName + "路 → " + (arrival.toward || "") + "　" + short;
+        }
+        return;
+      }
+      var text = arrival.lineName + "路 → " + (arrival.toward || "") + "　" + describe(buses[0]);
+      if (buses.length > 1) text += " · 下辆 " + buses[1].stationsAway + " 站";
+      mainEl.textContent = text;
+    } catch (e) {
+      /* 拿不到就保留首页接口给的那一条 */
+    }
+  }
+
+  var networkBudget = 18;
+
+  function takeBudget() {
+    if (networkBudget <= 0) return false;
+    networkBudget--;
+    return true;
+  }
+
+  /* 两个名字有多像（编辑距离），用于合并「同一地点、写法略有差异」的站点 */
+  function nameDistance(a, b) {
+    a = String(a || ""); b = String(b || "");
+    if (a === b) return 0;
+    if (Math.abs(a.length - b.length) > 2) return 99;
+    var prev = [], cur = [];
+    for (var j = 0; j <= b.length; j++) prev[j] = j;
+    for (var i = 1; i <= a.length; i++) {
+      cur[0] = i;
+      for (var k = 1; k <= b.length; k++) {
+        var cost = a[i - 1] === b[k - 1] ? 0 : 1;
+        cur[k] = Math.min(prev[k] + 1, cur[k - 1] + 1, prev[k - 1] + cost);
+      }
+      prev = cur.slice();
+    }
+    return prev[b.length];
+  }
+
+  /* 附近接口没给这个站任何到站数据时，用「途经」里的线路名反查站点，尽量补出来 */
+  async function fillEmptyGroup(box, group) {
+    var names = String(group.lineNames || "").split("、").filter(function (n) { return n; }).slice(0, 4);
+    if (!names.length) return;
+
+    for (var i = 0; i < names.length; i++) {
+      if (networkBudget <= 0) break;
+      try {
+        networkBudget -= 2;
+        var directions = await getDirections(names[i]);
+        for (var k = 0; k < directions.length; k++) {
+          var dir = directions[k];
+          var detail = await getDetail(dir.lineId);
+          var station = null;
+          for (var m = 0; m < detail.stations.length; m++) {
+            if (detail.stations[m].name === group.name) { station = detail.stations[m]; break; }
+          }
+          if (!station) continue;
+
+          var ended = outsideService(dir.firstTime || detail.firstTime, dir.lastTime || detail.lastTime);
+          var row = document.createElement("div");
+          row.className = "armeta";
+          row.style.marginTop = "8px";
+
+          var main = document.createElement("span");
+          main.className = "armain";
+          var text = dir.name + "路 → " + (dir.endSn || detail.endSn || "") + "　";
+          var hot = false;
+
+          if (ended) {
+            text += "不在运营时段";
+            row.style.opacity = ".5";
+          } else {
+            var buses = await rpc("arrivals", {
+              lineId: dir.lineId,
+              station: { stationId: station.stationId, order: station.order, name: station.name,
+                         lat: station.lat || 0, lng: station.lng || 0 }
+            });
+            if (!buses || !buses.length) {
+              var shortDep = departureShort(detail);
+              text += shortDep || "暂无实时车辆";
+            } else {
+              text += describe(buses[0]);
+              if (buses.length > 1) text += " · 下一辆 " + describe(buses[1]);
+              hot = isUrgent(buses[0]);
+            }
+          }
+          if (hot) row.style.color = "#ff6b5e";
+
+          main.textContent = text;
+          var spk = document.createElement("span");
+          spk.className = "spk";
+          spk.textContent = "🔊";
+          spk.onclick = (function (dirLine, isEnded, spokenText) {
+            return function (ev) {
+              if (ev && ev.stopPropagation) ev.stopPropagation();
+              speak(spokenText, true);
+            };
+          })(dir, ended,
+            dir.name + "路往" + (dir.endSn || detail.endSn || "") + "，" + stationLabel(group.name) + "，" +
+            (ended ? "不在运营时段。" : text.replace(/^.*?　/, "").replace(/^暂无实时车辆$/, "暂无实时车辆") + "。"));
+
+          var arrow = document.createElement("span");
+          arrow.className = "arrow";
+          arrow.textContent = "›";
+
+          row.appendChild(main);
+          row.appendChild(spk);
+          row.appendChild(arrow);
+          row.onclick = (function (dirLine, st, isEnded) {
+            return function () {
+              if (isEnded) return;
+              openDetail({
+                lineId: dirLine.lineId,
+                lineName: dirLine.name,
+                stationId: st.stationId,
+                stationName: st.name,
+                fromOrder: st.order,
+                title: dirLine.name + "路 · " + st.name
+              });
+            };
+          })(dir, station, ended);
+
+          box.appendChild(row);
+        }
+      } catch (e) {
+        /* 这条线反查失败就算了 */
+      }
+    }
+
+    if (!box.children.length) {
+      var tip = document.createElement("div");
+      tip.className = "meta";
+      tip.style.marginTop = "6px";
+      tip.textContent = "暂无实时车辆";
+      box.appendChild(tip);
+    }
+  }
+
+  /* 给某个线路行补上「另一个方向」那一行 */
+  async function addOppositeRow(block, groupName, arrival) {
+    try {
+      var directions = await getDirections(arrival.lineName);
+      var other = null;
+      for (var i = 0; i < directions.length; i++) {
+        if (directions[i].lineId !== arrival.lineId) { other = directions[i]; break; }
+      }
+      if (!other) return;
+
+      var detail = await getDetail(other.lineId);
+      var station = null;
+      for (var k = 0; k < detail.stations.length; k++) {
+        if (detail.stations[k].stationId === arrival.stationId) { station = detail.stations[k]; break; }
+      }
+      if (!station) {
+        for (var m = 0; m < detail.stations.length; m++) {
+          if (detail.stations[m].name === groupName) { station = detail.stations[m]; break; }
+        }
+      }
+      if (!station) return;
+
+      var ended = outsideService(other.firstTime || detail.firstTime, other.lastTime || detail.lastTime);
+      var text = arrival.lineName + "路 → " + (other.endSn || detail.endSn || "") + "　";
+      var hot = false;
+
+      if (ended) {
+        text += "不在运营时段";
+      } else {
+        var buses = await rpc("arrivals", {
+          lineId: other.lineId,
+          station: { stationId: station.stationId, order: station.order, name: station.name,
+                     lat: station.lat || 0, lng: station.lng || 0 }
+        });
+        if (!buses || !buses.length) {
+          text += "暂无实时车辆";
+        } else {
+          text += describe(buses[0]);
+          hot = isUrgent(buses[0]);
+          if (buses.length > 1) text += " · 下辆 " + buses[1].stationsAway + " 站";
+        }
+      }
+
+      var row = document.createElement("div");
+      row.className = "armeta";
+      row.style.marginTop = "8px";
+      if (ended) row.style.opacity = ".5";
+      else if (hot) row.style.color = "#ff6b5e";
+
+      var main = document.createElement("span");
+      main.className = "armain";
+      main.textContent = text;
+
+      var spk = document.createElement("span");
+      spk.className = "spk";
+      spk.textContent = "🔊";
+      spk.onclick = function (ev) {
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        speak(arrival.lineName + "路往" + (other.endSn || "") + "，" + stationLabel(groupName) + "，" +
+          (ended ? "不在运营时段。" : text.replace(/^.*?　/, "") + "。"), true);
+      };
+
+      var arrow = document.createElement("span");
+      arrow.className = "arrow";
+      arrow.textContent = "›";
+
+      row.appendChild(main);
+      row.appendChild(spk);
+      row.appendChild(arrow);
+      row.onclick = function () {
+        if (ended) return;
+        openDetail({
+          lineId: other.lineId,
+          lineName: arrival.lineName,
+          stationId: station.stationId,
+          stationName: station.name,
+          fromOrder: station.order,
+          title: arrival.lineName + "路 · " + station.name
+        });
+      };
+      block.appendChild(row);
+    } catch (e) {
+      /* 反方向拿不到就只显示已知方向，不打扰用户 */
+    }
+  }
+
+  /* ------------------------------------------------------------ 首页渲染 */
+
+  function renderBuses(buses) {
+    var list = $("list");
+    list.innerHTML = "";
+    if (!buses.length) {
+      var endedNow = state.detail && outsideService(state.detail.firstTime, state.detail.lastTime);
+      list.innerHTML = '<div class="empty">' + (endedNow
+        ? "不在运营时段" + (state.detail.lastTime ? "<br>末班 " + state.detail.lastTime : "")
+        : "暂无即将到站的车辆<br>（可能收班或区间调度中）") + "</div>";
+      return;
+    }
+    var title = document.createElement("div");
+    title.className = "stop-title";
+    title.innerHTML = state.detail.name + "路 · " + state.station.name +
+      ' <small>开往 ' + state.detail.endSn + " · 点车辆看沿途各站</small>";
+    list.appendChild(title);
+
+    if (outsideService(state.detail.firstTime, state.detail.lastTime)) {
+      var tip = document.createElement("div");
+      tip.className = "empty";
+      tip.style.padding = "6px 8px";
+      tip.textContent = "不在运营时段" +
+        (state.detail.lastTime ? "（末班 " + state.detail.lastTime + "）" : "");
+      list.appendChild(tip);
+    }
+
+    buses.forEach(function (bus, i) {
+      var card = document.createElement("div");
+      card.className = "bus tap";
+      var hot = bus.arrived || (bus.stationsAway !== null && bus.stationsAway <= 2);
+      card.innerHTML =
+        '<div class="head"><span class="line-name">' + (i === 0 ? "最近一辆" : "第 " + (i + 1) + " 辆") +
+        '</span><span class="toward">' + (bus.plate || "未编号") + "</span></div>" +
+        '<div class="eta' + (hot ? " hot" : "") + '">' + fmtEta(bus.etaSeconds) + "</div>" +
+        '<div class="meta">还有 ' + bus.stationsAway + " 站 · 距站约 " + bus.distanceMeters + " 米 · 点开看这辆车到各站时间</div>";
+      card.onclick = function () {
+        openDetail({
+          lineId: state.detail.lineId,
+          lineName: state.detail.name,
+          stationId: state.station.stationId,
+          stationName: state.station.name,
+          fromOrder: state.station.order,
+          title: state.detail.name + "路 · " + state.station.name
+        });
+      };
+      list.appendChild(card);
+    });
+  }
+
+  /* 附近站点分组：同一地点（名称近似 + 距离接近）合成一张卡 */
+  function buildGroups(stops) {
+    var groups = [];
+    (stops || []).forEach(function (stop) {
+      for (var g = 0; g < groups.length; g++) {
+        var existing = groups[g];
+        var same = nameDistance(existing.name, stop.name) <= 2;
+        var near = Math.abs(existing.distance - stop.distanceMeters) <= 30;
+        if (same && near) {
+          existing.distance = Math.min(existing.distance, stop.distanceMeters);
+          if (stop.lineNames) {
+            existing.lineNames = existing.lineNames
+              ? existing.lineNames + "、" + stop.lineNames
+              : stop.lineNames;
+          }
+          existing.arrivals = existing.arrivals.concat(stop.arrivals || []);
+          return;
+        }
+      }
+      groups.push({
+        name: stop.name || "",
+        distance: stop.distanceMeters,
+        lineNames: stop.lineNames,
+        arrivals: (stop.arrivals || []).slice()
+      });
+    });
+    return groups;
+  }
+
+  function renderStops(stops, budget) {
+    var list = $("list");
+    var scrollY = (typeof window !== "undefined" && (window.scrollY || window.pageYOffset)) || 0;
+
+    if (!stops.length) {
+      list.innerHTML = '<div class="empty">附近没有查到站点</div>';
+      return;
+    }
+
+    var box = document.createElement("div");   // 先在离屏容器里拼好，再一次性替换
+
+    /* 一次渲染最多补查 18 次；自动刷新时预算更小，避免每 30 秒打一堆请求 */
+    networkBudget = budget === undefined ? 18 : budget;
+
+    var groups = buildGroups(stops);
+
+    groups.forEach(function (group) {
+      var card = document.createElement("div");
+      card.className = "bus";
+
+      var seen = {};
+      var rows = group.arrivals.filter(function (a) {
+        var key = a.lineId + "@" + a.stationId;
+        if (seen[key]) return false;
+        seen[key] = true;
+        return true;
+      }).sort(function (a, b) {
+        var ea = outsideService(a.firstTime, a.lastTime) ? 1 : 0;
+        var eb = outsideService(b.firstTime, b.lastTime) ? 1 : 0;
+        if (ea !== eb) return ea - eb;
+        if (String(a.lineName) !== String(b.lineName)) return String(a.lineName) < String(b.lineName) ? -1 : 1;
+        return (a.stationsAway === null ? 999 : a.stationsAway) - (b.stationsAway === null ? 999 : b.stationsAway);
+      });
+
+      var rowEls = rows.map(function (a) {
+        var ended = outsideService(a.firstTime, a.lastTime);
+        var hasBus = a.stationsAway !== null && a.stationsAway >= 0 && a.etaSeconds !== null;
+        var hot = !ended && (a.arrived || (a.stationsAway !== null && a.stationsAway <= 2));
+
+        var block = document.createElement("div");
+        block.className = "lineblock";
+
+        var row = document.createElement("div");
+        row.className = "armeta";
+        row.style.marginTop = "8px";
+        if (ended) row.style.opacity = ".5";
+        else if (hot) row.style.color = "#ff6b5e";
+
+        var preStart = a.preStartTime || a.preArrivalTime || "";
+        var liveText = ended
+          ? "不在运营时段"
+          : hasBus ? describe(a)
+          : preStart ? ("待发车 " + preStart)
+          : "暂无实时车辆";
+
+        var main = document.createElement("span");
+        main.className = "armain";
+        main.textContent = a.lineName + "路 → " + (a.toward || "") + "　" + liveText;
+
+        var spk = document.createElement("span");
+        spk.className = "spk";
+        spk.textContent = "🔊";
+        spk.onclick = function (ev) {
+          if (ev && ev.stopPropagation) ev.stopPropagation();
+          var speech = a.lineName + "路往" + (a.toward || "") + "，" + stationLabel(group.name) + "，" +
+            (ended ? "不在运营时段。" : (!hasBus ? "暂无实时车辆。" : describe(a) + "。"));
+          speak(speech, true);
+          spk.textContent = "…";
+          setTimeout(function () { spk.textContent = "🔊"; }, 1200);
+        };
+
+        var arrow = document.createElement("span");
+        arrow.className = "arrow";
+        arrow.textContent = "›";
+
+        row.appendChild(main);
+        row.appendChild(spk);
+        row.appendChild(arrow);
+
+        row.onclick = function () {
+          if (ended) return;
+          openDetail({
+            lineId: a.lineId,
+            lineName: a.lineName,
+            stationId: a.stationId,
+            stationName: group.name,
+            fromOrder: a.stationOrder,
+            title: a.lineName + "路 · " + group.name
+          });
+        };
+        block.appendChild(row);
+        var pendingDeparture = Boolean(a.preStartTime) && a.etaSeconds === null;
+        if (!ended && !pendingDeparture && takeBudget()) enrichRow(main, a, group.name);
+        if (takeBudget()) addOppositeRow(block, group.name, a);
+        return block;
+      });
+
+      card.innerHTML = '<div class="head"><span class="line-name">' + group.name +
+        '</span><span class="toward">' + group.distance + ' 米</span></div>';
+
+      var rowsBox = document.createElement("div");
+      card.appendChild(rowsBox);
+      rowEls.forEach(function (row) { rowsBox.appendChild(row); });
+
+      if (group.lineNames) {
+        var via = document.createElement("div");
+        via.className = "meta";
+        via.style.marginTop = "8px";
+        via.style.opacity = ".55";
+        via.textContent = "途经 " + group.lineNames;
+        card.appendChild(via);
+      }
+
+      box.appendChild(card);
+      if (rowEls.length === 0) fillEmptyGroup(rowsBox, group);
+    });
+
+    swapIn(box, scrollY);
+  }
+
+  function renderHomeDirections() {
+    var box = $("dirs");
+    box.innerHTML = "";
+    if (!state.directions || state.directions.length < 2) return;
+    state.directions.forEach(function (dir) {
+      var chip = document.createElement("div");
+      chip.className = "chip" + (state.detail && dir.lineId === state.detail.lineId ? " on" : "");
+      chip.textContent = dirLabel(dir);
+      chip.onclick = function () {
+        if (state.detail && dir.lineId === state.detail.lineId) return;
+        run(function () { return pickDirection(dir.lineId); });
+      };
+      box.appendChild(chip);
+    });
+  }
+
+  /* 切到同一条线的另一方向；尽量保住当前选中的站（两个方向共用 sId） */
+  async function pickDirection(lineId) {
+    var keepStationId = state.station ? state.station.stationId : null;
+    var detail = await rpc("detail", { lineId: lineId });
+    state.detail = detail;
+    state.station = keepStationId
+      ? (detail.stations.find(function (s) { return s.stationId === keepStationId; }) || null)
+      : null;
+    state.directions = await loadDirections(detail.name);
+    renderHomeDirections();
+    renderStationChips();
+    updateSelbar();
+    if (state.station) {
+      await refresh(true);
+    } else {
+      $("list").innerHTML = '<div class="empty">已切到「' + dirLabel(detail) + '」，点下面的站名查看到站</div>';
+      setStatus(detail.name + "路 " + dirLabel(detail));
+    }
+  }
+
+  function swapIn(box, keepScroll) {
+    var list = $("list");
+    var scrollY = keepScroll || (typeof window !== "undefined" && (window.scrollY || window.pageYOffset)) || 0;
+    var kids = [];
+    for (var i = 0; i < box.children.length; i++) kids.push(box.children[i]);
+    list.innerHTML = "";
+    kids.forEach(function (kid) { list.appendChild(kid); });
+    if (typeof window !== "undefined" && typeof window.scrollTo === "function" && scrollY > 0) {
+      var restore = function () { try { window.scrollTo(0, scrollY); } catch (e) {} };
+      if (typeof requestAnimationFrame === "function") requestAnimationFrame(restore);
+      else setTimeout(restore, 0);
+    }
+  }
+
+  function renderStationChips() {
+    var box = $("chips");
+    box.innerHTML = "";
+    if (!state.detail) return;
+    state.detail.stations.slice(0, 60).forEach(function (station) {
+      var chip = document.createElement("div");
+      chip.className = "chip" + (state.station && state.station.stationId === station.stationId ? " on" : "");
+      chip.textContent = station.name;
+      chip.onclick = function () {
+        state.station = station;
+        renderStationChips();
+        updateSelbar();
+        run(function () { return refresh(true); });
+      };
+      box.appendChild(chip);
+    });
+    centerActiveChip(box);
+  }
+
+  /* ------------------------------------------------------------ 详情页 */
+
+  function showView(name) {
+    $("home").classList.toggle("hidden", name !== "home");
+    $("detail").classList.toggle("hidden", name !== "detail");
+    if ($("metro")) $("metro").classList.toggle("hidden", name !== "metro");
+    view.name = name;
+    view.open = name !== "home";
+    if (bridge && bridge.setView) { try { bridge.setView(name); } catch (e) {} }
+  }
+
+  async function openDetail(opts) {
+    view.lineId = opts.lineId;
+    view.lineName = opts.lineName;
+    view.stationId = opts.stationId;
+    view.stationName = opts.stationName;
+    view.fromOrder = opts.fromOrder;
+    view.fromFavorite = Boolean(opts.fromFavorite);
+    view.data = null;
+    view.index = 0;
+    view.directions = [];
+    $("dtitle").textContent = opts.title || "车辆详情";
+    $("dsub").textContent = "正在算这辆车到沿途各站的时间…";
+    $("dbuses").innerHTML = "";
+    $("ddirs").innerHTML = "";
+    $("dlist").innerHTML = '<div class="empty">加载中…</div>';
+    showView("detail");
+    updateWatchUI();
+    startDetailAutoRefresh();
+    await Promise.all([loadMatrix(), loadDetailDirections()]);
+  }
+
+  async function loadDetailDirections() {
+    try {
+      view.directions = view.lineName ? await loadDirections(view.lineName) : [];
+    } catch (e) {
+      view.directions = [];
+    }
+    renderDetailDirections();
+  }
+
+  function renderDetailDirections() {
+    var box = $("ddirs");
+    box.innerHTML = "";
+    if (!view.directions || view.directions.length < 2) return;
+    view.directions.forEach(function (dir) {
+      var chip = document.createElement("div");
+      chip.className = "chip" + (dir.lineId === view.lineId ? " on" : "");
+      chip.textContent = dirLabel(dir);
+      chip.onclick = function () {
+        if (dir.lineId !== view.lineId) switchDetailDirection(dir.lineId);
+      };
+      box.appendChild(chip);
+      centerActiveChip(box);
+    });
+  }
+
+  /* 详情页切方向：同一物理站两个方向共用 sId，靠它把「当前站」带过去 */
+  async function switchDetailDirection(lineId) {
+    $("dbuses").innerHTML = "";
+    $("dlist").innerHTML = '<div class="empty">切换方向…</div>';
+    try {
+      var detail = await rpc("detail", { lineId: lineId });
+      var st = detail.stations.find(function (x) { return x.stationId === view.stationId; }) ||
+               detail.stations.find(function (x) { return x.name === view.stationName; }) ||
+               detail.stations[0];
+      view.lineId = lineId;
+      view.fromOrder = st ? st.order : 1;
+      if (st) { view.stationName = st.name; view.stationId = st.stationId; }
+      $("dtitle").textContent = detail.name + "路 · " + (view.stationName || "");
+      renderDetailDirections();
+      await loadMatrix();
+    } catch (err) {
+      $("dlist").innerHTML = '<div class="empty">' + (err.message || "切换失败") + "</div>";
+    }
+  }
+
+  async function loadMatrix(options) {
+    var auto = Boolean(options && options.auto);
+    try {
+      var data = await rpc("matrix", { lineId: view.lineId, fromOrder: view.fromOrder, window: 80 });
+      view.data = data;
+
+      // 车辆按站序升序：左边离起点近、右边离终点近
+      var buses = (data.buses || []).slice().sort(function (a, b) {
+        return Number(a.order) - Number(b.order);
+      });
+      view.buses = buses;
+
+      // 离我（打开的那站）最近的那辆
+      var nearestIndex = 0;
+      var nearestGap = Infinity;
+      buses.forEach(function (bus, i) {
+        var gap = Math.abs(Number(bus.order) - Number(view.fromOrder));
+        if (gap < nearestGap) { nearestGap = gap; nearestIndex = i; }
+      });
+      view.nearestBusId = buses.length ? buses[nearestIndex].busId : null;
+
+      if (auto && view.selectedBusId) {
+        var keep = -1;
+        for (var bi = 0; bi < buses.length; bi++) {
+          if (buses[bi].busId === view.selectedBusId) { keep = bi; break; }
+        }
+        view.index = keep >= 0 ? keep : nearestIndex;
+      } else {
+        view.index = nearestIndex;
+      }
+      if (buses[view.index]) view.selectedBusId = buses[view.index].busId;
+      view.firstTime = data.line.firstTime || "";
+      view.lastTime = data.line.lastTime || "";
+      var totalStations = (data.stations || []).length;
+      var dep = departureText(data.line);
+      view.departure = dep.text || "";
+      $("dsub").textContent = data.line.startSn + " → " + data.line.endSn +
+        " · 全程 " + totalStations + " 站";
+      var depTextEl = $("deptext");
+      var depBar = $("depbar");
+      if (depTextEl && depBar) {
+        depTextEl.textContent = dep.text
+          ? ("发车预测：" + dep.text)
+          : "发车预测：该线路此时段暂无预测";
+        depBar.className = "locbar" + (dep.text ? "" : " err");
+      }
+      updateFavStar();
+      renderBusChips();
+      renderTimes({ scroll: !auto });
+    } catch (err) {
+      $("dsub").textContent = "";
+      $("dlist").innerHTML = '<div class="empty">' + (err.message || "加载失败") + "</div>";
+    }
+  }
+
+  function renderBusChips() {
+    var box = $("dbuses");
+    box.innerHTML = "";
+    var ordered = view.buses || [];
+    if (!ordered.length) return;
+    ordered.forEach(function (bus, i) {
+      var chip = document.createElement("div");
+      chip.className = "chip" + (i === view.index ? " on" : "");
+      var toEnd = (bus.stationsToEnd === undefined || bus.stationsToEnd === null)
+        ? bus.stationsAway : bus.stationsToEnd;
+      var selectedLabel = view.fromFavorite ? "收藏站" : "本站";
+      var isNearest = view.nearestBusId && bus.busId === view.nearestBusId;
+      var selectedPart;
+      if (bus.passedSelected) selectedPart = "已过" + selectedLabel;
+      else if (bus.stationsAway === 0) selectedPart = "即将到" + selectedLabel;
+      else selectedPart = "距" + selectedLabel + " " + bus.stationsAway + " 站";
+      chip.textContent = (bus.plate || String(bus.busId).slice(-4)) + " · " +
+        selectedPart + " · 距终点 " + toEnd + " 站" + (isNearest ? " · 最近" : "");
+      chip.onclick = function () { view.index = i; renderBusChips(); renderTimes(); };
+      box.appendChild(chip);
+    });
+  }
+
+  /* 单独念某一站：「16路到 新光华街，大约 6 分钟，预计 23:15」 */
+  function speakStationRow(t, el) {
+    var name = (view.data && view.data.line.name) || view.lineName || "";
+    var text = t.passed
+      ? name + "路已经过了" + stationLabel(t.name) + "。"
+      : name + "路到" + stationLabel(t.name) + "，" + etaWords(t.etaSeconds) +
+        (t.arrivalAt ? "，预计" + fmtClock(t.arrivalAt) : "") + "。";
+    speak(text, true);
+    if (el) {
+      el.classList.add("speaking");
+      setTimeout(function () { el.classList.remove("speaking"); }, 1500);
+    }
+  }
+
+  function renderTimes(options) {
+    var doScroll = !options || options.scroll !== false;
+    var data = view.data;
+    var list = $("dlist");
+    if (!data || !data.buses.length) {
+      list.innerHTML = '<div class="empty">这条线暂时没有在途车辆</div>';
+      return;
+    }
+    var ordered = view.buses || data.buses || [];
+    var bus = ordered[view.index] || ordered[0];
+    var stations = data.stations || [];
+    var timesByOrder = {};
+    (bus.times || []).forEach(function (t) { timesByOrder[t.order] = t; });
+    var queriedFrom = data.queriedFrom || 1;
+
+    var html = '<div class="dhead">车牌 ' + (bus.plate || "未知") +
+      " · 当前在第 " + bus.order + " 站 · 全程 " + stations.length + " 站</div>";
+    /* 车所在那一站（没有对应行时取第一个未过的站） */
+    var currentOrder = bus.order;
+    var hasCurrent = false;
+    stations.forEach(function (st) { if (st.order === currentOrder) hasCurrent = true; });
+    if (!hasCurrent) {
+      for (var si = 0; si < stations.length; si++) {
+        if (stations[si].order > currentOrder) { currentOrder = stations[si].order; break; }
+      }
+    }
+
+    stations.forEach(function (station) {
+      var t = timesByOrder[station.order];
+      var passed = t ? t.passed : (station.order < queriedFrom);
+      var hot = t && !passed && t.etaSeconds >= 0 && t.etaSeconds <= 150;
+      var when;
+      if (passed) when = "已过";
+      else if (t && t.etaSeconds >= 0) when = fmtEta(t.etaSeconds);
+      else if (t) when = "暂无";
+      else when = "—";
+      var clock = (t && !passed && t.arrivalAt) ? " · " + fmtClock(t.arrivalAt) : "";
+      var isCurrent = station.order === currentOrder;
+      html += '<div class="srow' + (isCurrent ? " current" : "") + (passed ? " passed" : hot ? " hot" : "") +
+        '" data-order="' + station.order + '">' +
+        '<span class="idx">' + station.order + "</span>" +
+        '<span class="sname">' + station.name + "</span>" +
+        '<span class="swhen">' + when + clock + "</span></div>";
+    });
+    html += '<div class="dhead" style="margin-top:4px">点任一站名可单独播报；时间为预测，仅供参考</div>';
+    list.innerHTML = html;
+
+    var rows = list.children;
+    var currentRow = null;
+    for (var i = 0; i < rows.length; i++) {
+      (function (rowEl) {
+        var order = parseInt(rowEl.getAttribute ? rowEl.getAttribute("data-order") : rowEl.dataset.order, 10);
+        if (order === currentOrder) currentRow = rowEl;
+        rowEl.onclick = function () {
+          var t = timesByOrder[order];
+          if (!t) return;
+          speakStationRow(t, rowEl);
+        };
+      })(rows[i]);
+    }
+
+    /* 进入详情 / 切换车辆后，自动滚到车当前所在的那一站 */
+    if (doScroll && currentRow && typeof currentRow.scrollIntoView === "function") {
+      setTimeout(function () {
+        try { currentRow.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (e) {}
+      }, 60);
+    }
+  }
+
+  function closeDetail() {
+    stopDetailAutoRefresh();
+    showView("home");
+    updateWatchUI();
+  }
+
+  /* ------------------------------------------------------------ 收藏线路 */
+
+  var FAV_KEY = "cdbus.favorites";
+
+  function loadFavs() {
+    try {
+      var raw = localStorage.getItem(FAV_KEY);
+      var list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list : [];
+    } catch (e) { return []; }
+  }
+
+  function saveFavs(list) {
+    try { localStorage.setItem(FAV_KEY, JSON.stringify(list)); } catch (e) {}
+  }
+
+  function sameFav(a, b) {
+    return String(a.lineId) === String(b.lineId) && String(a.stationId) === String(b.stationId);
+  }
+
+  function isFav(lineId, stationId) {
+    return loadFavs().some(function (f) { return sameFav(f, { lineId: lineId, stationId: stationId }); });
+  }
+
+  /* 首页选中站点后，显示「当前线路·站点 + 收藏」条 */
+  function updateSelbar() {
+    var bar = $("selbar");
+    if (!bar) return;
+    var text = $("seltext");
+    var button = $("hfav");
+    if (!state.detail) {
+      bar.className = "selbar hidden";
+      return;
+    }
+    bar.className = "selbar";
+
+    var label = state.detail.name + "路";
+    if (state.station) {
+      label += " · " + state.station.name + " · 往 " + (state.detail.endSn || "");
+    } else {
+      label += " · 点站名查看到站";
+    }
+    if (text) text.textContent = label;
+
+    if (button) {
+      button.style.display = state.station ? "" : "none";
+      if (state.station) {
+        var on = isFav(state.detail.lineId, state.station.stationId);
+        button.textContent = on ? "★ 已收藏" : "☆ 收藏";
+        button.style.color = on ? "#ffce4a" : "";
+      }
+    }
+  }
+
+  function updateFavStar() {
+    var button = $("dfav");
+    if (!button) return;
+    var on = view.lineId && view.stationId && isFav(view.lineId, view.stationId);
+    button.textContent = on ? "★" : "☆";
+    button.style.color = on ? "#ffce4a" : "";
+  }
+
+  function toggleFav(fav) {
+    var list = loadFavs();
+    var idx = -1;
+    for (var i = 0; i < list.length; i++) if (sameFav(list[i], fav)) { idx = i; break; }
+    if (idx >= 0) list.splice(idx, 1);
+    else list.push(fav);
+    saveFavs(list);
+    renderFavs();
+    updateFavStar();
+    updateSelbar();
+    setStatus(idx >= 0 ? "已取消收藏" : "已收藏 " + fav.lineName + "路 · " + fav.stationName);
+  }
+
+  function renderFavs() {
+    var box = $("favs");
+    if (!box) return;
+    var favs = loadFavs();
+    box.innerHTML = "";
+    if (!favs.length) return;
+
+    var title = document.createElement("div");
+    title.className = "favtitle";
+    title.textContent = "收藏线路（" + favs.length + "）";
+    box.appendChild(title);
+
+    var row = document.createElement("div");
+    row.className = "favrow";
+    box.appendChild(row);
+
+    favs.forEach(function (fav) {
+      var card = document.createElement("div");
+      card.className = "fav";
+
+      var head = document.createElement("div");
+      head.className = "fl";
+      head.textContent = fav.lineName + "路";
+      var small = document.createElement("small");
+      small.textContent = "往 " + (fav.endSn || "");
+      head.appendChild(small);
+
+      var stop = document.createElement("div");
+      stop.className = "fs";
+      stop.textContent = fav.stationName || "";
+
+      var eta = document.createElement("div");
+      eta.className = "fe";
+      eta.textContent = "刷新中…";
+
+      var pin = document.createElement("div");
+      pin.className = "pin";
+      pin.textContent = "📌";
+      pin.onclick = function (ev) {
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        startWatch({
+          lineId: fav.lineId, lineName: fav.lineName,
+          stationId: fav.stationId, stationName: fav.stationName, order: fav.order,
+          lat: fav.lat || 0, lng: fav.lng || 0, toward: fav.endSn || "",
+          firstTime: fav.firstTime || "", lastTime: fav.lastTime || ""
+        });
+      };
+
+      var del = document.createElement("div");
+      del.className = "del";
+      del.textContent = "✕";
+      del.onclick = function (ev) {
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        toggleFav(fav);
+      };
+
+      card.appendChild(head);
+      card.appendChild(stop);
+      card.appendChild(eta);
+      card.appendChild(pin);
+      card.appendChild(del);
+      card.onclick = function () {
+        openDetail({
+          lineId: fav.lineId,
+          lineName: fav.lineName,
+          stationId: fav.stationId,
+          stationName: fav.stationName,
+          fromOrder: fav.order,
+          fromFavorite: true,
+          title: fav.lineName + "路 · " + fav.stationName
+        });
+      };
+
+      row.appendChild(card);
+      fillFavEta(fav, eta);
+    });
+  }
+
+  async function fillFavEta(fav, el) {
+    if (outsideService(fav.firstTime, fav.lastTime)) {
+      el.textContent = "不在运营时段";
+      el.className = "fe off";
+      return;
+    }
+    try {
+      var buses = await rpc("arrivals", {
+        lineId: fav.lineId,
+        station: {
+          stationId: fav.stationId,
+          order: fav.order,
+          name: fav.stationName,
+          lat: fav.lat || 0,
+          lng: fav.lng || 0
+        }
+      });
+      if (!buses || !buses.length) {
+        el.textContent = "暂无实时车辆";
+        el.className = "fe off";
+        return;
+      }
+      el.textContent = describe(buses[0]);
+      el.className = "fe" + (isUrgent(buses[0]) ? " hot" : "");
+    } catch (e) {
+      el.textContent = "获取失败";
+      el.className = "fe off";
+    }
+  }
+
+  window.cdBusNearbyText = nearbyText;        // 供 ui-smoke 测试断言
+  window.cdBusBuildGroups = buildGroups;
+  window.cdBusShouldAutoRefresh = shouldAutoRefreshHome;
+  window.cdBusCloseDetail = closeDetail;
+  window.cdBusBack = function () {
+    if (view.name === "detail") { closeDetail(); return true; }
+    if (view.name === "metro") { showView("home"); return true; }
+    return false;
+  };
+
+  /* 原生返回键调用这个：任何非首页视图都先回首页 */
+  window.cdBusBackView = function () {
+    if (view.name === "detail") { closeDetail(); return true; }
+    if (view.name === "metro") { showView("home"); return true; }
+    return false;
+  };
+
+  /* ------------------------------------------------------------ 流程 */
+
+  async function refresh(announce) {
+    if (!state.detail || !state.station) return;
+    var buses = await rpc("arrivals", { lineId: state.detail.lineId, station: state.station });
+    state.buses = buses;
+    state.first = buses.length ? buses[0] : null;
+    renderBuses(buses);
+    updateSelbar();
+    setStatus(new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) + " 已更新");
+    if (announce && voiceOn()) {
+      speak(stationText(buses));
+      state.lastSpoken = Date.now();
+    }
+  }
+
+  async function applyLine(line, stopName, announce) {
+    searching = true;
+    var detail = await rpc("detail", { lineId: line.lineId });
+
+    var switchedLine = !state.detail || state.detail.lineId !== detail.lineId;
+    state.detail = detail;
+    state.directions = await loadDirections(detail.name);
+    if (switchedLine) state.station = null;
+
+    if (stopName) {
+      var found = detail.stations.find(function (s) { return s.name === stopName; }) ||
+                  detail.stations.find(function (s) { return s.name.indexOf(stopName) >= 0; });
+      if (!found) throw new Error("该线路没有「" + stopName + "」站，点下面的站名选一个");
+      state.station = found;
+    }
+    renderHomeDirections();
+    renderStationChips();
+    updateSelbar();
+
+    if (!state.station) {
+      $("list").innerHTML = '<div class="empty">共 ' + detail.stations.length +
+        ' 站，点上面任意站名查看实时到站</div>';
+      setStatus(lineLabel(line) + " " + detail.startSn + " → " + detail.endSn);
+      return;
+    }
+    await refresh(announce);
+  }
+
+  async function queryLine(announce) {
+    var key = $("line").value.trim().replace(/路$/, "");
+    var stopName = "";
+    if (!key) throw new Error("请先填线路号");
+
+    setStatus("搜索 " + key + " …");
+    var candidates = await searchLinesFuzzy(key);
+    if (!candidates.length) {
+      throw new Error("没有查到「" + key + "」开头的线路。都江堰线路请带前缀，如「都江堰1」");
+    }
+
+    var nameSet = {};
+    candidates.forEach(function (line) { nameSet[line.name] = true; });
+    var names = Object.keys(nameSet);
+
+    if (names.length > 1) {
+      renderLinePicker(candidates, stopName);
+      return;
+    }
+    // 同一条线只是方向不同：直接进（默认方向 0），方向可在上面切
+    var picked = candidates[0];
+    for (var i = 0; i < candidates.length; i++) {
+      if (String(candidates[i].direction) === "0") { picked = candidates[i]; break; }
+    }
+    await applyLine(picked, stopName, announce);
+  }
+
+  async function locate(timeout) {
+    return await rpc("location", { timeout: timeout || 12000 });
+  }
+
+  /* 首页数据刷新：用上一次定位的坐标，不再重新定位 */
+  async function refreshHome(options) {
+    var announce = options && options.announce;
+    var budget = options && options.budget !== undefined ? options.budget : 10;
+    var lat = state.fix ? state.fix.lat : DEFAULT_LAT;
+    var lng = state.fix ? state.fix.lng : DEFAULT_LNG;
+
+    searching = false;
+
+    var data = await rpc("nearby", { lat: lat, lng: lng, limit: 8 });
+    var groups = buildGroups(data.stops);
+    renderStops(data.stops, budget);
+    renderFavs();
+    state.groups = groups;
+    resetCountdown();
+    paintCountdown();
+    setStatus(new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) + " 已刷新 · " +
+      groups.length + " 个站点");
+    if (announce && voiceOn()) speak(nearbyText(groups));
+  }
+
+  var detailTimer = null;
+
+  function stopDetailAutoRefresh() {
+    if (detailTimer) clearInterval(detailTimer);
+    detailTimer = null;
+  }
+
+  function startDetailAutoRefresh() {
+    stopDetailAutoRefresh();
+    detailTimer = setInterval(function () {
+      if (document.hidden) return;          // 后台不刷
+      if (!view.open) return;               // 已离开详情
+      if (state.busy) return;               // 正在查询
+      loadMatrix({ auto: true }).catch(function () {});
+    }, 30000);
+  }
+
+  function shouldAutoRefreshHome() {
+    if (document.hidden) return false;              // 退到后台
+    if (state.busy || view.open) return false;      // 正在查询 / 停在详情页
+    if (searching) return false;                    // 正在看搜索结果（候选线路或某线路）
+    if (state.detail || state.station) return false;
+    return true;
+  }
+
+  var autoCountdown = 30;
+  var countdownTimer = null;
+
+  function resetCountdown() { autoCountdown = 30; }
+
+  /* 倒计时只在首页显示（不看 busy，避免正在刷新时闪没） */
+  function countdownVisible() {
+    if (document.hidden) return false;
+    if (view.open || searching) return false;
+    return true;
+  }
+
+  function paintCountdown() {
+    var note = $("refreshNote");
+    if (!note) return;
+    if (!countdownVisible()) { note.textContent = ""; autoCountdown = 30; return; }
+    note.textContent = autoCountdown + "s 后自动刷新";
+  }
+
+  function startCountdown() {
+    if (countdownTimer) clearInterval(countdownTimer);
+    paintCountdown();
+    countdownTimer = setInterval(function () {
+      if (!countdownVisible()) { autoCountdown = 30; paintCountdown(); return; }
+      autoCountdown = autoCountdown <= 1 ? 30 : autoCountdown - 1;
+      paintCountdown();
+    }, 1000);
+  }
+
+  var homeTimer = null;
+  function startHomeAutoRefresh() {
+    if (homeTimer) clearInterval(homeTimer);
+    homeTimer = setInterval(function () {
+      if (!shouldAutoRefreshHome()) return;
+      refreshHome({ budget: 8 }).catch(function () {});
+    }, 30000);
+  }
+
+  async function autoLoad() {
+    var lat = DEFAULT_LAT, lng = DEFAULT_LNG, fix = null, reason = "";
+
+    setLocbar("正在定位…");
+    setStatus("定位中…");
+    try {
+      var t0 = Date.now();
+      fix = await locate(12000);
+      lat = fix.lat;
+      lng = fix.lng;
+      var cost = ((Date.now() - t0) / 1000).toFixed(1);
+      var accuracy = fix.accuracy > 0 ? Math.round(fix.accuracy) + " 米" : "未知精度";
+      setLocbar((fix.stale ? "缓存位置" : "已定位") + " · " + (fix.provider || "network") +
+        " · " + accuracy + " · 用时 " + cost + " 秒");
+    } catch (err) {
+      reason = err.message || "定位失败";
+      if (/权限/.test(reason)) {
+        setLocbar("等待定位权限…", false);
+        setStatus("等待定位权限");
+        $("list").innerHTML = '<div class="empty">请在弹窗里允许定位<br>（选「精确」更准）</div>';
+        return;
+      }
+      setLocbar(reason + "，先按天府广场显示", true);
+    }
+
+    var cityInfo = await rpc("city", { lat: lat, lng: lng });
+    if (cityInfo && cityInfo.city) {
+      var bar = $("loctext");
+      if (bar && String(bar.textContent).indexOf(cityInfo.city) < 0) {
+        bar.textContent = String(bar.textContent) + " · " + cityInfo.city;
+      }
+    }
+    state.detail = null;
+    state.station = null;
+    state.fix = fix;
+    await refreshHome({ announce: true, budget: 18 });
+    startHomeAutoRefresh();
+    startCountdown();
+  }
+
+  var autoStarted = false;
+  function startAuto(force) {
+    if (autoStarted && !force) return;
+    autoStarted = true;
+    run(autoLoad);
+  }
+
+  window.cdBusPermission = function (granted) {
+    if (!granted) setLocbar("没给定位权限，按天府广场显示（可到系统设置里开）", true);
+    startAuto(true);
+  };
+
+  async function run(task) {
+    if (state.busy) return;
+    state.busy = true;
+    $("go").disabled = true;
+    setStatus("查询中…");
+    try {
+      await task();
+    } catch (err) {
+      setStatus(err.message || String(err), true);
+      $("list").innerHTML = '<div class="empty">' + (err.message || "出错了") + "</div>";
+    } finally {
+      state.busy = false;
+      $("go").disabled = false;
+    }
+  }
+
+  /* ------------------------------------------------------------ 盯站 */
+
+  var watch = { on: false, target: null, timer: null, lastSpoken: 0, lastUrgent: false };
+
+  function watchLabel(t) {
+    return t.lineName + "路 · " + t.stationName + (t.toward ? " · 往 " + t.toward : "");
+  }
+
+  function updateWatchUI() {
+    var checkbox = $("watch");
+    if (checkbox) checkbox.checked = watch.on;
+    var detailButton = $("dwatchBtn");
+    if (detailButton) detailButton.textContent = watch.on ? "📌 盯站中" : "📌 盯站";
+    var bar = $("dwatchbar");
+    if (bar) {
+      if (watch.on && watch.target) {
+        bar.className = "selbar";
+        $("dwatchtext").textContent = "盯站：" + watchLabel(watch.target) + " · 每 30 秒";
+      } else if (view.open && view.lineName && view.stationName) {
+        bar.className = "selbar";
+        $("dwatchtext").textContent = "盯站：" + view.lineName + "路 · " + view.stationName;
+      } else {
+        bar.className = "selbar hidden";
+      }
+    }
+  }
+
+  function startWatch(target) {
+    if (!target || !target.lineId || !target.stationId) {
+      setStatus("先选一个站点再盯站", true);
+      return;
+    }
+    stopWatch();
+    watch.on = true;
+    watch.target = target;
+    watch.lastSpoken = 0;
+    watch.lastUrgent = false;
+    watch.timer = setInterval(function () {
+      if (document.hidden) return;
+      watchTick().catch(function () {});
+    }, 30000);
+    setStatus("盯站中 · " + watchLabel(target) + " · 每 30 秒");
+    updateWatchUI();
+  }
+
+  function stopWatch() {
+    if (watch.timer) clearInterval(watch.timer);
+    watch.timer = null;
+    watch.on = false;
+    watch.target = null;
+    watch.lastUrgent = false;
+    setStatus("已停止盯站");
+    updateWatchUI();
+  }
+
+  /* 30 秒一刷：紧急（≤2 站 / ≤150 秒）立刻播，否则每 5 分钟提醒一次 */
+  async function watchTick() {
+    var t = watch.target;
+    if (!t) return;
+    var buses = await rpc("arrivals", {
+      lineId: t.lineId,
+      station: { stationId: t.stationId, order: t.order, name: t.stationName,
+                 lat: t.lat || 0, lng: t.lng || 0 }
+    });
+    var first = buses && buses.length ? buses[0] : null;
+    var urgent = isUrgent(first);
+
+    if (first && ((urgent && !watch.lastUrgent) || Date.now() - watch.lastSpoken > 300000)) {
+      var text = t.lineName + "路，" + stationLabel(t.stationName) + "，" +
+        (first ? describe(first) : "当前没有即将到站的车辆") + "。";
+      speak(text, true);
+      watch.lastSpoken = Date.now();
+    }
+    watch.lastUrgent = urgent;
+
+    if (!view.open) {
+      setStatus(clockTime() + " 盯站刷新 · " +
+        (first ? describe(first) : "暂无车辆"));
+    }
+  }
+
+  function clockTime() {
+    return new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  /* ------------------------------------------------------------ 语音自检 */
+
+  var diagTimer = null;
+
+  function renderDiag() {
+    if (!bridge || !bridge.status) return;
+    var info;
+    try { info = JSON.parse(bridge.status()); } catch (e) { return; }
+
+    var mode = ["静音", "振动", "正常"][info.ringerMode] || ("未知(" + info.ringerMode + ")");
+    var volume = info.mediaVolume === undefined ? "?" : info.mediaVolume + " / " + info.mediaMax;
+    var rows = [
+      ["语音后端", info.backend || "-"],
+      ["系统 TTS", info.ttsReady ? "可用" : "不可用（走在线合成）"],
+      ["已装引擎", info.engines || "无"],
+      ["媒体音量", volume + (info.mediaVolume === 0 ? " ⚠ 为 0，按音量键调大" : "")],
+      ["铃声模式", mode],
+      ["输出设备", info.outputs || "-"],
+      ["最近结果", info.lastResult || "-"]
+    ];
+    $("diagRows").innerHTML = rows.map(function (row) {
+      return '<div class="kv"><span>' + row[0] + "</span><span>" + String(row[1]) + "</span></div>";
+    }).join("");
+  }
+
+  function openDiag() {
+    $("diag").classList.remove("hidden");
+    renderDiag();
+    if (diagTimer) clearInterval(diagTimer);
+    diagTimer = setInterval(renderDiag, 900);
+  }
+
+  function closeDiag() {
+    $("diag").classList.add("hidden");
+    if (diagTimer) { clearInterval(diagTimer); diagTimer = null; }
+  }
+
+  /* ------------------------------------------------------------ 地铁 / 有轨电车（静态） */
+
+  var metroData = null;
+  var metroLine = null;
+
+  function loadMetroData() {
+    if (metroData) return metroData;
+    try {
+      var el = $("metroData");
+      metroData = JSON.parse(el.textContent || el.innerHTML || "{}");
+    } catch (e) {
+      metroData = { lines: [], transfers: {} };
+    }
+    if (!metroData.lines) metroData.lines = [];
+    if (!metroData.transfers) metroData.transfers = {};
+    return metroData;
+  }
+
+  function metroLabel(line) {
+    return String(line.name || line.id)
+      .replace("成都地铁", "")
+      .replace("成都有轨电车", "")
+      .replace("成都市域铁路", "");
+  }
+
+  function metroOrder(id) {
+    var n = parseInt(id, 10);
+    if (!isNaN(n) && String(n) === String(id)) return n;
+    if (id === "S3") return 100;
+    if (id === "T2") return 201;
+    if (id === "T2B") return 202;
+    if (id === "M-TR") return 203;
+    return 300;
+  }
+
+  function openMetro() {
+    loadMetroData();
+    showView("metro");
+    metroLine = null;
+    renderMetroLines();
+    $("mstation").innerHTML = "";
+    $("mlist").innerHTML = '<div class="empty">选一条线路查看站点</div>';
+  }
+
+  function renderMetroLines() {
+    var box = $("mlines");
+    box.innerHTML = "";
+    var lines = loadMetroData().lines.slice().sort(function (a, b) {
+      return metroOrder(a.id) - metroOrder(b.id);
+    });
+    lines.forEach(function (line) {
+      var chip = document.createElement("div");
+      chip.className = "chip" + (metroLine && metroLine.id === line.id ? " on" : "");
+      chip.textContent = metroLabel(line);
+      chip.onclick = function () { selectMetroLine(line); };
+      box.appendChild(chip);
+    });
+    centerActiveChip(box);
+  }
+
+  function selectMetroLine(line) {
+    metroLine = line;
+    renderMetroLines();
+    var list = $("mlist");
+    list.innerHTML = "";
+    $("mstation").innerHTML = "";
+
+    var title = document.createElement("div");
+    title.className = "stop-title";
+    title.textContent = metroLabel(line) + " · " + line.from + " → " + line.to +
+      " · " + line.stations.length + " 站";
+    list.appendChild(title);
+
+    var transfers = loadMetroData().transfers;
+    line.stations.forEach(function (st, i) {
+      var row = document.createElement("div");
+      row.className = "srow";
+      var idx = document.createElement("span");
+      idx.className = "idx";
+      idx.textContent = String(i + 1);
+      var name = document.createElement("span");
+      name.className = "sname";
+      name.textContent = st.name;
+      var side = document.createElement("span");
+      side.className = "swhen";
+      var transfer = transfers[st.name];
+      side.textContent = transfer ? "换乘 " + transfer.join("/") : "";
+      row.appendChild(idx);
+      row.appendChild(name);
+      row.appendChild(side);
+      row.onclick = function () { showMetroStation(st); };
+      list.appendChild(row);
+    });
+  }
+
+  async function showMetroStation(st) {
+    var panel = $("mstation");
+    panel.innerHTML = '<div class="bus"><div class="head"><span class="line-name">' + st.name +
+      '</span><span class="toward">查询附近公交…</span></div></div>';
+    var transfer = loadMetroData().transfers[st.name];
+    var head = '<div class="head"><span class="line-name">' + st.name + '</span><span class="toward">' +
+      (transfer ? "换乘 " + transfer.join("/") : "地铁站") + '</span></div>';
+
+    try {
+      var data = await rpc("nearby", { lat: st.lat, lng: st.lng, limit: 3 });
+      var groups = buildGroups(data.stops);
+      var html = '<div class="bus">' + head;
+      if (!groups.length) {
+        html += '<div class="meta" style="margin-top:6px">附近 500 米没有查到公交站</div>';
+      }
+      groups.slice(0, 2).forEach(function (group) {
+        html += '<div class="meta" style="margin-top:8px">' + group.name + "（" + group.distance + " 米）</div>";
+        (group.arrivals || []).slice(0, 2).forEach(function (a) {
+          var text = outsideService(a.firstTime, a.lastTime) ? "不在运营时段"
+            : (a.etaSeconds !== null ? describe(a)
+              : (a.preStartTime ? "待发车 " + a.preStartTime : "暂无实时车辆"));
+          html += '<div class="meta">' + a.lineName + "路 → " + (a.toward || "") + "　" + text + "</div>";
+        });
+      });
+      html += '<div class="meta" style="margin-top:8px;opacity:.6">地铁实时到站请用「成都地铁」App</div></div>';
+      panel.innerHTML = html;
+    } catch (e) {
+      panel.innerHTML = '<div class="bus">' + head +
+        '<div class="meta" style="margin-top:6px">附近公交查询失败：' + e.message + '</div></div>';
+    }
+  }
+
+  /* ------------------------------------------------------------ 交互 */
+
+  $("go").onclick = function () { run(function () { return queryLine(true); }); };
+  $("near").onclick = function () { startAuto(true); };
+  $("refreshHome").onclick = function () {
+    run(function () {
+      // 搜索页：只刷当前选中的站点 / 线路，不拉回首页
+      if (state.detail && state.station) {
+        return refresh(false).then(function () {
+          setStatus(clockTime() + " 已刷新当前站点");
+        });
+      }
+      if (state.detail) {
+        renderStationChips();
+        renderHomeDirections();
+        updateSelbar();
+        setStatus("已刷新线路站点");
+        return Promise.resolve();
+      }
+      // 首页：刷新附近站点
+      return refreshHome({ announce: false, budget: 18 });
+    });
+  };
+  $("line").onkeydown = function (e) { if (e.key === "Enter") $("go").click(); };
+  $("settingsBtn").onclick = openDiag;
+  $("dClose").onclick = closeDiag;
+  $("dVolume").onclick = function () { if (bridge && bridge.setVolume) bridge.setVolume(80); };
+  $("dTone").onclick = function () { if (bridge && bridge.testTone) bridge.testTone(); };
+  $("dPcm").onclick = function () { if (bridge && bridge.testPcm) bridge.testPcm(); };
+  $("dSysWeb").onclick = function () {
+    playUrl("data:audio/wav;base64," + testWavBase64(), "网页WAV测试", null);
+  };
+  $("dMp3").onclick = function () {
+    setStatus("MP3 合成中…");
+    rpc("synth", { text: "成都公交播报，语音测试。" }).then(function (res) {
+      if (!res || !res.base64) throw new Error("合成结果为空");
+      playBytes(res.base64, "audio/mpeg", "MP3测试", function () {
+        wavFallback("成都公交播报，语音测试。");
+      });
+    }).catch(function (e) {
+      note("MP3 合成失败：" + e.message);
+      setStatus("MP3 合成失败：" + e.message, true);
+    });
+  };
+  $("dSample").onclick = function () {
+    var text = SAMPLE_TEXTS[sampleIndex % SAMPLE_TEXTS.length];
+    sampleIndex++;
+    setStatus("示例 " + sampleIndex + "/" + SAMPLE_TEXTS.length);
+    speak(text, true);
+  };
+
+  $("webMode").checked = (function () {
+    try { return localStorage.getItem(WEB_MODE_KEY) === "1"; } catch (e) { return false; }
+  })();
+  $("webMode").onchange = function () {
+    setWebAudio(this.checked);
+    setStatus(this.checked ? "语音已切到网页播放" : "语音已切回 App 播放");
+  };
+  $("dSys").onclick = function () { if (bridge && bridge.testSysTone) bridge.testSysTone(); };
+  $("dSpeak").onclick = function () { if (bridge && bridge.testSpeak) bridge.testSpeak(); };
+
+  $("back").onclick = closeDetail;
+  $("drefresh").onclick = function () { loadMatrix(); };
+  $("dspeak").onclick = function () { speak(detailSpeakText(), true); };
+  function exitSearchView() {
+    searching = false;
+    state.detail = null;
+    state.directions = [];
+    state.station = null;
+    state.buses = [];
+    state.first = null;
+    state.groups = [];
+    $("line").value = "";
+    $("chips").innerHTML = "";
+    $("dirs").innerHTML = "";
+    updateSelbar();
+    run(function () { return refreshHome({ announce: false, budget: 18 }); });
+  }
+
+  $("exitSearch").onclick = exitSearchView;
+
+  $("openMetro").onclick = function () { run(openMetro); };
+  $("mback").onclick = function () { showView("home"); };
+
+  $("hfav").onclick = function () {
+    if (!state.detail || !state.station) {
+      setStatus("先选一个站点再收藏", true);
+      return;
+    }
+    toggleFav({
+      lineId: state.detail.lineId,
+      lineName: state.detail.name,
+      endSn: state.detail.endSn || "",
+      stationId: state.station.stationId,
+      stationName: state.station.name,
+      order: state.station.order,
+      lat: state.station.lat || 0,
+      lng: state.station.lng || 0,
+      firstTime: state.detail.firstTime || "",
+      lastTime: state.detail.lastTime || "",
+      addedAt: Date.now()
+    });
+    updateSelbar();
+  };
+
+  $("dfav").onclick = function () {
+    if (!view.lineId || !view.stationId || !view.stationName) {
+      setStatus("先选一个站点再收藏", true);
+      return;
+    }
+    var station = null;
+    var list = (view.data && view.data.stations) || [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].order === view.fromOrder) { station = list[i]; break; }
+    }
+    toggleFav({
+      lineId: view.lineId,
+      lineName: view.lineName,
+      endSn: (view.data && view.data.line && view.data.line.endSn) || "",
+      stationId: view.stationId,
+      stationName: view.stationName,
+      order: view.fromOrder,
+      lat: station ? station.lat : 0,
+      lng: station ? station.lng : 0,
+      firstTime: view.firstTime || "",
+      lastTime: view.lastTime || "",
+      addedAt: Date.now()
+    });
+  };
+
+  $("settingsBtn").onclick = openDiag;
+  $("dClose").onclick = closeDiag;
+  $("dVolume").onclick = function () { if (bridge && bridge.setVolume) bridge.setVolume(80); };
+  $("dTone").onclick = function () { if (bridge && bridge.testTone) bridge.testTone(); };
+  $("dPcm").onclick = function () { if (bridge && bridge.testPcm) bridge.testPcm(); };
+  $("dSysWeb").onclick = function () {
+    playUrl("data:audio/wav;base64," + testWavBase64(), "网页WAV测试", null);
+  };
+  $("dMp3").onclick = function () {
+    setStatus("MP3 合成中…");
+    rpc("synth", { text: "成都公交播报，语音测试。" }).then(function (res) {
+      if (!res || !res.base64) throw new Error("合成结果为空");
+      playBytes(res.base64, "audio/mpeg", "MP3测试", function () {
+        wavFallback("成都公交播报，语音测试。");
+      });
+    }).catch(function (e) {
+      note("MP3 合成失败：" + e.message);
+      setStatus("MP3 合成失败：" + e.message, true);
+    });
+  };
+  $("dSample").onclick = function () {
+    var text = SAMPLE_TEXTS[sampleIndex % SAMPLE_TEXTS.length];
+    sampleIndex++;
+    setStatus("示例 " + sampleIndex + "/" + SAMPLE_TEXTS.length);
+    speak(text, true);
+  };
+
+  $("webMode").checked = (function () {
+    try { return localStorage.getItem(WEB_MODE_KEY) === "1"; } catch (e) { return false; }
+  })();
+  $("webMode").onchange = function () {
+    setWebAudio(this.checked);
+    setStatus(this.checked ? "语音已切到网页播放" : "语音已切回 App 播放");
+  };
+  $("dSys").onclick = function () { if (bridge && bridge.testSysTone) bridge.testSysTone(); };
+  $("dSpeak").onclick = function () { if (bridge && bridge.testSpeak) bridge.testSpeak(); };
+
+  $("back").onclick = closeDetail;
+  $("drefresh").onclick = function () { loadMatrix(); };
+  $("dspeak").onclick = function () { speak(detailSpeakText(), true); };
+  function exitSearchView() {
+    searching = false;
+    state.detail = null;
+    state.directions = [];
+    state.station = null;
+    state.buses = [];
+    state.first = null;
+    state.groups = [];
+    $("line").value = "";
+    $("chips").innerHTML = "";
+    $("dirs").innerHTML = "";
+    updateSelbar();
+    run(function () { return refreshHome({ announce: false, budget: 18 }); });
+  }
+
+  $("exitSearch").onclick = exitSearchView;
+
+  $("openMetro").onclick = function () { run(openMetro); };
+  $("mback").onclick = function () { showView("home"); };
+
+  $("hfav").onclick = function () {
+    if (!state.detail || !state.station) {
+      setStatus("先选一个站点再收藏", true);
+      return;
+    }
+    toggleFav({
+      lineId: state.detail.lineId,
+      lineName: state.detail.name,
+      endSn: state.detail.endSn || "",
+      stationId: state.station.stationId,
+      stationName: state.station.name,
+      order: state.station.order,
+      lat: state.station.lat || 0,
+      lng: state.station.lng || 0,
+      firstTime: state.detail.firstTime || "",
+      lastTime: state.detail.lastTime || "",
+      addedAt: Date.now()
+    });
+    updateSelbar();
+  };
+
+  
+
+
+  $("watch").onchange = function () {
+    if (!this.checked) { stopWatch(); return; }
+    if (!state.detail || !state.station) {
+      this.checked = false;
+      setStatus("先选一个站点再盯站", true);
+      return;
+    }
+    startWatch({
+      lineId: state.detail.lineId,
+      lineName: state.detail.name,
+      stationId: state.station.stationId,
+      stationName: state.station.name,
+      order: state.station.order,
+      lat: state.station.lat || 0,
+      lng: state.station.lng || 0,
+      toward: state.detail.endSn || "",
+      firstTime: state.detail.firstTime || "",
+      lastTime: state.detail.lastTime || ""
+    });
+  };
+
+  $("dwatchBtn").onclick = function () {
+    if (watch.on) { stopWatch(); return; }
+    if (!view.lineId || !view.stationId) return;
+    var station = null;
+    var list = (view.data && view.data.stations) || [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].order === view.fromOrder) { station = list[i]; break; }
+    }
+    startWatch({
+      lineId: view.lineId,
+      lineName: view.lineName,
+      stationId: view.stationId,
+      stationName: view.stationName,
+      order: view.fromOrder,
+      lat: station ? station.lat : 0,
+      lng: station ? station.lng : 0,
+      toward: (view.data && view.data.line && view.data.line.endSn) || "",
+      firstTime: view.firstTime || "",
+      lastTime: view.lastTime || ""
+    });
+  };
+
+  setStatus(bridge ? "语音：" + bridge.backend() : "仅支持 App 内使用");
+  restoreVoiceSetting();
+  bindVoiceSetting();
+  renderFavs();
+  if (bridge) startAuto(false);
+})();
+</script>
+</body>
+</html>

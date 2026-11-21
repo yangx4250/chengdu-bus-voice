@@ -1,0 +1,23 @@
+{
+  "name": "chengdu-bus",
+  "version": "0.1.0",
+  "private": true,
+  "description": "成都公交实时到站语音播报（车来了小程序接口，零依赖）",
+  "type": "module",
+  "bin": {
+    "cd-bus": "./bin/cd-bus.mjs"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node bin/cd-bus.mjs",
+    "near": "node bin/cd-bus.mjs near",
+    "test": "node test/smoke.mjs"
+  }
+}

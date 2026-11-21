@@ -1,0 +1,22 @@
+# 构建产物
+build/
+*.apk
+*.idsig
+dist/
+
+# 签名密钥：绝对不要提交
+keystore/
+*.jks
+*.keystore
+
+# 依赖与缓存
+node_modules/
+.cache/
+
+# 工具链中间文件
+.stage/
+*.log
+sources.txt
+
+# 演示音频（生成物）
+demo/*.mp3
