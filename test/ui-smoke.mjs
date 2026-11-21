@@ -380,7 +380,8 @@ if (/实时到站/.test(html.split('</header>')[0])) failures.push('顶部仍有
 if (html.indexOf('id="loctext"') > html.indexOf('<div class="row">')) {
   failures.push('定位信息没有移到标题后面');
 }
-if (!/class="homehead"/.test(html)) failures.push('头部没有改成一行布局');
+if (!/class="homehead"/.test(html)) failures.push('头部布局标记丢失');
+if (!/class="topline"/.test(html) || !/class="locline"/.test(html)) failures.push('头部没有拆成标题行/定位行两排');
 else {
   settingsBtn.onclick();
   if (String(document.getElementById('diag').className).includes('hidden')) {

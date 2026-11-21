@@ -107,11 +107,14 @@
 
   .empty { color: var(--muted); font-size: 14px; text-align: center; padding: 24px 8px; }
 
-  .homehead { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
-  .homehead h1 { flex: 0 0 auto; font-weight: 600; }
-  .headdot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: 0 0 auto; }
+  .homehead { display: flex; flex-direction: column; gap: 6px; }
+  .homehead .topline { display: flex; align-items: center; gap: 8px; }
+  .homehead .topline h1 { flex: 1 1 auto; min-width: 0; font-weight: 600; }
+  .homehead .locline { display: flex; align-items: flex-start; gap: 6px; }
+  .headdot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok);
+    flex: 0 0 auto; margin-top: 5px; }
   .headloc { flex: 1 1 auto; min-width: 0; font-size: var(--fs-sm); color: var(--muted);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    line-height: 1.35; word-break: break-all; }
   .headloc.err { color: var(--hot); }
   .homehead .refreshnote { flex: 0 0 auto; margin-left: 0; }
   .homehead .iconbtn { flex: 0 0 auto; }
@@ -312,11 +315,15 @@
 
 <div id="home">
   <header class="homehead">
-    <h1>成都公交播报</h1>
-    <span class="headdot"></span>
-    <span id="loctext" class="headloc">正在获取位置…</span>
-    <span id="refreshNote" class="refreshnote"></span>
-    <button id="settingsBtn" class="iconbtn" title="设置">⚙</button>
+    <div class="topline">
+      <h1>成都公交播报</h1>
+      <span id="refreshNote" class="refreshnote"></span>
+      <button id="settingsBtn" class="iconbtn" title="设置">⚙</button>
+    </div>
+    <div class="locline">
+      <span class="headdot"></span>
+      <span id="loctext" class="headloc">正在获取位置…</span>
+    </div>
   </header>
 
 
