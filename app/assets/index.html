@@ -62,6 +62,11 @@
     display: inline-flex; align-items: center; gap: 6px; }
   .vchip .v2 { font-size: var(--fs-sm); color: #9fb0cc; white-space: nowrap; }
   .vchip.on .v2 { color: #d6e2f7; }
+  #dothers { display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    overflow: visible; padding-bottom: 2px; }
+  #dothers .others-label { grid-column: 1 / -1; }
+  #dothers .chip { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    justify-content: center; }
   .others-label { font-size: var(--fs-sm); color: var(--muted); align-self: center;
     margin-right: 2px; white-space: nowrap; }
   .otherline { border-color: #2c3b57; }
@@ -289,6 +294,8 @@
 </head>
 <body>
 
+<div id="fabSpeak" class="hidden">🔊</div>
+
 <div id="home">
   <header>
     <button id="settingsBtn" class="iconbtn" title="设置">⚙</button>
@@ -332,7 +339,6 @@
     <span id="status" class="hidden">就绪</span>
   </footer>
 
-  <div id="fabSpeak" class="hidden">🔊</div>
   <div id="toast"></div>
 </div>
 
@@ -1376,6 +1382,7 @@
         stationId: stop.stationId,
         stationName: stop.name || "",
         lineNames: stop.lineNames,
+        lineNameList: stop.lineNameList || null,
         arrivals: (stop.arrivals || []).slice()
       });
     });
@@ -1848,13 +1855,28 @@
       }
       if (!stop) return;
 
+      // 以「该站完整线路名列表」为准（lineNameList），有实时数据的带 ETA，没有的标暂无车
+      var arrivals = stop.arrivals || [];
+      var byName = {};
+      arrivals.forEach(function (a) { byName[String(a.lineName)] = a; });
+
+      var names = (stop.lineNameList || []).slice();
+      if (!names.length) {
+        names = arrivals.map(function (a) { return a.lineName + "路"; });
+      }
+
       var seen = {};
-      var others = (stop.arrivals || []).filter(function (a) {
-        if (String(a.lineId) === String(view.lineId)) return false;
-        if (String(a.lineName) === String(view.lineName)) return false;
-        if (seen[a.lineId]) return false;
-        seen[a.lineId] = true;
-        return true;
+      var others = [];
+      names.forEach(function (raw) {
+        var short = String(raw).replace(/路$/, "");
+        if (!short) return;
+        var current = String(view.lineName || "").replace(/路$/, "");
+        if (short === current) return;                    // 排除当前线路（忽略「路」后缀）
+        var hit = byName[short];
+        if (hit && String(hit.lineId) === String(view.lineId)) return;
+        if (seen[short]) return;
+        seen[short] = true;
+        others.push({ name: short, label: raw, arrival: byName[short] || null });
       });
 
       if (!others.length) return;
@@ -1864,22 +1886,33 @@
       label.textContent = "同站其它 · " + (station.name || "");
       box.appendChild(label);
 
-      others.forEach(function (a) {
+      others.forEach(function (item) {
         var chip = document.createElement("div");
         chip.className = "chip otherline";
-        var ended = outsideService(a.firstTime, a.lastTime);
-        chip.textContent = a.lineName + "路 " +
-          (ended ? "不在运营" : (a.etaSeconds !== null ? describe(a) : (a.preStartTime ? "待发车" : "暂无车")));
-        chip.onclick = function () {
-          openDetail({
-            lineId: a.lineId,
-            lineName: a.lineName,
-            stationId: a.stationId,
-            stationName: stop.name,
-            fromOrder: a.stationOrder,
-            title: a.lineName + "路 · " + stop.name
-          });
-        };
+        var a = item.arrival;
+        var text = item.label + " ";
+        if (!a) {
+          text += "暂无实时";
+        } else {
+          var ended = outsideService(a.firstTime, a.lastTime);
+          text += ended ? "不在运营"
+            : (a.etaSeconds !== null ? describe(a) : (a.preStartTime ? "待发车" : "暂无实时"));
+        }
+        chip.textContent = text;
+        if (a) {
+          chip.onclick = function () {
+            openDetail({
+              lineId: a.lineId,
+              lineName: a.lineName,
+              stationId: a.stationId,
+              stationName: stop.name,
+              fromOrder: a.stationOrder,
+              title: a.lineName + "路 · " + stop.name
+            });
+          };
+        } else {
+          chip.onclick = function () { setStatus("这条线暂时没有实时数据", true); };
+        }
         box.appendChild(chip);
       });
       box.className = "chips";

@@ -132,7 +132,8 @@ const ENDED_TO = hhmm(-2);
 const nearbyPayload = {
   stops: [
     {
-      stationId: '028-1', name: '花园永泉', distanceMeters: 9, lineNames: 'P02路、716路',
+      stationId: '028-1', name: '花园永泉', distanceMeters: 9, lineNames: 'P02路、716路、720路、45路',
+      lineNameList: ['P02路', '716路', '720路', '45路'],
       arrivals: [
         { stationId: '028-1', stationName: '花园永泉', stationOrder: 5, lineId: '028-p02-0',
           lineName: 'P02', toward: '花园公交站', stationsAway: 2, etaSeconds: 300,
@@ -704,6 +705,11 @@ else {
   if (textOf(document.getElementById('dbuses')).includes('undefined')) {
     stage5.push('芯片文案出现 undefined');
   }
+  // 悬浮按钮必须挂在 body 上，不能放在 #home 里（否则详情页会跟着隐藏）
+  if (html.indexOf('id="fabSpeak"') > html.indexOf('<div id="home"')) {
+    stage5.push('悬浮按钮仍在 #home 内部，详情页会被隐藏');
+  }
+
   // 悬浮播报按钮（左下角），播报当前站点
   if (html.includes('id="dspeak"')) stage5.push('头部仍残留 🔊 按钮');
   const fab = document.getElementById('fabSpeak');
@@ -728,6 +734,7 @@ else {
     const othersNow = textOf(document.getElementById('dothers'));
     if (!/同站其它/.test(othersNow)) stage5.push('「同站其它」标签丢失');
     if (!/716路/.test(othersNow)) stage5.push('点站名后没有列出该站的其它线路：' + othersNow.slice(0, 120));
+  if (!/45路/.test(othersNow)) stage5.push('没有实时数据的线路没有列出（应全量展示）：' + othersNow.slice(0, 160));
     if (speakLog.length !== beforeSpeak) stage5.push('点站名仍在播报（应只更新列表）');
     if (!wasDetail) stage5.push('前置条件不对：本来就不在详情页');
   }
