@@ -99,6 +99,9 @@ storage.set('cdbus.favorites', JSON.stringify([{
   lineId: '028-16-0', lineName: '16', endSn: '火车南站公交站',
   stationId: '028-1', stationName: '天府广场南', order: 22,
   lat: 30.6, lng: 104.0, firstTime: '00:00', lastTime: '23:59', addedAt: Date.now(),
+}, {
+  type: 'station', stationId: '028-1', stationName: '花园永泉', lat: 30.7, lng: 103.95,
+  addedAt: Date.now(),
 }]));
 const localStorage = {
   getItem: (k) => (storage.has(k) ? storage.get(k) : null),
@@ -462,6 +465,22 @@ const after = JSON.parse(storage.get('cdbus.favorites') || '[]').length;
 if (after !== before + 1) stage2.push(`点收藏没写入（${before} → ${after}）`);
 if (!String(document.getElementById('status').textContent).includes('已收藏')) stage2.push('状态栏没有提示已收藏');
 if (!String(document.getElementById('favs').innerHTML).includes('P36路')) stage2.push('首页收藏区没有出现 P36路');
+
+// 站点收藏：卡片 + 点进去看该站全部线路
+const favCardsAll = findByClass(document.getElementById('favs'), 'fav');
+const stationCard = favCardsAll.find((c) => textOf(c).includes('站点收藏'));
+if (!stationCard) {
+  stage2.push('没有渲染站点收藏卡片');
+} else {
+  stationCard.onclick();
+  await new Promise((r) => setTimeout(r, 900));
+  const selText = String(document.getElementById('seltext').textContent || '');
+  if (!/站点 · /.test(selText)) stage2.push('点站点收藏没有进入站点视图：' + selText);
+  const listNow = textOf(document.getElementById('list'));
+  if (!listNow.includes('花园永泉')) stage2.push('站点视图没有列出该站：' + listNow.slice(0, 120));
+  document.getElementById('exitSearch').onclick();
+  await new Promise((r) => setTimeout(r, 700));
+}
 
 // 退出查询 → 回到附近站点
 document.getElementById('exitSearch').onclick();

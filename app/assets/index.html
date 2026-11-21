@@ -1355,6 +1355,8 @@
       groups.push({
         name: stop.name || "",
         distance: stop.distanceMeters,
+        stationId: stop.stationId,
+        stationName: stop.name || "",
         lineNames: stop.lineNames,
         arrivals: (stop.arrivals || []).slice()
       });
@@ -1459,8 +1461,12 @@
         return block;
       });
 
+      var stopFav = loadFavs().some(function (f) {
+        return favType(f) === "station" && String(f.stationId) === String(group.stationId);
+      });
       card.innerHTML = '<div class="head"><span class="line-name">' + group.name +
-        '</span><span class="toward">' + group.distance + ' 米</span></div>';
+        '</span><span class="toward">' + group.distance + ' 米' +
+        ' <span class="stopstar">' + (stopFav ? "★" : "☆") + '</span></span></div>';
 
       var rowsBox = document.createElement("div");
       card.appendChild(rowsBox);
@@ -1473,6 +1479,21 @@
         via.style.opacity = ".55";
         via.textContent = "途经 " + group.lineNames;
         card.appendChild(via);
+      }
+
+      var starEl = card.querySelector ? card.querySelector(".stopstar") : null;
+      if (starEl) {
+        starEl.onclick = function (ev) {
+          if (ev && ev.stopPropagation) ev.stopPropagation();
+          toggleStationFav({
+            type: "station",
+            stationId: group.stationId,
+            stationName: group.name,
+            lat: group.lat || 0,
+            lng: group.lng || 0
+          });
+          renderStops(stops, budget);
+        };
       }
 
       box.appendChild(card);
@@ -1895,7 +1916,11 @@
     try { localStorage.setItem(FAV_KEY, JSON.stringify(list)); } catch (e) {}
   }
 
+  function favType(fav) { return fav && fav.type === "station" ? "station" : "line"; }
+
   function sameFav(a, b) {
+    if (favType(a) !== favType(b)) return false;
+    if (favType(a) === "station") return String(a.stationId) === String(b.stationId);
     return String(a.lineId) === String(b.lineId) && String(a.stationId) === String(b.stationId);
   }
 
@@ -1954,6 +1979,93 @@
     setStatus(idx >= 0 ? "已取消收藏" : "已收藏 " + fav.lineName + "路 · " + fav.stationName);
   }
 
+  function toggleStationFav(fav) {
+    var list = loadFavs();
+    var idx = -1;
+    for (var i = 0; i < list.length; i++) {
+      if (sameFav(list[i], fav)) { idx = i; break; }
+    }
+    if (idx >= 0) list.splice(idx, 1);
+    else list.push(fav);
+    saveFavs(list);
+    renderFavs();
+    setStatus(idx >= 0 ? "已取消收藏站点" : "已收藏站点 " + fav.stationName);
+  }
+
+  /* 站点收藏 → 看这一站所有线路的到站 */
+  async function openStationView(fav) {
+    setStatus("正在加载站点…");
+    try {
+      var data = await rpc("nearby", { lat: fav.lat || 0, lng: fav.lng || 0, limit: 8 });
+      var stops = data.stops || [];
+      var stop = null;
+      for (var i = 0; i < stops.length; i++) {
+        if (String(stops[i].stationId) === String(fav.stationId)) { stop = stops[i]; break; }
+      }
+      if (!stop && stops.length) stop = stops[0];
+      if (!stop) throw new Error("附近没有查到该站（可能不在 500 米内）");
+
+      state.stationView = fav;
+      renderStops([stop]);
+      $("seltext").textContent = "站点 · " + stop.name;
+      $("selbar").className = "selbar";
+      $("hfav").style.display = "none";
+      setStatus("站点 · " + stop.name + " · " + (stop.arrivals || []).length + " 条线路");
+    } catch (err) {
+      setStatus(err.message || "加载失败", true);
+    }
+  }
+
+  function renderStationFavCard(fav, row) {
+    var card = document.createElement("div");
+    card.className = "fav";
+
+    var head = document.createElement("div");
+    head.className = "fl";
+    head.textContent = fav.stationName || "站点";
+
+    var sub = document.createElement("div");
+    sub.className = "fs";
+    sub.textContent = "站点收藏 · 点看全部线路";
+
+    var eta = document.createElement("div");
+    eta.className = "fe";
+    eta.textContent = "刷新中…";
+
+    var del = document.createElement("div");
+    del.className = "del";
+    del.textContent = "✕";
+    del.onclick = function (ev) {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      toggleStationFav(fav);
+    };
+
+    card.appendChild(head);
+    card.appendChild(sub);
+    card.appendChild(eta);
+    card.appendChild(del);
+    card.onclick = function () { run(function () { return openStationView(fav); }); };
+    row.appendChild(card);
+
+    // 用附近接口补一句最近一班
+    rpc("nearby", { lat: fav.lat || 0, lng: fav.lng || 0, limit: 8 }).then(function (data) {
+      var stops = data.stops || [];
+      var stop = null;
+      for (var i = 0; i < stops.length; i++) {
+        if (String(stops[i].stationId) === String(fav.stationId)) { stop = stops[i]; break; }
+      }
+      if (!stop) { eta.textContent = "不在附近"; eta.className = "fe off"; return; }
+      var first = (stop.arrivals || [])[0];
+      if (!first) { eta.textContent = "暂无实时车辆"; eta.className = "fe off"; return; }
+      var text = first.lineName + "路" + describe(first);
+      eta.textContent = text;
+      eta.className = "fe" + (isUrgent(first) ? " hot" : "");
+    }).catch(function () {
+      eta.textContent = "获取失败";
+      eta.className = "fe off";
+    });
+  }
+
   function renderFavs() {
     var box = $("favs");
     if (!box) return;
@@ -1971,6 +2083,11 @@
     box.appendChild(row);
 
     favs.forEach(function (fav) {
+      if (favType(fav) === "station") {
+        renderStationFavCard(fav, row);
+        return;
+      }
+
       var card = document.createElement("div");
       card.className = "fav";
 
@@ -2716,6 +2833,7 @@
   $("dspeak").onclick = function () { speak(detailSpeakText(), true); };
   function exitSearchView() {
     searching = false;
+    state.stationView = null;
     state.detail = null;
     state.directions = [];
     state.station = null;
@@ -2725,6 +2843,7 @@
     $("line").value = "";
     $("chips").innerHTML = "";
     $("dirs").innerHTML = "";
+    if ($("hfav")) $("hfav").style.display = "";
     updateSelbar();
     run(function () { return refreshHome({ announce: false, budget: 18 }); });
   }
@@ -2822,6 +2941,7 @@
   $("dspeak").onclick = function () { speak(detailSpeakText(), true); };
   function exitSearchView() {
     searching = false;
+    state.stationView = null;
     state.detail = null;
     state.directions = [];
     state.station = null;
@@ -2831,6 +2951,7 @@
     $("line").value = "";
     $("chips").innerHTML = "";
     $("dirs").innerHTML = "";
+    if ($("hfav")) $("hfav").style.display = "";
     updateSelbar();
     run(function () { return refreshHome({ announce: false, budget: 18 }); });
   }
