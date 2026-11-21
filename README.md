@@ -247,6 +247,16 @@ Java 合成 mp3 → base64 → WebView <audio> 播放
   否则点终点站就只剩终点站，其余全被误标「已过」（v3.4 修）；
 - 并发从 4 提到 6（整条线要查的站变多了），长线路大约 1–3 秒。
 
+### 去掉系统标题栏，页面头部成为唯一标题（v9.0）
+
+App 没指定主题，默认 `Theme.DeviceDefault` 带 ActionBar，于是顶部会有一条系统标题栏「成都公交播报」，
+和页面里的 `<header>` 重复。现在 `<application android:theme="@android:style/Theme.DeviceDefault.NoActionBar">`，
+只剩页面这一条：
+
+```
+成都公交播报  ● 已定位 · network · 30 米 · 用时 0.5 秒   12s 后自动刷新  ⚙
+```
+
 ### 首页头部改成一行（v8.9）
 
 原来头部是「⚙ + 标题 + 实时到站」一行，定位信息单独一行。现在合成一行：
