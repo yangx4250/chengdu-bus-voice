@@ -369,8 +369,8 @@ if (!rendered.includes('花园永泉')) failures.push('没有渲染出站点「�
 if (!rendered.includes('龙溪村委会')) failures.push('没有渲染出站点「龙溪村委会」');
 if (!rendered.includes('不在运营时段')) failures.push('收班线路没有标「不在运营时段」');
 if (!rendered.includes('暂无实时车辆')) failures.push('没有到站数据的站点没有标「暂无实时车辆」');
-if (!/\d+s 后自动刷新/.test(String(document.getElementById('refreshNote').textContent || ''))) {
-  failures.push('没有显示自动刷新倒计时');
+if (!/^\d+$/.test(String(document.getElementById('refreshNote').textContent || '').trim())) {
+  failures.push('倒计时应只显示数字：' + document.getElementById('refreshNote').textContent);
 }
 
 // 顶部设置按钮 → 打开设置（含语音自检）；底部不再有 🔧 和状态文字

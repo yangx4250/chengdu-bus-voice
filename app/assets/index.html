@@ -2633,7 +2633,8 @@
     var note = $("refreshNote");
     if (!note) return;
     if (!countdownVisible()) { note.textContent = ""; autoCountdown = 30; return; }
-    note.textContent = autoCountdown + "s 后自动刷新";
+    note.textContent = String(autoCountdown);
+    note.title = autoCountdown + " 秒后自动刷新";
   }
 
   function startCountdown() {
