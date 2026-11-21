@@ -55,6 +55,16 @@
     min-height: 34px; }
   .chip.on { border-color: var(--accent); color: #fff; }
 
+  /* 车辆芯片：上排车牌、下排距离，两排显示更好读 */
+  .vchip { display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+    padding: 8px 12px; line-height: 1.3; }
+  .vchip .v1 { font-size: var(--fs); font-weight: 600; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 6px; }
+  .vchip .v2 { font-size: var(--fs-sm); color: #9fb0cc; white-space: nowrap; }
+  .vchip.on .v2 { color: #d6e2f7; }
+  .vbadge { font-style: normal; font-size: 10px; color: var(--accent);
+    border: 1px solid var(--accent); border-radius: 999px; padding: 0 6px; line-height: 1.6; }
+
   /* 站名芯片竖排（像车来了的站点条）：横向滑动、每个站名从上往下读 */
   .chips.vertical { align-items: flex-start; }
   .chips.vertical .chip { writing-mode: vertical-rl; text-orientation: upright;
@@ -1693,22 +1703,48 @@
     box.innerHTML = "";
     var ordered = view.buses || [];
     if (!ordered.length) return;
+
     ordered.forEach(function (bus, i) {
       var chip = document.createElement("div");
-      chip.className = "chip" + (i === view.index ? " on" : "");
+      chip.className = "chip vchip" + (i === view.index ? " on" : "");
+
       var toEnd = (bus.stationsToEnd === undefined || bus.stationsToEnd === null)
         ? bus.stationsAway : bus.stationsToEnd;
       var selectedLabel = view.fromFavorite ? "收藏站" : "本站";
       var isNearest = view.nearestBusId && bus.busId === view.nearestBusId;
+
       var selectedPart;
       if (bus.passedSelected) selectedPart = "已过" + selectedLabel;
       else if (bus.stationsAway === 0) selectedPart = "即将到" + selectedLabel;
       else selectedPart = "距" + selectedLabel + " " + bus.stationsAway + " 站";
-      chip.textContent = (bus.plate || String(bus.busId).slice(-4)) + " · " +
-        selectedPart + " · 距终点 " + toEnd + " 站" + (isNearest ? " · 最近" : "");
-      chip.onclick = function () { view.index = i; renderBusChips(); renderTimes(); };
+
+      // 上排：车牌（+最近徽标）；下排：距离信息
+      var line1 = document.createElement("span");
+      line1.className = "v1";
+      line1.textContent = bus.plate || String(bus.busId).slice(-4);
+      if (isNearest) {
+        var badge = document.createElement("i");
+        badge.className = "vbadge";
+        badge.textContent = "最近";
+        line1.appendChild(badge);
+      }
+
+      var line2 = document.createElement("span");
+      line2.className = "v2";
+      line2.textContent = selectedPart + " · 距终点 " + toEnd + " 站";
+
+      chip.appendChild(line1);
+      chip.appendChild(line2);
+      chip.onclick = function () {
+        view.index = i;
+        view.selectedBusId = bus.busId;
+        renderBusChips();
+        renderTimes();
+      };
       box.appendChild(chip);
     });
+
+    centerActiveChip(box);
   }
 
   /* 单独念某一站：「16路到 新光华街，大约 6 分钟，预计 23:15」 */

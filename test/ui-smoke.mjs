@@ -631,11 +631,11 @@ else {
   const chipEls = findByClass(document.getElementById('dbuses'), 'chip');
   if (chipEls.length < 3) stage5.push('车辆芯片未渲染完整：' + chipEls.length);
   else {
-    const t0 = String(chipEls[0].textContent || '');
+    const t0 = String(textOf(chipEls[0]) || '');
     const t1 = String(chipEls[1].textContent || '');
     if (!/距终点 28 站/.test(t0)) stage5.push('最左应是离起点最近的车（距终点 28 站）：' + t0);
     // 收藏站 order=22，三辆车在 2/12/19 站 → 最近的是 order=19（最右）
-    const last = String(chipEls[chipEls.length - 1].textContent || '');
+    const last = String(textOf(chipEls[chipEls.length - 1]) || '');
     if (!/最近/.test(last)) stage5.push('离我最近的车没有被标出：' + last);
     if (!String(chipEls[chipEls.length - 1].className).includes('on')) {
       stage5.push('默认没有选中离我最近的车');
