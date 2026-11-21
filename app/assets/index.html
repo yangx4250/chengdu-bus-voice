@@ -179,7 +179,7 @@
   .srow.passed .swhen { color: var(--muted); font-weight: 400; }
   .srow .idx { color: var(--muted); font-size: 12px; width: 22px; text-align: right; }
   .srow.speaking { border-color: var(--accent); background: #1a2740; }
-  .srow { scroll-margin-top: 210px; }
+  .srow { scroll-margin-top: var(--top-h, 210px); }
   .srow.current { border-color: var(--accent); background: #17233a; }
   .srow.current .sname { color: #fff; font-weight: 600; }
 
@@ -194,6 +194,63 @@
   #diag .btns { display: flex; gap: 10px; margin: 14px 0; flex-wrap: wrap; }
   #diag .btns button { flex: 1; min-width: 120px; }
   .srow:active { background: #1a2336; }
+
+  /* ------------------------------------------------------------ 自适应排版
+     用 clamp(最小, 视口比例, 最大) 让字号/间距随屏幕宽度伸缩；
+     同时放开换行，系统字体调到很大时也不会挤出屏幕。 */
+  :root {
+    --fs-sm: clamp(11px, 3vw, 13px);
+    --fs: clamp(13px, 3.6vw, 16px);
+    --fs-lg: clamp(16px, 4.4vw, 20px);
+    --fs-xl: clamp(20px, 5.6vw, 26px);
+    --pad: clamp(10px, 3.2vw, 18px);
+    --radius: clamp(10px, 3vw, 16px);
+  }
+
+  body { font-size: var(--fs); padding: var(--pad) var(--pad) 96px; }
+  header h1 { font-size: var(--fs-xl); }
+  header .tag, .locbar, .refreshnote, #toast { font-size: var(--fs-sm); }
+
+  input { font-size: var(--fs); padding: 12px var(--pad); }
+  button { font-size: var(--fs); padding: 12px var(--pad); }
+  .row { flex-wrap: wrap; }
+  .row > input { flex: 1 1 140px; }
+  .row > button { flex: 0 1 auto; }
+  button.primary { flex: 1 1 140px; }
+
+  .card, .bus { padding: var(--pad); border-radius: var(--radius); }
+  .bus .line-name, .stop-title { font-size: var(--fs-lg); }
+  .bus .eta { font-size: var(--fs-xl); }
+  .bus .meta, .armeta { font-size: var(--fs-sm); }
+  .chip { font-size: var(--fs-sm); padding: 8px 12px; }
+  .srow { padding: 10px var(--pad); gap: 8px; }
+  .srow .sname, .srow .swhen { font-size: var(--fs); }
+
+  .fav { min-width: clamp(150px, 44vw, 200px); padding: 12px 44px 12px var(--pad); }
+  .fav .fl { font-size: var(--fs); }
+  .fav .fs, .fav .fe { font-size: var(--fs-sm); }
+  .watchcard { padding: var(--pad); }
+  .watchcard .wc-title { font-size: var(--fs); }
+  .watchcard .wc-sub { font-size: var(--fs-sm); }
+
+  #dtop { margin: 0 calc(-1 * var(--pad)); padding: 2px var(--pad) 8px; }
+  .detail-head .titles div:first-child { font-size: var(--fs-lg); }
+  .detail-head .titles div:last-child { font-size: var(--fs-sm); }
+  footer .switch .lbl { font-size: var(--fs-sm); }
+
+  /* 极窄屏（<360dp）：进一步压缩间距，主按钮占满整行 */
+  @media (max-width: 360px) {
+    :root { --pad: 10px; }
+    .detail-head { flex-wrap: wrap; }
+    .detail-head .titles { flex: 1 1 100%; order: -1; }
+    button.primary { flex: 1 1 100%; }
+    #near, #refreshHome { flex: 1 1 40%; }
+  }
+
+  /* 大屏 / 平板：内容居中限宽，避免一行拉太长 */
+  @media (min-width: 560px) {
+    body { max-width: 720px; margin: 0 auto; }
+  }
 </style>
 </head>
 <body>
@@ -1440,6 +1497,20 @@
     }
   }
 
+  /* 吸顶区高度会随屏幕/字体变化，量出来给滚动定位用 */
+  function syncTopOffset() {
+    var top = $("dtop");
+    if (!top || typeof top.getBoundingClientRect !== "function") return;
+    var rect = top.getBoundingClientRect();
+    var h = Math.round((rect && rect.height) || 0);
+    if (h > 0) document.documentElement.style.setProperty("--top-h", (h + 12) + "px");
+  }
+
+  if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+    window.addEventListener("resize", function () { setTimeout(syncTopOffset, 120); });
+    window.addEventListener("orientationchange", function () { setTimeout(syncTopOffset, 200); });
+  }
+
   function swapIn(box, keepScroll) {
     var list = $("list");
     var scrollY = keepScroll || (typeof window !== "undefined" && (window.scrollY || window.pageYOffset)) || 0;
@@ -1501,6 +1572,7 @@
     $("dlist").innerHTML = '<div class="empty">加载中…</div>';
     showView("detail");
     updateWatchUI();
+    setTimeout(syncTopOffset, 30);
     startDetailAutoRefresh();
     await Promise.all([loadMatrix(), loadDetailDirections()]);
   }

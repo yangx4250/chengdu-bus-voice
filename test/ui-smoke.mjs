@@ -667,6 +667,9 @@ else {
   if (!document.getElementById('dtop')) stage5.push('详情页缺少 sticky 顶部容器');
   if (!/position:\s*sticky/.test(html)) stage5.push('顶部没有 sticky 样式');
   if (!html.includes('startDetailAutoRefresh')) stage5.push('详情页没有 30 秒自动刷新');
+if (!/clamp\(/.test(html)) stage5.push('没有自适应字号（clamp）');
+if (!/flex-wrap:\s*wrap/.test(html)) stage5.push('窄屏没有放开换行');
+if (!/@media \(max-width: 360px\)/.test(html)) stage5.push('缺少窄屏适配');
   const depText = String(document.getElementById('deptext').textContent || '');
   if (!/发车预测：预计 \d{2}:\d{2} 发车/.test(depText)) stage5.push('没有显示发车预测：' + depText);
   if (!/发车间隔约 12 分钟/.test(depText)) stage5.push('没有显示发车间隔：' + depText);
