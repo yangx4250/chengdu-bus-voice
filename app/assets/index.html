@@ -128,6 +128,17 @@
   .dwatchstop:active { background: #22304a; color: #fff; }
   .stpin.off { opacity: .28; }
 
+  .watchcard { background: #16233a; border: 1px solid var(--accent); border-radius: 14px;
+    padding: 12px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+  .watchcard:active { background: #1b2b46; }
+  .watchcard .wc-main { flex: 1; min-width: 0; }
+  .watchcard .wc-title { font-size: 14px; font-weight: 600; color: #fff; }
+  .watchcard .wc-title .dot2 { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--ok); margin-right: 6px; vertical-align: middle; }
+  .watchcard .wc-sub { font-size: 12px; color: #9fb0cc; margin-top: 4px; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  .watchcard .wc-go { font-size: 12px; color: var(--accent); white-space: nowrap; }
+
   .favtitle { font-size: 12px; color: var(--muted); margin: 2px 2px 8px; letter-spacing: .5px; }
   .favrow { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 12px; }
   .fav { flex: 0 0 auto; min-width: 168px; max-width: 82vw; background: var(--card);
@@ -214,6 +225,7 @@
   </div>
 
   <div id="favs"></div>
+  <div id="watchcard"></div>
   <div id="selbar" class="selbar hidden">
     <span class="seltext" id="seltext"></span>
     <button id="hfav">☆ 收藏</button>
@@ -1660,6 +1672,7 @@
   }
 
   window.cdBusWatchStation = watchStationByOrder;
+  window.cdBusRenderWatchCard = renderWatchCard;
 
   function renderTimes(options) {
     var doScroll = !options || options.scroll !== false;
@@ -2182,6 +2195,53 @@
     return t.lineName + "路 · " + t.stationName + (t.toward ? " · 往 " + t.toward : "");
   }
 
+  /* 首页的「当前盯站」卡片：点一下进详情 */
+  function renderWatchCard() {
+    var box = $("watchcard");
+    if (!box) return;
+    box.innerHTML = "";
+    if (!watch.on || !watch.target) return;
+
+    var card = document.createElement("div");
+    card.className = "watchcard";
+
+    var main = document.createElement("div");
+    main.className = "wc-main";
+
+    var title = document.createElement("div");
+    title.className = "wc-title";
+    title.textContent = "盯站中 · " + watch.target.lineName + "路";
+
+    var sub = document.createElement("div");
+    sub.className = "wc-sub";
+    sub.textContent = watch.target.stationName +
+      (watch.target.toward ? " · 往 " + watch.target.toward : "") +
+      (watch.liveText ? " · " + watch.liveText : " · 每 30 秒刷新");
+
+    main.appendChild(title);
+    main.appendChild(sub);
+
+    var go = document.createElement("span");
+    go.className = "wc-go";
+    go.textContent = "详情 ›";
+
+    card.appendChild(main);
+    card.appendChild(go);
+    card.onclick = function () {
+      var t = watch.target;
+      openDetail({
+        lineId: t.lineId,
+        lineName: t.lineName,
+        stationId: t.stationId,
+        stationName: t.stationName,
+        fromOrder: t.order,
+        title: t.lineName + "路 · " + t.stationName
+      });
+    };
+
+    box.appendChild(card);
+  }
+
   function updateWatchUI() {
     var checkbox = $("watch");
     if (checkbox) checkbox.checked = watch.on;
@@ -2195,7 +2255,12 @@
     } else {
       bar.className = "selbar hidden";
     }
+    renderWatchCard();
+    renderFavsOffset();
   }
+
+  /* 收藏卡在盯站卡上方，这里只负责在盯站开启/关闭时保持分隔自然（空实现，占位避免未定义） */
+  function renderFavsOffset() {}
 
   function watchPayload(target) {
     return JSON.stringify({

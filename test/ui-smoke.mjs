@@ -587,6 +587,28 @@ if (!/etaFront/.test(html)) {
 }
 console.log('✓ 前台播报通过：页面自身仍会按 10/5/2 播报，服务只在后台说话');
 
+// 首页盯站卡片：显示 + 点击进详情
+const wcText = textOf(document.getElementById('watchcard'));
+if (!/盯站中/.test(wcText)) {
+  console.error('✗ UI 冒烟失败：首页没有显示盯站卡片');
+  process.exit(1);
+}
+const wcCards = findByClass(document.getElementById('watchcard'), 'watchcard');
+if (!wcCards.length) {
+  console.error('✗ UI 冒烟失败：盯站卡片不可点击');
+  process.exit(1);
+}
+wcCards[0].onclick();
+await new Promise((r) => setTimeout(r, 900));
+const dTitle = String(document.getElementById('dtitle').textContent || '');
+if (!/路/.test(dTitle)) {
+  console.error('✗ UI 冒烟失败：点盯站卡片没有进入详情：' + dTitle);
+  process.exit(1);
+}
+document.getElementById('back').onclick();
+await new Promise((r) => setTimeout(r, 200));
+console.log('✓ 盯站卡片通过：首页展示当前盯站，点击进入详情');
+
 // 模拟退到后台：应把盯站交给前台服务
 if (typeof window.cdBusStartBackgroundWatch === 'function') {
   window.cdBusStartBackgroundWatch();
