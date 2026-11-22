@@ -242,6 +242,9 @@ const bridge = {
         { lineId: '028-p02-0', name: 'P02', endSn: '花园公交站', startSn: '郫都区客运中心', direction: 0, firstTime: '00:00', lastTime: '23:59' },
         { lineId: '028-p02-1', name: 'P02', endSn: '郫都区客运中心', startSn: '花园公交站', direction: 1, firstTime: '00:00', lastTime: '23:59' },
         { lineId: '028-p49-0', name: 'P49', endSn: '友爱公交站', startSn: '花园永泉', direction: 0, firstTime: '00:00', lastTime: '23:59' },
+        /* 「花园永泉」作为线路名出现两个方向，模拟真实数据（站点名与线路名同名） */
+        { lineId: '028-hyyq-0', name: '花园永泉', endSn: '郫都区客运中心', startSn: '花园公交站', direction: 0, firstTime: '00:00', lastTime: '23:59' },
+        { lineId: '028-hyyq-1', name: '花园永泉', endSn: '花园公交站', startSn: '郫都区客运中心', direction: 1, firstTime: '00:00', lastTime: '23:59' },
       ];
       return JSON.stringify({ state: 'ok', data: pLines.filter((l) => l.name.toUpperCase().includes(key)) });
     }
@@ -268,6 +271,18 @@ const bridge = {
     }
     if (method === 'detail') {
       const lineId = String(args.lineId || '');
+      if (lineId.includes('hyyq')) {
+        /* 同一 stationId 在上下行是两个不同坐标（马路两侧），真实数据就是这样 */
+        const isDir1 = lineId.endsWith('-1');
+        return JSON.stringify({ state: 'ok', data: {
+          lineId, name: '花园永泉', startSn: '花园公交站', endSn: isDir1 ? '花园公交站' : '郫都区客运中心',
+          firstTime: '00:00', lastTime: '23:59',
+          stations: [
+            { stationId: '028-1', order: 5, name: '花园永泉',
+              lat: isDir1 ? 30.7004 : 30.7, lng: isDir1 ? 103.9506 : 103.95 },
+          ],
+        } });
+      }
       if (lineId.includes('p49')) {
         return JSON.stringify({ state: 'ok', data: {
           lineId: '028-p49-0', name: 'P49', startSn: '花园永泉', endSn: '友爱公交站',
@@ -490,32 +505,11 @@ if (!rendered.includes('龙溪村委会')) failures.push('没有渲染出站点�
 if (!rendered.includes('不在运营时段')) failures.push('收班线路没有标「不在运营时段」');
 if (!rendered.includes('暂无实时车辆')) failures.push('没有到站数据的站点没有标「暂无实时车辆」');
 /* 首页站点卡右上角要有 🧭 导航按钮，点了能调起地图 */
-if (!rendered.includes('🧭')) failures.push('首页站点卡没有导航按钮');
-/* 多方向的站点点 🧭 应弹出方向选择弹窗；单方向的直接导航 */
+/* v9.32：首页取消 🧭，点站点卡进「站点页」，在那里按方向导航 */
 {
-  const navIcons = findByText(document.getElementById('list'), '🧭');
-  if (navIcons.length) {
-    navIcons[0].onclick({ stopPropagation() {} });
-    await new Promise((r) => setTimeout(r, 100));
-    const pick = document.getElementById('navpick');
-    const shown = !String(pick.className).includes('hidden');
-    /* 桩里「花园永泉」和「花园永泉东」名字相近会合并成一组 → 2 个站台 → 应弹窗 */
-    if (!shown) {
-      failures.push('多方向的站点点导航没有弹出方向选择');
-    } else {
-      const items = findByClass(pick, 'npitem');
-      if (items.length < 2) failures.push('方向选择弹窗选项不足（应 >=2）：' + items.length);
-      // 选项里应有「开往」字样
-      const txt = items.map((x) => textOf(x)).join('|');
-      if (!/开往|站台/.test(txt)) failures.push('方向选项没有标明开往方向：' + txt.slice(0, 80));
-      // 点第一项应该调起导航
-      const before = navLog.length;
-      items[0].onclick({ stopPropagation() {} });
-      await new Promise((r) => setTimeout(r, 100));
-      if (navLog.length !== before + 1) failures.push('选完方向没有调起导航');
-      document.getElementById('npcancel').onclick();
-    }
-  }
+  const cards = findByClass(document.getElementById('list'), 'bus');
+  const clickable = cards.filter((c) => typeof c.onclick === 'function');
+  if (!clickable.length) failures.push('首页站点卡不可点击（应进入站点页）');
 }
 if (!/^\d+$/.test(String(document.getElementById('refreshNote').textContent || '').trim())) {
   failures.push('倒计时应只显示数字：' + document.getElementById('refreshNote').textContent);
@@ -810,6 +804,25 @@ if (String(document.getElementById('chips').innerHTML || '').length) stage2.push
 if (!afterExit.includes('花园永泉')) stage2.push('退出后没有回到附近站点：' + afterExit.slice(0, 120));
 if (!String(document.getElementById('selbar').className).includes('hidden')) {
   stage2.push('退出后查询条没有收起');
+}
+
+/* 点首页站点卡 → 站点页：应有 🧭 按方向的导航按钮 */
+{
+  const cards = findByClass(document.getElementById('list'), 'bus');
+  const clickable = cards.filter((c) => typeof c.onclick === 'function');
+  if (clickable.length) {
+    clickable[0].onclick();
+    await new Promise((r) => setTimeout(r, 900));
+    if (String(document.getElementById('lineview').className).includes('hidden')) {
+      stage2.push('点首页站点卡没有进入站点页');
+    }
+    const ltitle = String(document.getElementById('ltitle').textContent || '');
+    if (!/站点 · /.test(ltitle)) stage2.push('站点页标题不对：' + ltitle);
+    const navBtns = findByClass(document.getElementById('lnav'), 'navbtn');
+    if (!navBtns.length) stage2.push('站点页没有方向导航按钮');
+    window.cdBusBackView && window.cdBusBackView();
+    await new Promise((r) => setTimeout(r, 300));
+  }
 }
 
 if (stage2.length) {

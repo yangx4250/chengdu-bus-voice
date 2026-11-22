@@ -1806,6 +1806,12 @@
         return block;
       });
 
+      /* 点站点名（或卡片空白处）→ 进入「站点页」：
+         那里按方向列出所有站台并可用各方向坐标导航。 */
+      card.onclick = (function (g) {
+        return function () { openStationLinesPage(g); };
+      })(group);
+
       var stopFav = loadFavs().some(function (f) {
         return favType(f) === "station" && String(f.stationId) === String(group.stationId);
       });
@@ -1827,22 +1833,10 @@
         card.appendChild(via);
       }
 
-      /* 站点旁的 🧭：直接调起已装的地图 App 导航到这个站 */
-      var navEl = card.querySelector ? card.querySelector(".stopnav") : null;
-      if (navEl) {
-        navEl.onclick = (function (stop) {
-          return function (ev) {
-            if (ev && ev.stopPropagation) ev.stopPropagation();
-            /* 有多个站台（不同方向）时弹窗让用户选「开往 XX」 */
-            chooseDirectionThenNav(stop.name, stop.platforms);
-          };
-        })(group);
-      }
-
       var starEl = card.querySelector ? card.querySelector(".stopstar") : null;
       if (starEl) {
         starEl.onclick = function (ev) {
-          if (ev && ev.stopPropagation) ev.stopPropagation();
+          if (ev && ev.stopPropagation) ev.stopPropagation();   // 别触发卡片的站点页跳转
           toggleStationFav({
             type: "station",
             stationId: group.stationId,
@@ -3137,6 +3131,139 @@
   }
 
   /* 站点收藏 → 看这一站所有线路的到站 */
+  /* ------------------------------------------------------------ 站点页
+     首页点站点名进入：该站所有线路按「站台×方向」分行显示，顶部 🧭 导航。
+     与收藏站点页（openStationView/renderFavStopPage）共用 #lineview 容器，
+     但数据链路不同：这里会按线路名反查所有方向的坐标。 */
+
+  /* 拿一个站台的所有方向坐标：
+     lineName → searchLines → 每个 lineId 查详情 → 同 stationId 的坐标。 */
+  async function fetchStationPlatforms(name, stationId) {
+    var platforms = [];
+    var dirs = [];
+    try { dirs = await loadDirections(name); } catch (e) { dirs = []; }
+    var seenLine = {};
+    for (var i = 0; i < dirs.length; i++) {
+      var line = dirs[i];
+      if (seenLine[line.lineId]) continue;
+      seenLine[line.lineId] = true;
+      try {
+        var detail = await getDetail(line.lineId);
+        var st = null;
+        (detail.stations || []).forEach(function (x) {
+          if (String(x.stationId) === String(stationId)) st = x;
+        });
+        if (!st) return; // 这条方向不经过该站名的同名站（理论少见）
+        if (platforms.length && String(platforms[0].lat) === String(st.lat)
+            && String(platforms[0].lng) === String(st.lng)) {
+          // 同一物理站台（坐标一样）：只补方向名
+          platforms[0].toward += "、" + (line.endSn || "");
+          continue;
+        }
+        platforms.push({
+          lat: st.lat, lng: st.lng,
+          toward: line.endSn || "",
+          lineName: line.name,
+          lineId: line.lineId
+        });
+      } catch (e) { /* 单个方向失败不影响整体 */ }
+    }
+    return platforms;
+  }
+
+  /* 站点页主入口 */
+  async function openStationLinesPage(group) {
+    setStatus("正在加载站点…");
+    var name = group.name || "";
+    var stationId = group.stationId;
+
+    /* 先把首页已有的实时数据展示出来（不阻塞），再异步补方向坐标 */
+    state.lineView = null;
+    var titleEl = $("ltitle");
+    var subEl = $("lsub");
+    if (titleEl) titleEl.textContent = "站点 · " + name;
+    if (subEl) subEl.textContent = "正在获取各方向站台坐标…";
+    var dirs = $("ldirs");
+    if (dirs) dirs.innerHTML = "";
+    var chips = $("lchips");
+    if (chips) chips.innerHTML = "";
+    var navBox = $("lnav");
+    if (navBox) { navBox.className = "navrow hidden"; navBox.innerHTML = ""; }
+    var box = $("llist");
+    if (box) box.innerHTML = '<div class="empty">加载中…</div>';
+    showView("lineview");
+
+    /* 1) 已有的到站数据（首页 nearby 拿到的）先渲染 */
+    var arrivals = group.arrivals || [];
+    var platforms = [];
+    try { platforms = await fetchStationPlatforms(name, stationId); } catch (e) { platforms = []; }
+
+    /* 2) 顶部 🧭 导航（多方向时进页面先不弹窗，点按钮再选） */
+    if (navBox) {
+      navBox.className = "navrow";
+      navBox.innerHTML = "";
+      var label = document.createElement("span");
+      label.className = "navlabel";
+      label.textContent = platforms.length > 1
+        ? (platforms.length + " 个站台 ·") : "导航到";
+      navBox.appendChild(label);
+      var btns = document.createElement("div");
+      btns.className = "navbtns";
+      navBox.appendChild(btns);
+      platforms.forEach(function (pf) {
+        var btn = document.createElement("span");
+        btn.className = "navbtn";
+        btn.textContent = "🧭 开往 " + (pf.toward || "?");
+        btn.onclick = function () { navToPoint(name, pf.lat, pf.lng); };
+        btns.appendChild(btn);
+      });
+      if (!platforms.length) {
+        var tip = document.createElement("span");
+        tip.className = "navlabel";
+        tip.textContent = "未获取到站台坐标";
+        navBox.appendChild(tip);
+      }
+    }
+
+    /* 3) 到站列表：按线路分行（首页已有数据），卡片点击进线路详情 */
+    if (subEl) {
+      subEl.textContent = (platforms.length ? platforms.length + " 个站台 · " : "") +
+        (arrivals.length ? arrivals.length + " 条线路到站" : "暂无实时到站");
+    }
+    if (!box) return;
+    box.innerHTML = "";
+    if (!arrivals.length) {
+      box.innerHTML = '<div class="empty">这一站暂时没有即将到站的车辆</div>';
+      return;
+    }
+    arrivals.forEach(function (a) {
+      var card = document.createElement("div");
+      card.className = "bus tap";
+      var ended = outsideService(a.firstTime, a.lastTime, a);
+      var text = ended ? "不在运营时段"
+        : (a.etaSeconds !== null && a.etaSeconds !== undefined ? fmtEta(a.etaSeconds)
+          : (a.preStartTime ? "待发车 " + a.preStartTime : "暂无实时车辆"));
+      var hot = !ended && isUrgent(a);
+      card.innerHTML =
+        '<div class="head"><span class="line-name">' + (a.lineName || "") + "路</span>" +
+        '<span class="toward">往 ' + (a.toward || "") + "</span></div>" +
+        '<div class="eta' + (hot ? " hot" : "") + '">' + text + "</div>" +
+        '<div class="meta">' + (ended ? "该线路不在运营时段" : describe(a)) + "</div>";
+      card.onclick = function () {
+        openDetail({
+          lineId: a.lineId,
+          lineName: a.lineName,
+          stationId: a.stationId || stationId,
+          stationName: a.stationName || name,
+          fromOrder: a.stationOrder || 1,
+          title: (a.lineName || "") + "路 · " + name
+        });
+      };
+      box.appendChild(card);
+    });
+    setStatus("站点 · " + name + (platforms.length ? " · " + platforms.length + " 个站台" : ""));
+  }
+
   async function openStationView(fav) {
     setStatus("正在加载站点…");
     try {
@@ -4290,7 +4417,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.31";
+  var APP_FALLBACK_VERSION = "9.32";
 
   function fillAbout() {
     var verEl = $("abVersion");
