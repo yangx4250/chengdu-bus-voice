@@ -279,7 +279,7 @@ public final class ChelaileClient {
                 stop.put("name", st.optString("sn"));
                 stop.put("distanceMeters", st.optInt("distance"));
                 stop.put("lineNames", st.optString("lineNames"));
-                /* nearSts 本身不带坐标，先置 0；下面用 lineId 反查线路详情补齐 */
+                /* 站点经纬度：首页的 🧭 导航按钮要用（没有就点不了） */
                 stop.put("lat", st.optDouble("lat", 0));
                 stop.put("lng", st.optDouble("lng", 0));
                 JSONArray own = new JSONArray();
@@ -291,67 +291,10 @@ public final class ChelaileClient {
                 stops.put(stop);
             }
         }
-        /* 补齐站点坐标：nearSts 不带经纬度，但每个到站记录里有 lineId，
-           用线路详情就能查到该 stationId 的准确坐标（首页 🧭 导航要用）。
-           只补缺坐标的站，且每站最多试 2 条线路，避免请求过多。 */
-        fillStopCoordinates(stops, arrivals);
-
         JSONObject out = new JSONObject();
         out.put("stops", stops);
         out.put("allArrivals", arrivals);
         return out;
-    }
-
-    /** 用线路详情反查站点坐标，补到 stops[i].lat/lng 上。 */
-    private void fillStopCoordinates(JSONArray stops, JSONArray arrivals) {
-        java.util.HashMap<String, String> lineOfStation = new java.util.HashMap<>();
-        try {
-            for (int i = 0; i < arrivals.length(); i++) {
-                JSONObject a = arrivals.getJSONObject(i);
-                String sid = a.optString("stationId");
-                String lid = a.optString("lineId");
-                if (!sid.isEmpty() && !lid.isEmpty() && !lineOfStation.containsKey(sid)) {
-                    lineOfStation.put(sid, lid);
-                }
-            }
-        } catch (Exception ignored) {
-            return;
-        }
-
-        java.util.HashMap<String, JSONObject> detailCache = new java.util.HashMap<>();
-        for (int i = 0; i < stops.length(); i++) {
-            try {
-                JSONObject stop = stops.getJSONObject(i);
-                double lat = stop.optDouble("lat", 0);
-                double lng = stop.optDouble("lng", 0);
-                if (lat != 0 && lng != 0) continue;          // 已有坐标
-                String sid = stop.optString("stationId");
-                String lid = lineOfStation.get(sid);
-                if (lid == null) continue;
-
-                JSONObject detail = detailCache.get(lid);
-                if (detail == null) {
-                    try {
-                        detail = lineDetail(lid);
-                    } catch (Exception e) {
-                        continue;
-                    }
-                    detailCache.put(lid, detail);
-                }
-                JSONArray stations = detail.optJSONArray("stations");
-                if (stations == null) continue;
-                for (int k = 0; k < stations.length(); k++) {
-                    JSONObject st = stations.getJSONObject(k);
-                    if (sid.equals(st.optString("stationId"))) {
-                        stop.put("lat", st.optDouble("lat", 0));
-                        stop.put("lng", st.optDouble("lng", 0));
-                        break;
-                    }
-                }
-            } catch (Exception ignored) {
-                // 单个站补不到不影响整体
-            }
-        }
     }
 
     /**

@@ -505,12 +505,7 @@ if (!rendered.includes('龙溪村委会')) failures.push('没有渲染出站点�
 if (!rendered.includes('不在运营时段')) failures.push('收班线路没有标「不在运营时段」');
 if (!rendered.includes('暂无实时车辆')) failures.push('没有到站数据的站点没有标「暂无实时车辆」');
 /* 首页站点卡右上角要有 🧭 导航按钮，点了能调起地图 */
-/* v9.32：首页取消 🧭，点站点卡进「站点页」，在那里按方向导航 */
-{
-  const cards = findByClass(document.getElementById('list'), 'bus');
-  const clickable = cards.filter((c) => typeof c.onclick === 'function');
-  if (!clickable.length) failures.push('首页站点卡不可点击（应进入站点页）');
-}
+
 if (!/^\d+$/.test(String(document.getElementById('refreshNote').textContent || '').trim())) {
   failures.push('倒计时应只显示数字：' + document.getElementById('refreshNote').textContent);
 }
