@@ -878,7 +878,8 @@ if (!cardsHtml.includes('途经')) stage3.push('站点卡缺少途经线路');
 if (!/🔊/.test(cardsHtml)) stage3.push('线路行没有单独的播报按钮');
 const allRows = findByClass(document.getElementById('list'), 'armeta');
 const rowsWithoutSpeaker = allRows.filter((row) => !findByClass(row, 'spk').length);
-if (!/P49路[^›]*待发车 \d{2}:\d{2}/.test(cardsHtml)) {
+// 双排布局后「线路」和「待发车」分属两排，允许中间夹着按钮文本
+if (!/P49路[\s\S]{0,120}?待发车 \d{2}:\d{2}/.test(cardsHtml)) {
   stage3.push('没有在途车的行没有显示起点预估发车：' + cardsHtml.slice(-320));
 }
 if (rowsWithoutSpeaker.length) {

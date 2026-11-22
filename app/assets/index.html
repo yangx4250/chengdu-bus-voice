@@ -114,7 +114,14 @@
   .bus .eta.hot { color: var(--hot); }
   .bus .meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
   .armeta { display: flex; align-items: center; gap: 6px; }
-  .armeta .armain { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .armeta .armain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  /* 第一排：线路 → 方向（醒目、不省略，长了就换行） */
+  .armeta .armain-r1 { font-size: var(--fs); color: var(--text);
+    word-break: break-all; line-height: 1.35; }
+  /* 第二排：到站状态/时间（小一号、弱化色） */
+  .armeta .armain-r2 { font-size: var(--fs-sm); color: var(--muted);
+    word-break: break-all; line-height: 1.3; }
+  .armeta .armain-r2:empty { display: none; }
   .armeta .arrow { flex: 0 0 auto; color: #56637d; }
   .timesline { margin-top: 8px; font-size: var(--fs-sm); color: #8fa0bd; }
   .armeta .spk { flex: 0 0 auto; padding: 2px 8px; border: 1px solid var(--line);
@@ -1430,13 +1437,15 @@
         // 没有在途车 → 显示起点站的预估发车时间（车来了的发车预测）
         var short = departureShort(detail);
         if (short) {
-          mainEl.textContent = arrival.lineName + "路 → " + (arrival.toward || "") + "　" + short;
+          mainEl.innerHTML = "";
+          mainEl.appendChild(twoRowMain(arrival.lineName, arrival.toward, short));
         }
         return;
       }
-      var text = arrival.lineName + "路 → " + (arrival.toward || "") + "　" + describe(buses[0]);
-      if (buses.length > 1) text += " · 下辆 " + buses[1].stationsAway + " 站";
-      mainEl.textContent = text;
+      var statusText = describe(buses[0]);
+      if (buses.length > 1) statusText += " · 下辆 " + buses[1].stationsAway + " 站";
+      mainEl.innerHTML = "";
+      mainEl.appendChild(twoRowMain(arrival.lineName, arrival.toward, statusText));
     } catch (e) {
       /* 拿不到就保留首页接口给的那一条 */
     }
@@ -1492,8 +1501,6 @@
           row.className = "armeta";
           row.style.marginTop = "8px";
 
-          var main = document.createElement("span");
-          main.className = "armain";
           var text = dir.name + "路 → " + (dir.endSn || detail.endSn || "") + "　";
           var hot = false;
 
@@ -1517,7 +1524,9 @@
           }
           if (hot) row.style.color = "#ff6b5e";
 
-          main.textContent = text;
+          /* 双排：第一排线路→方向，第二排状态（从 text 里去掉前面的「线路 → 方向　」） */
+          var main = twoRowMain(dir.name, (dir.endSn || detail.endSn || ""),
+                                text.replace(/^.*?　/, ""));
           var spk = document.createElement("span");
           spk.className = "spk";
           spk.textContent = "🔊";
@@ -1616,9 +1625,8 @@
       if (ended) row.style.opacity = ".5";
       else if (hot) row.style.color = "#ff6b5e";
 
-      var main = document.createElement("span");
-      main.className = "armain";
-      main.textContent = text;
+      var main = twoRowMain(arrival.lineName, (other.endSn || detail.endSn || ""),
+                            text.replace(/^.*?　/, ""));
 
       var spk = document.createElement("span");
       spk.className = "spk";
@@ -1703,6 +1711,21 @@
       };
       list.appendChild(card);
     });
+  }
+
+  /* 站点行的双排主文案：第一排「线路 → 方向」，第二排「状态/时间」 */
+  function twoRowMain(lineName, toward, statusText) {
+    var main = document.createElement("span");
+    main.className = "armain";
+    var r1 = document.createElement("span");
+    r1.className = "armain-r1";
+    r1.textContent = lineName + "路 → " + (toward || "");
+    var r2 = document.createElement("span");
+    r2.className = "armain-r2";
+    r2.textContent = statusText || "";
+    main.appendChild(r1);
+    main.appendChild(r2);
+    return main;
   }
 
   /* 附近站点分组：同一地点（名称近似 + 距离接近）合成一张卡 */
@@ -1792,9 +1815,8 @@
           : preStart ? ("待发车 " + preStart)
           : "暂无实时车辆";
 
-        var main = document.createElement("span");
-        main.className = "armain";
-        main.textContent = a.lineName + "路 → " + (a.toward || "") + "　" + liveText;
+        /* 双排布局：第一排「线路 → 方向」，第二排「状态 + 时间」 */
+        var main = twoRowMain(a.lineName, a.toward, liveText);
 
         var spk = document.createElement("span");
         spk.className = "spk";
@@ -4249,7 +4271,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.42";
+  var APP_FALLBACK_VERSION = "9.43";
 
   function fillAbout() {
     var verEl = $("abVersion");
