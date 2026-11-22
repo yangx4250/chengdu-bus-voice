@@ -1227,6 +1227,19 @@ console.log('✓ 收藏进详情通过：芯片显示「已过收藏站 · 距�
       // 到站表要更新成选中那辆车的（dlist 里有车牌行）
       const dlistText = textOf(document.getElementById('dlist'));
       if (!/车牌/.test(dlistText)) stage5b.push('到站表没有车牌行：' + dlistText.slice(0, 80));
+
+      /* 车辆页整行点击不应触发下车提醒（只有 🔔 图标本身可点） */
+      {
+        const vrows = findByClass(document.getElementById('vlist'), 'srow');
+        if (vrows.length) {
+          const beforeAlight = alightServiceLog.length;
+          if (typeof vrows[0].onclick === 'function') vrows[0].onclick({ target: { getAttribute: () => null } });
+          await new Promise((r) => setTimeout(r, 100));
+          if (alightServiceLog.length > beforeAlight) {
+            stage5b.push('车辆页整行点击触发了下车提醒（应只有 🔔 可点）');
+          }
+        }
+      }
       if (exitLog.length !== beforeExit0) stage5b.push('点车辆芯片触发了退出');
 
       // ② 详情页返回 → 回首页

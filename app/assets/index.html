@@ -188,11 +188,14 @@
   .dwatchstop { font-size: 12px; color: #6b7c99; padding: 4px 8px; border-radius: 8px;
     border: 1px solid var(--line); white-space: nowrap; }
   .dwatchstop:active { background: #22304a; color: #fff; }
+  .srow .stpin { padding: 2px 3px; border-radius: 6px; cursor: pointer; }
   .stpin.off { opacity: .28; }
 
   /* 下车提醒：站点行 🔔、详情页状态条、首页卡片 */
-  .srow .bell { flex: 0 0 auto; padding: 2px 7px; border: 1px solid var(--line);
-    border-radius: 8px; font-size: 12px; line-height: 1; color: #b9c6dd; }
+  /* 🔔 只让图标本身可点：去掉横向 padding，收紧到字形大小 */
+  .srow .bell { flex: 0 0 auto; padding: 2px 3px; border: 1px solid var(--line);
+    border-radius: 6px; font-size: 13px; line-height: 1; color: #b9c6dd;
+    cursor: pointer; }
   .srow .bell:active { background: #22304a; }
   .srow .bell.on { border-color: var(--hot); color: #ffd9d4; background: #3a1f22; }
   #alightbar { border-color: var(--hot); }
@@ -3742,12 +3745,9 @@
             startAlight(order);
           };
         }
-        rowEl.onclick = function (ev) {
-          if (ev && ev.target && ev.target.getAttribute) {
-            if (ev.target.getAttribute("data-bell") || ev.target.getAttribute("data-pin")) return;
-          }
-          startAlight(order);
-        };
+        /* 整行不再触发下车提醒 —— 之前点行内任意位置都会设提醒，误触太多。
+           现在只有 🔔 图标本身可点（它的 onclick 在上面已单独绑定）。 */
+        rowEl.onclick = null;
       })(rows[i]);
     }
 
