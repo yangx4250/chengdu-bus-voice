@@ -275,10 +275,6 @@
   /* 车辆页里离我最近的站：绿色描边高亮 + 「离我最近」徽标 */
   .srow.nearest { border-color: var(--ok); background: #12302a; }
   .srow.nearest .sname { color: #d8fff1; font-weight: 600; }
-  /* 站点名后面的方向小字（同名双向站区分用） */
-  .bus .dirtag { display: block; font-size: 11px; font-weight: 400;
-    color: var(--muted); margin-top: 3px; white-space: nowrap;
-    overflow: hidden; text-overflow: ellipsis; }
   /* 首页站点卡右上角的导航图标 */
   .bus .stopnav { display: inline-block; font-size: 15px; line-height: 1;
     padding: 2px 5px; margin: 0 2px; border-radius: 8px; vertical-align: middle;
@@ -1629,26 +1625,27 @@
   }
 
   /* 附近站点分组：同一地点（名称近似 + 距离接近）合成一张卡 */
-  /* 按 stationId 严格分组：同名双向站点是**两个不同的站台**（stationId 不同），
-     以前用 nameDistance<=2 && 距离差<=30 合并，把对向站台并成一个，
-     导致「开往哪个方向」和「准确坐标」都拿不到。
-     现在每个站台单独成组，界面上分别显示方向。 */
   function buildGroups(stops) {
     var groups = [];
-    var seen = {};
     (stops || []).forEach(function (stop) {
-      var id = String(stop.stationId || stop.name || "");
-      if (seen[id]) {
-        /* 同 stationId 出现多次：合并线路与到站（不会混淆方向） */
-        var g = seen[id];
-        g.distance = Math.min(g.distance, stop.distanceMeters || g.distance);
-        if (stop.lineNames && g.lineNames && g.lineNames.indexOf(stop.lineNames) < 0) {
-          g.lineNames += "、" + stop.lineNames;
+      for (var g = 0; g < groups.length; g++) {
+        var existing = groups[g];
+        var same = nameDistance(existing.name, stop.name) <= 2;
+        var near = Math.abs(existing.distance - stop.distanceMeters) <= 30;
+        if (same && near) {
+          existing.distance = Math.min(existing.distance, stop.distanceMeters);
+          if (stop.lineNames) {
+            existing.lineNames = existing.lineNames
+              ? existing.lineNames + "、" + stop.lineNames
+              : stop.lineNames;
+          }
+          existing.arrivals = existing.arrivals.concat(stop.arrivals || []);
+          /* 合并时保留第一个非零坐标，供首页 🧭 导航使用 */
+          if (!existing.lat && stop.lat) { existing.lat = stop.lat; existing.lng = stop.lng; }
+          return;
         }
-        g.arrivals = g.arrivals.concat(stop.arrivals || []);
-        return;
       }
-      var group = {
+      groups.push({
         name: stop.name || "",
         distance: stop.distanceMeters,
         stationId: stop.stationId,
@@ -1658,9 +1655,7 @@
         lat: stop.lat || 0,
         lng: stop.lng || 0,
         arrivals: (stop.arrivals || []).slice()
-      };
-      seen[id] = group;
-      groups.push(group);
+      });
     });
     return groups;
   }
@@ -1765,17 +1760,7 @@
       var stopFav = loadFavs().some(function (f) {
         return favType(f) === "station" && String(f.stationId) === String(group.stationId);
       });
-      /* 站点标题：同名双向站会分成两张卡，用「开往 X」标出方向，避免混淆 */
-      var dirHint = "";
-      if (rows.length) {
-        var tows = {};
-        rows.forEach(function (a) { if (a.toward) tows[a.toward] = 1; });
-        var towList = Object.keys(tows);
-        if (towList.length === 1) dirHint = " · 开往 " + towList[0];
-        else if (towList.length > 1) dirHint = " · " + towList.length + " 个方向";
-      }
       card.innerHTML = '<div class="head"><span class="line-name">' + group.name +
-        (dirHint ? '<small class="dirtag">' + dirHint + '</small>' : '') +
         '</span><span class="toward">' + group.distance + ' 米' +
         ' <span class="stopnav" title="导航到这个站">🧭</span>' +
         ' <span class="stopstar">' + (stopFav ? "★" : "☆") + '</span></span></div>';
@@ -4221,7 +4206,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.29";
+  var APP_FALLBACK_VERSION = "9.30";
 
   function fillAbout() {
     var verEl = $("abVersion");
