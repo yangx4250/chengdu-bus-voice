@@ -1589,6 +1589,19 @@
   }
 
   /* 在一条线路的站点表里按 stationId（退化为站名）找站 */
+  /* 判断两个站是不是「同一个站」。
+     注意：不能只看 stationId —— 一条线上多个「招呼站」会共用同一个 stationId
+     （实测 P36 去程有 5 个招呼站都是 028-4519），只比 stationId 会导致
+     点其中一个，5 个一起高亮。order 才是这条线里的唯一位置标识。 */
+  function sameStation(a, b) {
+    if (!a || !b) return false;
+    if (a.order !== undefined && a.order !== null &&
+        b.order !== undefined && b.order !== null) {
+      return Number(a.order) === Number(b.order);
+    }
+    return a.stationId === b.stationId;
+  }
+
   function findStation(detail, stationId, name) {
     var list = (detail && detail.stations) || [];
     for (var i = 0; i < list.length; i++) if (list[i].stationId === stationId) return list[i];
@@ -2088,14 +2101,25 @@
     });
   }
 
-  /* 切到同一条线的另一方向；尽量保住当前选中的站（两个方向共用 sId） */
+  /* 切到同一条线的另一方向；尽量保住当前选中的站。
+     两个方向共用 sId，但同一方向的「招呼站」也会共用 sId，
+     所以先用 order 精确定位，找不到再退回 stationId。 */
   async function pickDirection(lineId) {
+    var keepOrder = state.station ? state.station.order : null;
     var keepStationId = state.station ? state.station.stationId : null;
     var detail = await rpc("detail", { lineId: lineId });
     state.detail = detail;
-    state.station = keepStationId
-      ? (detail.stations.find(function (s) { return s.stationId === keepStationId; }) || null)
-      : null;
+    state.station = null;
+    if (keepOrder !== null && keepOrder !== undefined) {
+      state.station = detail.stations.find(function (s) {
+        return Number(s.order) === Number(keepOrder);
+      }) || null;
+    }
+    if (!state.station && keepStationId) {
+      state.station = detail.stations.find(function (s) {
+        return s.stationId === keepStationId;
+      }) || null;
+    }
     state.directions = await loadDirections(detail.name);
     renderHomeDirections();
     renderStationChips();
@@ -2142,7 +2166,7 @@
     if (!state.detail) return;
     state.detail.stations.slice(0, 60).forEach(function (station) {
       var chip = document.createElement("div");
-      chip.className = "chip" + (state.station && state.station.stationId === station.stationId ? " on" : "");
+      chip.className = "chip" + (sameStation(state.station, station) ? " on" : "");
       chip.textContent = station.name;
       chip.onclick = function () {
         state.station = station;
@@ -2471,11 +2495,13 @@
     /* 离我最近的站：用当前定位算，线路页的站名条也要标出来 */
     var nearSt = nearestStation(lv.stations);
     var nearestId = nearSt ? nearSt.stationId : null;
+    var nearestOrder = nearSt ? Number(nearSt.order) : null;
     lv.stations.slice(0, 60).forEach(function (station) {
       var chip = document.createElement("div");
-      var isNearest = nearestId && station.stationId === nearestId;
+      /* 招呼站会共用 stationId，最近站/选中都按 order 比，避免一串一起亮 */
+      var isNearest = nearestOrder !== null && Number(station.order) === nearestOrder;
       var classes = "chip";
-      if (state.station && state.station.stationId === station.stationId) classes += " on";
+      if (sameStation(state.station, station)) classes += " on";
       if (isNearest) classes += " nearest";
       chip.className = classes;
       /* 站名单独一个 span：徽标是绝对定位的，不能被当成正文挤在一起 */
@@ -4477,7 +4503,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.53";
+  var APP_FALLBACK_VERSION = "9.54";
 
   function fillAbout() {
     var verEl = $("abVersion");

@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v9.53）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v9.54）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -510,6 +510,9 @@ Java 合成 mp3 → base64 → WebView <audio> 播放
 - 搜区县线路（`都江堰` / `简阳` / `彭州` / `崇州` / `蒲江` / `新津`）会自动展开数字前缀：
   接口单次只返回 10 条（5 条线 × 上下行），前端会查 `都江堰0..9`，对返回满 10 条的
   前缀再补 `都江堰i0..i9`，实测 `都江堰` 从 5 条 → **34 条**（40 次请求，不是盲扫 110 次）；
+- 站点选中按 **order**（这条线上的位置）判定，不按 `stationId`：真实数据里一条线上的
+  多个「招呼站」共用同一个 `stationId`（实测 P36 去程 5 个招呼站都是 `028-4519`），
+  只比 `stationId` 会导致点一个、一串一起高亮；
 - 搜索结果**按线路名自然顺序排列**（字母按字典序、数字按数值大小，
   `2` < `10`、`36` < `361`、`136` < `P36` < `T36`），同一条线只显示一次（不列上下行）；
 - 在搜索结果里点一条线路，进的是**线路页**（`#lineview`），不再退回首页：

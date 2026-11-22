@@ -324,8 +324,12 @@ const bridge = {
           firstTime: '06:00', lastTime: '22:30',
           stations: [
             { stationId: '028-9', order: 1, name: '郫都区客运中心', lat: 30.8, lng: 103.9 },
+            /* 真实数据里一条线上的多个「招呼站」共用同一个 stationId（P36 去程 5 个都是
+               028-4519），选中必须按 order 判，否则点一个会亮一串 */
+            { stationId: '028-4519', order: 3, name: '招呼站', lat: 30.79, lng: 103.88 },
+            { stationId: '028-4519', order: 7, name: '招呼站', lat: 30.75, lng: 103.9 },
             { stationId: '028-1', order: 5, name: '花园公交站', lat: 30.7, lng: 103.95 },
-            { stationId: '028-3', order: 3, name: '友爱公交站', lat: 30.6, lng: 103.9 },
+            { stationId: '028-3', order: 9, name: '友爱公交站', lat: 30.6, lng: 103.9 },
           ],
         } });
       }
@@ -780,6 +784,41 @@ const stationChips = findByClass(document.getElementById('lchips'), 'chip');
 if (!stationChips.length) {
   console.error('✗ UI 冒烟失败：选线路后没有出现站名芯片');
   process.exit(1);
+}
+
+/* 同名同 stationId 的站（「招呼站」）必须各选各的：
+   点其中一个，只能亮它自己，不能一串一起亮。 */
+{
+  const chips = findByClass(document.getElementById('lchips'), 'chip');
+  const zhao = chips.filter((c) => textOf(c).includes('招呼站'));
+  if (zhao.length < 2) {
+    stage2.push('桩数据里应该有 2 个同名招呼站，实际 ' + zhao.length + ' 个');
+  } else {
+    /* 点第 2 个招呼站（order 7），重渲染后应当只亮它自己。
+       重渲染会重建 DOM，所以先记下它的位置序号，不能拿旧元素在新数组里找。 */
+    const wantIdx = chips.indexOf(zhao[1]);
+    zhao[1].onclick();
+    await new Promise((r) => setTimeout(r, 400));
+    const after = findByClass(document.getElementById('lchips'), 'chip');
+    const on = after.filter((c) => String(c.className).includes(' on'));
+    if (on.length !== 1) {
+      stage2.push('点一个招呼站亮了 ' + on.length + ' 个（应按 order 只亮 1 个）');
+    } else {
+      if (!textOf(on[0]).includes('招呼站')) {
+        stage2.push('点招呼站后高亮的不是它自己：' + textOf(on[0]).slice(0, 40));
+      }
+      if (after.indexOf(on[0]) !== wantIdx) {
+        stage2.push('高亮的是另一个同名站（位置 ' + after.indexOf(on[0]) + '，应为 ' + wantIdx + '），order 没生效');
+      }
+    }
+    /* 恢复选中「花园公交站」，后面的导航断言依赖它 */
+    const garden = findByClass(document.getElementById('lchips'), 'chip')
+      .filter((c) => textOf(c).includes('花园公交站'))[0];
+    if (garden) {
+      garden.onclick();
+      await new Promise((r) => setTimeout(r, 400));
+    }
+  }
 }
 
 // 线路页站名条也要标出「离我最近」的那一站（定位桩 30.657,104.065，
