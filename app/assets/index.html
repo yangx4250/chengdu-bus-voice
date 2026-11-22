@@ -266,8 +266,9 @@
   .dhead { color: var(--muted); font-size: 13px; margin: 6px 2px 10px; }
   .srow { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--card);
     border: 1px solid var(--line); border-radius: 12px; margin-bottom: 8px; }
-  .srow .sname { flex: 1; min-width: 0; font-size: 15px; white-space: nowrap;
-    overflow: hidden; text-overflow: ellipsis; }
+  /* 站名允许换行：长站名（如「西门车站（地铁花牌坊站D口）」）不截断 */
+  .srow .sname { flex: 1; min-width: 0; font-size: 15px;
+    line-height: 1.4; word-break: break-all; }
   .srow .swhen { flex: 0 0 auto; font-size: 15px; font-weight: 600; color: var(--accent);
     white-space: nowrap; }
   .srow.hot .swhen { color: var(--hot); }
@@ -4124,7 +4125,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.38";
+  var APP_FALLBACK_VERSION = "9.39";
 
   function fillAbout() {
     var verEl = $("abVersion");
