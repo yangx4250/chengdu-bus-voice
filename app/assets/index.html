@@ -275,6 +275,24 @@
   /* 车辆页里离我最近的站：绿色描边高亮 + 「离我最近」徽标 */
   .srow.nearest { border-color: var(--ok); background: #12302a; }
   .srow.nearest .sname { color: #d8fff1; font-weight: 600; }
+  /* 导航方向选择弹窗 */
+  .navpick { position: fixed; inset: 0; background: rgba(4,8,16,.72); z-index: 70;
+    display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .navpick.hidden { display: none; }
+  .navpick .npbox { width: 100%; max-width: 420px; background: var(--card);
+    border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+  .navpick .nptitle { font-size: var(--fs-lg); font-weight: 700; margin-bottom: 4px; }
+  .navpick .npsub { font-size: var(--fs-sm); color: var(--muted); margin-bottom: 12px; }
+  .navpick .nplist { display: flex; flex-direction: column; gap: 8px; }
+  .navpick .npitem { display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+    background: #16233a; border: 1px solid var(--line); border-radius: 12px; }
+  .navpick .npitem:active { background: #1b2b46; border-color: var(--accent); }
+  .navpick .npitem .npdir { flex: 1; min-width: 0; font-size: var(--fs); color: #d6e2f7;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .navpick .npitem .npgo { flex: 0 0 auto; font-size: var(--fs-sm); color: var(--accent); }
+  .navpick .npbtns { display: flex; margin-top: 12px; }
+  .navpick .npbtns button { flex: 1; }
+
   /* 首页站点卡右上角的导航图标 */
   .bus .stopnav { display: inline-block; font-size: 15px; line-height: 1;
     padding: 2px 5px; margin: 0 2px; border-radius: 8px; vertical-align: middle;
@@ -423,6 +441,15 @@
   </footer>
 
   <div id="toast"></div>
+
+  <!-- 导航方向选择：同一个站有多个方向时，让用户挑「开往 XX」的那个站台 -->
+  <div id="navpick" class="navpick hidden">
+    <div class="npbox">
+      <div class="nptitle" id="nptitle">选择导航方向</div>
+      <div class="nplist" id="nplist"></div>
+      <div class="npbtns"><button id="npcancel">取消</button></div>
+    </div>
+  </div>
 </div>
 
 <div id="diag" class="hidden">
@@ -1627,6 +1654,25 @@
   /* 附近站点分组：同一地点（名称近似 + 距离接近）合成一张卡 */
   function buildGroups(stops) {
     var groups = [];
+
+    /* 把一个站台（stationId + 坐标 + 方向）记进候选列表，供导航弹窗选择 */
+    function addPlatform(group, stop) {
+      var lat = Number(stop.lat), lng = Number(stop.lng);
+      if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) return;
+      if (!group.platforms) group.platforms = [];
+      var toward = "";
+      (stop.arrivals || []).forEach(function (a) { if (a.toward) toward = a.toward; });
+      for (var i = 0; i < group.platforms.length; i++) {
+        var pf = group.platforms[i];
+        if (String(pf.stationId) === String(stop.stationId)) return;   // 同一站台不重复
+      }
+      group.platforms.push({
+        stationId: stop.stationId,
+        lat: lat, lng: lng,
+        toward: toward
+      });
+    }
+
     (stops || []).forEach(function (stop) {
       for (var g = 0; g < groups.length; g++) {
         var existing = groups[g];
@@ -1640,12 +1686,12 @@
               : stop.lineNames;
           }
           existing.arrivals = existing.arrivals.concat(stop.arrivals || []);
-          /* 合并时保留第一个非零坐标，供首页 🧭 导航使用 */
           if (!existing.lat && stop.lat) { existing.lat = stop.lat; existing.lng = stop.lng; }
+          addPlatform(existing, stop);
           return;
         }
       }
-      groups.push({
+      var group = {
         name: stop.name || "",
         distance: stop.distanceMeters,
         stationId: stop.stationId,
@@ -1654,8 +1700,11 @@
         lineNameList: stop.lineNameList || null,
         lat: stop.lat || 0,
         lng: stop.lng || 0,
+        platforms: [],
         arrivals: (stop.arrivals || []).slice()
-      });
+      };
+      addPlatform(group, stop);
+      groups.push(group);
     });
     return groups;
   }
@@ -1784,14 +1833,8 @@
         navEl.onclick = (function (stop) {
           return function (ev) {
             if (ev && ev.stopPropagation) ev.stopPropagation();
-            var lat = Number(stop.lat), lng = Number(stop.lng);
-            /* 首页的 nearby 结果可能没有经纬度，这时用当前定位兜底（导航到自己附近意义不大），
-               所以优先用站点坐标；没有就提示。 */
-            if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) {
-              setStatus("这个站没有坐标，无法导航", true);
-              return;
-            }
-            navToPoint(stop.name, lat, lng);
+            /* 有多个站台（不同方向）时弹窗让用户选「开往 XX」 */
+            chooseDirectionThenNav(stop.name, stop.platforms);
           };
         })(group);
       }
@@ -2082,6 +2125,47 @@
     } else {
       setStatus(res.error || "导航失败", true);
     }
+  }
+
+  /* 导航前先让用户选方向：同一个站有多个站台时，弹出「开往 XX」让用户挑。
+     只有一个站台时直接导航，不弹窗打扰。 */
+  function chooseDirectionThenNav(name, platforms) {
+    if (!platforms || !platforms.length) {
+      setStatus("这个站没有坐标，无法导航", true);
+      return;
+    }
+    if (platforms.length === 1) {
+      navToPoint(name, platforms[0].lat, platforms[0].lng);
+      return;
+    }
+    var box = $("navpick");
+    var list = $("nplist");
+    if (!box || !list) { navToPoint(name, platforms[0].lat, platforms[0].lng); return; }
+    $("nptitle").textContent = name;
+    list.innerHTML = "";
+    platforms.forEach(function (pf) {
+      var item = document.createElement("div");
+      item.className = "npitem";
+      var dir = document.createElement("span");
+      dir.className = "npdir";
+      dir.textContent = pf.toward ? ("开往 " + pf.toward) : "这个方向的站台";
+      var go = document.createElement("span");
+      go.className = "npgo";
+      go.textContent = "导航 ›";
+      item.appendChild(dir);
+      item.appendChild(go);
+      item.onclick = function () {
+        closeNavPick();
+        navToPoint(name, pf.lat, pf.lng);
+      };
+      list.appendChild(item);
+    });
+    box.className = "navpick";
+  }
+
+  function closeNavPick() {
+    var box = $("navpick");
+    if (box) box.className = "navpick hidden";
   }
 
   /* 通用导航：给「站名 + 坐标」直接调起地图（首页站点用） */
@@ -4206,7 +4290,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.30";
+  var APP_FALLBACK_VERSION = "9.31";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -4436,6 +4520,11 @@
     setStatus("示例 " + sampleIndex + "/" + SAMPLE_TEXTS.length);
     speak(text, true);
   };
+  $("npcancel").onclick = closeNavPick;
+  $("navpick").onclick = function (ev) {
+    if (ev && ev.target === this) closeNavPick();   // 点遮罩关闭
+  };
+
   $("dBattery").onclick = function () {
     if (!bridge || !bridge.requestIgnoreBatteryOptimization) {
       setStatus("要在 App 里才能设置", true);

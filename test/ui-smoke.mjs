@@ -491,6 +491,32 @@ if (!rendered.includes('不在运营时段')) failures.push('收班线路没有�
 if (!rendered.includes('暂无实时车辆')) failures.push('没有到站数据的站点没有标「暂无实时车辆」');
 /* 首页站点卡右上角要有 🧭 导航按钮，点了能调起地图 */
 if (!rendered.includes('🧭')) failures.push('首页站点卡没有导航按钮');
+/* 多方向的站点点 🧭 应弹出方向选择弹窗；单方向的直接导航 */
+{
+  const navIcons = findByText(document.getElementById('list'), '🧭');
+  if (navIcons.length) {
+    navIcons[0].onclick({ stopPropagation() {} });
+    await new Promise((r) => setTimeout(r, 100));
+    const pick = document.getElementById('navpick');
+    const shown = !String(pick.className).includes('hidden');
+    /* 桩里「花园永泉」和「花园永泉东」名字相近会合并成一组 → 2 个站台 → 应弹窗 */
+    if (!shown) {
+      failures.push('多方向的站点点导航没有弹出方向选择');
+    } else {
+      const items = findByClass(pick, 'npitem');
+      if (items.length < 2) failures.push('方向选择弹窗选项不足（应 >=2）：' + items.length);
+      // 选项里应有「开往」字样
+      const txt = items.map((x) => textOf(x)).join('|');
+      if (!/开往|站台/.test(txt)) failures.push('方向选项没有标明开往方向：' + txt.slice(0, 80));
+      // 点第一项应该调起导航
+      const before = navLog.length;
+      items[0].onclick({ stopPropagation() {} });
+      await new Promise((r) => setTimeout(r, 100));
+      if (navLog.length !== before + 1) failures.push('选完方向没有调起导航');
+      document.getElementById('npcancel').onclick();
+    }
+  }
+}
 if (!/^\d+$/.test(String(document.getElementById('refreshNote').textContent || '').trim())) {
   failures.push('倒计时应只显示数字：' + document.getElementById('refreshNote').textContent);
 }
