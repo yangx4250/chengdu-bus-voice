@@ -518,6 +518,41 @@ await new Promise((r) => setTimeout(r, 600));
   }
 }
 
+/* 搜索必须做「前缀 + 尾缀」双向扩展：
+   车来了 query!nSearch 单次最多返回约 10 条（lineCount 给的是真实总数），
+   只查一个 key 一定漏线路。这里验证 36 → 会去查 360..369 和 136..936。 */
+{
+  const searchLines = window.cdBusSearchLines;
+  if (typeof searchLines !== 'function') {
+    console.error('✗ 没有暴露 cdBusSearchLines');
+    process.exit(1);
+  }
+  const queries = [];
+  const origStart = window.AndroidBus.start;
+  window.AndroidBus.start = function (method, payload) {
+    if (method === 'lines') queries.push(String(JSON.parse(payload).key));
+    return origStart.apply(this, arguments);
+  };
+  localStorage.removeItem('cdbus.lines2.36');
+  await searchLines('36');
+  window.AndroidBus.start = origStart;
+
+  const hasPrefix = queries.some((q) => q === '360' || q === '369');
+  const hasSuffix = queries.some((q) => q === '136' || q === '936');
+  if (!hasPrefix) {
+    console.error('✗ 搜索 36 没有做前缀扩展（应查 360~369）：' + queries.join(','));
+    process.exit(1);
+  }
+  if (!hasSuffix) {
+    console.error('✗ 搜索 36 没有做尾缀扩展（应查 136~936）：' + queries.join(','));
+    process.exit(1);
+  }
+  if (queries.length < 15) {
+    console.error('✗ 搜索 36 查询次数太少（' + queries.length + '）：' + queries.join(','));
+    process.exit(1);
+  }
+}
+
 // ---------------------------------------------------------------- 断言
 
 const list = document.getElementById('list');
