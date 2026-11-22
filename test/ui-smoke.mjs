@@ -261,8 +261,10 @@ const bridge = {
         return JSON.stringify({ state: 'ok', data: rows });
       }
       const pLines = [
-        { lineId: '028-p36-0', name: 'P36', endSn: '花园公交站', startSn: '郫都区客运中心', direction: 0, firstTime: '06:00', lastTime: '22:30' },
-        { lineId: '028-p36-1', name: 'P36', endSn: '郫都区客运中心', startSn: '花园公交站', direction: 1, firstTime: '06:00', lastTime: '22:30' },
+        /* 真实搜索接口不返回首末班（P36 两个方向都是空），
+           必须靠详情接口补；两个方向故意给不同时间，验证各显示各的 */
+        { lineId: '028-p36-0', name: 'P36', endSn: '花园公交站', startSn: '郫都区客运中心', direction: 0 },
+        { lineId: '028-p36-1', name: 'P36', endSn: '郫都区客运中心', startSn: '花园公交站', direction: 1 },
         { lineId: '028-p02-0', name: 'P02', endSn: '花园公交站', startSn: '郫都区客运中心', direction: 0, firstTime: '00:00', lastTime: '23:59' },
         { lineId: '028-p02-1', name: 'P02', endSn: '郫都区客运中心', startSn: '花园公交站', direction: 1, firstTime: '00:00', lastTime: '23:59' },
         { lineId: '028-p49-0', name: 'P49', endSn: '友爱公交站', startSn: '花园永泉', direction: 0, firstTime: '00:00', lastTime: '23:59' },
@@ -319,9 +321,14 @@ const bridge = {
         } });
       }
       if (lineId.includes('p36')) {
+        /* 两个方向的首末班不同（真实数据常见：去程早、回程晚） */
+        const back = lineId.endsWith('-1');
         return JSON.stringify({ state: 'ok', data: {
-          lineId: '028-p36-0', name: 'P36', startSn: '郫都区客运中心', endSn: '花园公交站',
-          firstTime: '06:00', lastTime: '22:30',
+          lineId: back ? '028-p36-1' : '028-p36-0', name: 'P36',
+          startSn: back ? '花园公交站' : '郫都区客运中心',
+          endSn: back ? '郫都区客运中心' : '花园公交站',
+          firstTime: back ? '06:30' : '06:00',
+          lastTime: back ? '19:30' : '22:30',
           stations: [
             { stationId: '028-9', order: 1, name: '郫都区客运中心', lat: 30.8, lng: 103.9 },
             /* 真实数据里一条线上的多个「招呼站」共用同一个 stationId（P36 去程 5 个都是
@@ -778,6 +785,41 @@ if (!String(document.getElementById('home').className).includes('hidden')) {
 const homeListBefore = String(document.getElementById('list').innerHTML || '');
 if (!homeListBefore.includes('花园永泉')) {
   stage2.push('进线路页后首页的附近站点被顶掉了：' + homeListBefore.slice(0, 120));
+}
+
+/* 线路页每个方向 chip 下面要显示这个方向自己的首末班。
+   搜索接口不返回首末班，得靠详情接口补，所以这里等一小会儿。 */
+{
+  const dirsBox = document.getElementById('ldirs');
+  const dirChips = findByClass(dirsBox, 'chip');
+  if (!dirChips.length) {
+    stage2.push('线路页没有方向 chip');
+  } else {
+    await new Promise((r) => setTimeout(r, 900));   // fillDirectionTimes 是异步补的
+    const filled = findByClass(document.getElementById('ldirs'), 'chip');
+    const texts = filled.map((c) => textOf(c));
+    texts.forEach((t, i) => {
+      if (!/首班 \d{2}:\d{2}/.test(t)) stage2.push('方向 chip ' + i + ' 没显示首班：' + t);
+      if (!/末班 \d{2}:\d{2}/.test(t)) stage2.push('方向 chip ' + i + ' 没显示末班：' + t);
+    });
+    /* 每个方向显示的是自己的首末班（桩里去程 06:00·22:30 / 回程 06:30·19:30） */
+    const onIdx = filled.findIndex((c) => String(c.className).includes(' on'));
+    const allText = texts.join('|');
+    if (!allText.includes('06:00') || !allText.includes('22:30')) {
+      stage2.push('没显示去程的首末班：' + allText);
+    }
+    if (!allText.includes('06:30') || !allText.includes('19:30')) {
+      stage2.push('没显示回程的首末班：' + allText);
+    }
+    if (onIdx >= 0 && !texts[onIdx].includes('06:00')) {
+      stage2.push('当前方向 chip 显示的不是本方向的时间：' + texts[onIdx]);
+    }
+    // 每个 chip 内部应该是「方向 + 时间」两段
+    const timeEls = findByClass(document.getElementById('ldirs'), 'dirtime');
+    if (timeEls.length !== filled.length) {
+      stage2.push('方向 chip 的时间行数量不对：' + timeEls.length + '/' + filled.length);
+    }
+  }
 }
 
 const stationChips = findByClass(document.getElementById('lchips'), 'chip');

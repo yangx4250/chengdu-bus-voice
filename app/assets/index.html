@@ -54,6 +54,12 @@
     font-size: 13px; color: #b9c6dd; white-space: nowrap; line-height: 1.25;
     min-height: 34px; }
   .chip.on { border-color: var(--accent); color: #fff; }
+  /* 线路页的方向 chip：第一行方向，第二行该方向的首末班 */
+  .chip.dirchip { flex-direction: column; align-items: flex-start; gap: 1px;
+    border-radius: 12px; padding: 7px 12px; }
+  .chip.dirchip .dirname { font-size: 13px; line-height: 1.25; }
+  .chip.dirchip .dirtime { font-size: 11px; line-height: 1.3; color: var(--muted); }
+  .chip.dirchip.on .dirtime { color: #b9c6dd; }
   /* 站名条里「离我最近」的那一站 */
   .chip.nearest { border-color: var(--ok); background: #12302a; }
   .chip.nearest .nbadge { font-style: normal; font-size: 10px; line-height: 1.5;
@@ -1138,6 +1144,14 @@
     return parts.length ? "不在运营时段（" + parts.join(" · ") + "）" : "不在运营时段";
   }
 
+  /* 方向 chip 第二行：这个方向自己的首末班。缺一个就只显示另一个。 */
+  function serviceTimeText(firstTime, lastTime) {
+    var parts = [];
+    if (firstTime) parts.push("首班 " + firstTime);
+    if (lastTime) parts.push("末班 " + lastTime);
+    return parts.length ? parts.join(" · ") : "首末班未知";
+  }
+
   function stationLabel(name) {
     var text = String(name || "");
     return /站$/.test(text) ? text : text + "站";
@@ -1220,6 +1234,29 @@
       if (exact.length) return exact;
     }
     return all.filter(function (l) { return l.name && String(l.name).indexOf(keys[0]) === 0; });
+  }
+
+  /* 搜索接口不带首末班（实测 P36 两个方向都是空），只有 lineDetail 才给。
+     线路页要在每个方向下面显示各自的首末班，就得把每个方向的详情都查一遍。
+     详情页本身要缓存 3 天，所以这里直接用 getDetail，顺带把详情也热起来了。 */
+  async function fillDirectionTimes(directions) {
+    if (!directions || !directions.length) return directions;
+    /* 查过一次就标记，避免「详情也没有首末班」时反复重查+重渲染 */
+    var pending = directions.filter(function (d) {
+      return (!d.firstTime || !d.lastTime) && !d._timeTried;
+    });
+    pending.forEach(function (d) { d._timeTried = true; });
+    if (!pending.length) return directions;
+    var details = await Promise.all(pending.map(function (d) {
+      return getDetail(d.lineId).catch(function () { return null; });
+    }));
+    details.forEach(function (detail, idx) {
+      if (!detail) return;
+      var dir = pending[idx];
+      if (detail.firstTime) dir.firstTime = detail.firstTime;
+      if (detail.lastTime) dir.lastTime = detail.lastTime;
+    });
+    return directions;
   }
 
   /* 把某个元素滚到视口中间。
@@ -2443,8 +2480,16 @@
     if (!lv || !lv.directions || lv.directions.length < 2) return;
     lv.directions.forEach(function (dir) {
       var chip = document.createElement("div");
-      chip.className = "chip" + (dir.lineId === lv.lineId ? " on" : "");
-      chip.textContent = dirLabel(dir);
+      chip.className = "chip dirchip" + (dir.lineId === lv.lineId ? " on" : "");
+      /* 第一行方向，第二行这一方向的首末班（各方向不一样，得分开显示） */
+      var nameEl = document.createElement("span");
+      nameEl.className = "dirname";
+      nameEl.textContent = dirLabel(dir);
+      chip.appendChild(nameEl);
+      var timeEl = document.createElement("span");
+      timeEl.className = "dirtime";
+      timeEl.textContent = serviceTimeText(dir.firstTime, dir.lastTime);
+      chip.appendChild(timeEl);
       chip.onclick = function () {
         if (dir.lineId === lv.lineId) return;
         run(function () { return switchLineDirection(dir.lineId); });
@@ -2452,6 +2497,12 @@
       box.appendChild(chip);
     });
     centerActiveChip(box);
+    /* 首末班要额外查详情，先画方向（不阻塞），拿到后再补时间 */
+    if (lv.directions.some(function (d) { return (!d.firstTime || !d.lastTime) && !d._timeTried; })) {
+      fillDirectionTimes(lv.directions).then(function () {
+        if (state.lineView && state.lineView.directions === lv.directions) renderLineDirections();
+      }).catch(function () {});
+    }
   }
 
   function renderLineStations(opts) {
@@ -4471,7 +4522,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.55";
+  var APP_FALLBACK_VERSION = "9.56";
 
   function fillAbout() {
     var verEl = $("abVersion");
