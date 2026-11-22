@@ -1334,9 +1334,11 @@
     } else {
       /* 车来了 query!nSearch 接口有个硬限制：单次查询最多只返回约 8~10 条
          （lineCount 里给的是真实总数，搜索「1」真实 458 条却只吐 8 条）。
-         所以只查一个 key 一定漏。这里用「前缀 + 尾缀」双向扩展把结果凑全：
+         所以只查一个 key 一定漏。这里用三种扩展把结果凑全：
            · 前缀：36 → 36, 360..369（36x 系列）
            · 尾缀：36 → 136, 236..936（x36 系列，把「36路」本身捞回来）
+           · 区县：36 → 都江堰36, 简阳36, 彭州36…（这些线路名带地名前缀，
+             搜「36」时接口不会返回，必须显式带前缀才查得到）
          只有纯数字（1~3 位）才展开，避免「K1」「T36」这类前缀线路号炸出无数请求。 */
       var queries = [key];
       if (/^\d{1,3}$/.test(key)) {
@@ -1345,6 +1347,11 @@
         if (key.length <= 2) {
           for (var j = 1; j <= 9; j++) queries.push(j + key);
         }
+        /* 区县前缀：实测成都只有这几个区县用「地名+数字」命名线路 */
+        var REGION_PREFIXES = ["都江堰", "简阳", "彭州", "崇州", "蒲江", "新津"];
+        REGION_PREFIXES.forEach(function (prefix) {
+          queries.push(prefix + key);
+        });
       }
       var lists = await Promise.all(queries.map(function (q) {
         return rpc("lines", { key: q }).catch(function () { return []; });
@@ -1370,14 +1377,20 @@
     /* 排序：用户多半想找「就是这条线」的那一条。
        0 = 完全一致（36 → 36）
        1 = 以关键词开头（36 → 361 / 36A）
-       2 = 关键词在中间（36 → P36 / 136 / T36快）
-       3 = 其它（兜底，理论上不会出现） */
+       2 = 字母前缀 + 关键词（36 → P36 / T36 / T36快）——「36路的变体」，最相关
+       3 = 地名前缀 + 关键词（36 → 都江堰36）——同一线路号但不同片区
+       4 = 数字前缀 + 关键词（36 → 136 / 236）——其实是另一条线路，排后面
+       5 = 其它（兜底） */
     function rank(line) {
       var name = String(line.name).toUpperCase();
       if (name === upperKey) return 0;
       if (name.indexOf(upperKey) === 0) return 1;
-      if (name.indexOf(upperKey) > 0) return 2;
-      return 3;
+      var at = name.indexOf(upperKey);
+      if (at <= 0) return 5;
+      var prefix = name.slice(0, at);
+      if (/^[A-Z]{1,3}$/.test(prefix)) return 2;     // P36 / T36 / TG36
+      if (/^\d+$/.test(prefix)) return 4;            // 136 / 236
+      return 3;                                      // 都江堰36 / 简阳36
     }
     matches.sort(function (a, b) {
       var ra = rank(a), rb = rank(b);
@@ -4399,7 +4412,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.47";
+  var APP_FALLBACK_VERSION = "9.48";
 
   function fillAbout() {
     var verEl = $("abVersion");

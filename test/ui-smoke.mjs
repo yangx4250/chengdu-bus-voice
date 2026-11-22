@@ -547,7 +547,12 @@ await new Promise((r) => setTimeout(r, 600));
     console.error('✗ 搜索 36 没有做尾缀扩展（应查 136~936）：' + queries.join(','));
     process.exit(1);
   }
-  if (queries.length < 15) {
+  const hasRegion = queries.some((q) => q === '都江堰36' || q === '简阳36');
+  if (!hasRegion) {
+    console.error('✗ 搜索 36 没有查区县前缀线路（应查 都江堰36 / 简阳36）：' + queries.join(','));
+    process.exit(1);
+  }
+  if (queries.length < 20) {
     console.error('✗ 搜索 36 查询次数太少（' + queries.length + '）：' + queries.join(','));
     process.exit(1);
   }
