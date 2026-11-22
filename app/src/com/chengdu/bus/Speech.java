@@ -129,10 +129,6 @@ public final class Speech {
         return ttsReady ? "系统语音" : "在线语音";
     }
 
-    public String lastResult() {
-        return lastResult;
-    }
-
     /** 让页面把播放阶段的状态写进「最近结果」，方便一眼定位。 */
     public void note(String text) {
         lastResult = text;

@@ -26,8 +26,6 @@
   header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
   header .iconbtn { padding: 6px 10px; font-size: 17px; line-height: 1; border-radius: 10px; }
   header h1 { font-size: 21px; margin: 0; letter-spacing: .5px; }
-  header .tag { font-size: 11px; color: var(--accent); border: 1px solid var(--accent);
-    border-radius: 999px; padding: 2px 8px; }
 
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px;
     padding: 14px; margin-bottom: 12px; }
@@ -213,8 +211,6 @@
   .watchcard:active { background: #1b2b46; }
   .watchcard .wc-main { flex: 1; min-width: 0; }
   .watchcard .wc-title { font-size: 14px; font-weight: 600; color: #fff; }
-  .watchcard .wc-title .dot2 { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
-    background: var(--ok); margin-right: 6px; vertical-align: middle; }
   .watchcard .wc-sub { font-size: 12px; color: #9fb0cc; margin-top: 4px; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; }
   .watchcard .wc-go { font-size: 12px; color: var(--accent); white-space: nowrap; }
@@ -266,7 +262,6 @@
   .srow.passed { opacity: .45; }
   .srow.passed .swhen { color: var(--muted); font-weight: 400; }
   .srow .idx { color: var(--muted); font-size: 12px; width: 22px; text-align: right; }
-  .srow.speaking { border-color: var(--accent); background: #1a2740; }
   .srow { scroll-margin-top: var(--top-h, 210px); }
   .srow.current { border-color: var(--accent); background: #17233a; }
   .srow.picked { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -318,7 +313,7 @@
 
   body { font-size: var(--fs); padding: var(--pad) var(--pad) 96px; }
   header h1 { font-size: var(--fs-xl); }
-  header .tag, .locbar, .refreshnote, #toast { font-size: var(--fs-sm); }
+  .locbar, .refreshnote, #toast { font-size: var(--fs-sm); }
 
   input { font-size: var(--fs); padding: 12px var(--pad); }
   button { font-size: var(--fs); padding: 12px var(--pad); }
@@ -747,11 +742,6 @@
     try { return bridge && bridge.status ? JSON.parse(bridge.status()) : {}; } catch (e) { return {}; }
   }
 
-  function hasSystemTts() {
-    var info = ttsInfo();
-    var engines = String(info.engines || "");
-    return !!info.ttsReady || (engines && engines !== "无" && engines !== "null");
-  }
 
   /* 默认策略：**走系统 TTS**。
      实测（用户反馈确认）：系统 TTS 有声音，打开「语音走 WebView」反而没声音。
@@ -958,44 +948,6 @@
     }).join("");
   }
 
-  /* 详情页这辆车要念的内容：到当前站还有几站几分钟 + 后面几站 */
-  function detailSpeakText() {
-    var data = view.data;
-    var name = (data && data.line.name) || view.lineName || "";
-    if (!data || !data.buses.length) {
-      return name + "路，" + stationLabel(view.stationName) + "，当前没有在途车辆。";
-    }
-    var ordered = view.buses || data.buses || [];
-    var bus = ordered[view.index] || ordered[0];
-    var parts = [];
-    parts.push(name + "路" + (data.line.endSn ? "，往 " + data.line.endSn : "") + "。");
-    if (bus.plate) parts.push("车牌 " + speakDigits(bus.plate) + "。");
-    else if (bus.busId) parts.push("车辆编号 " + speakDigits(String(bus.busId).slice(-4)) + "。");
-    parts.push("现在在第 " + bus.order + " 站。");
-
-    var target = null;
-    bus.times.forEach(function (t) { if (t.name === view.stationName) target = t; });
-
-    if (target && target.passed) {
-      parts.push("已经过了 " + stationLabel(view.stationName) + "。");
-    } else if (!target && bus.order > (view.fromOrder || 0)) {
-      parts.push("已经过了 " + stationLabel(view.stationName) + "。");
-    } else if (target && target.etaSeconds > 0) {
-      var away = Math.max(0, (view.fromOrder || target.order) - bus.order);
-      parts.push("到" + stationLabel(view.stationName) + "还有 " + away + " 站，" + etaWords(target.etaSeconds) +
-        (target.arrivalAt ? "，预计 " + fmtClock(target.arrivalAt) : "") + "。");
-    }
-
-    var upcoming = bus.times.filter(function (t) {
-      return !t.passed && t.etaSeconds > 0 && !(target && t.name === target.name);
-    }).slice(0, 3);
-    if (upcoming.length) {
-      parts.push("再往后：" + upcoming.map(function (t) {
-        return t.name + " " + etaWords(t.etaSeconds);
-      }).join("；") + "。");
-    }
-    return parts.join("");
-  }
 
   function nearbyText(groups) {
     var lines = [];
@@ -2056,26 +2008,6 @@
     }
   }
 
-  /* 通用导航：给「站名 + 坐标」直接调起地图（首页站点用） */
-  function navToPoint(name, lat, lng) {
-    if (!bridge || !bridge.navigate) { setStatus("导航需要在 App 里用", true); return; }
-    var fromLat = NaN, fromLng = NaN;
-    if (state.fix && typeof state.fix.lat === "number" && typeof state.fix.lng === "number") {
-      fromLat = state.fix.lat;
-      fromLng = state.fix.lng;
-    }
-    var res = null;
-    try {
-      res = JSON.parse(bridge.navigate("", lat, lng, name, fromLat, fromLng));
-    } catch (e) { res = null; }
-    if (!res) { setStatus("导航失败", true); return; }
-    if (res.ok) {
-      var modeText = res.mode === "walk" ? "步行" : "驾车";
-      setStatus("正在用" + (res.label || "地图") + modeText + "导航到 " + name);
-    } else {
-      setStatus(res.error || "导航失败", true);
-    }
-  }
 
   /* 当前该用步行还是驾车：500 米内步行（与原生侧规则一致，用于按钮提示） */
   function navModeFor(station) {
@@ -2536,19 +2468,6 @@
     centerActiveChip(box);
   }
 
-  /* 单独念某一站：「16路到 新光华街，大约 6 分钟，预计 23:15」 */
-  function speakStationRow(t, el) {
-    var name = (view.data && view.data.line.name) || view.lineName || "";
-    var text = t.passed
-      ? name + "路已经过了" + stationLabel(t.name) + "。"
-      : name + "路到" + stationLabel(t.name) + "，" + etaWords(t.etaSeconds) +
-        (t.arrivalAt ? "，预计" + fmtClock(t.arrivalAt) : "") + "。";
-    speak(text, true);
-    if (el) {
-      el.classList.add("speaking");
-      setTimeout(function () { el.classList.remove("speaking"); }, 1500);
-    }
-  }
 
   /* 选中某一站（不跳页）：高亮 + 更新同站其它 + 悬浮按钮播的就是它 */
   function pickStation(order, rowEl) {
@@ -2628,7 +2547,6 @@
     box.appendChild(clear);
   }
 
-  window.cdBusRenderHistory = renderHistory;
 
   /* 同站其它线路：按当前站坐标查附近，取同一站的其它线路 */
   async function loadStationOthers(target) {
@@ -2815,9 +2733,7 @@
   }
 
   window.cdBusWatchStation = watchStationByOrder;
-  window.cdBusOpenStation = openStationView;
   window.cdBusLoadOthers = loadStationOthers;
-  window.cdBusRenderWatchCard = renderWatchCard;
 
   function renderTimes(options) {
     var doScroll = !options || options.scroll !== false;
@@ -3250,7 +3166,6 @@
   window.cdBusNearbyText = nearbyText;        // 供 ui-smoke 测试断言
   window.cdBusBuildGroups = buildGroups;
   window.cdBusShouldAutoRefresh = shouldAutoRefreshHome;
-  window.cdBusCloseDetail = closeDetail;
   window.cdBusBack = function () { return backHandler(); };
 
   /* 原生返回键调用这个：无论第几级页面都回上一页，只有首页才退出 App */
@@ -3721,13 +3636,6 @@
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
-  /* 车辆页里离我（当前定位）最近的站序；没有定位时退回打开的那一站 */
-  function nearestStationOrder() {
-    var stations = (view.data && view.data.stations) || [];
-    if (!stations.length) return view.fromOrder;
-    var st = nearestStation(stations);
-    return st ? st.order : view.fromOrder;
-  }
 
   /* 在一组站点里找离当前定位最近的那个（按经纬度算真实距离） */
   function nearestStation(stations) {
@@ -3747,11 +3655,6 @@
     return best;
   }
 
-  /* 按 stationId 找最近站（线路页站名条用） */
-  function nearestStationId(stations) {
-    var st = nearestStation(stations);
-    return st ? st.stationId : null;
-  }
 
   function openVehicleView(opts) {
     if (!view.data || !view.buses || !view.buses.length) {
@@ -4198,10 +4101,6 @@
     }
   }
 
-  window.cdBusFillAbout = fillAbout;
-  window.cdBusOpenLine = function (lineId, lineName, stationName) {
-    return openLineView({ lineId: lineId, lineName: lineName, stationName: stationName });
-  };
   window.cdBusViewName = function () { return view.name; };
   /* 测试钩子：注入定位、直接触发导航（ui-smoke 用来验证 500 米步行/驾车分界） */
   window.cdBusSetFix = function (fix) { state.fix = fix || null; };
