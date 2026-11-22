@@ -3784,6 +3784,12 @@
       if (Number(stations[i].order) === Number(order)) { target = stations[i]; break; }
     }
     if (!target) { setStatus("没有找到这一站", true); return; }
+
+    /* 再点一次同一个站 = 关闭提醒（按钮切换） */
+    if (alightRunning && alightDest && Number(alightDest.order) === Number(order)) {
+      stopAlight();
+      return;
+    }
     if (!bridge || !bridge.startAlightService) {
       setStatus("下车提醒要在 App 里用（需要后台定位）", true);
       return;

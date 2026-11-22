@@ -1284,6 +1284,22 @@ console.log('✓ 收藏进详情通过：芯片显示「已过收藏站 · 距�
       const bar = document.getElementById('alightbar');
       if (String(bar.className).includes('hidden')) stage5c.push('设了终点后详情页没有提醒条');
 
+      /* 再点同一个站 = 关闭提醒（🔔 按钮切换） */
+      {
+        const stopBefore = alightServiceLog.filter((x) => x[0] === 'stop').length;
+        window.cdBusStartAlight(9);   // 同 order=9 → 应切换成「关闭」
+        await new Promise((r) => setTimeout(r, 150));
+        if (String(document.getElementById('alightbar').className).indexOf('hidden') < 0) {
+          stage5c.push('再点同一个站没有关闭提醒（按钮应可切换）');
+        }
+        if (alightServiceLog.filter((x) => x[0] === 'stop').length <= stopBefore) {
+          stage5c.push('再点同一个站没有停止原生服务');
+        }
+        // 重新开启，供后续用例使用
+        window.cdBusStartAlight(9);
+        await new Promise((r) => setTimeout(r, 150));
+      }
+
       // 服务上报「还有两站」→ 页面要同步状态并按事件播报一次
       alightStatusState = { running: true, destName: '花园永泉', lineName: 'P02', toward: '花园公交站',
         remaining: 2, distance: 800, arrived: false, event: 1, eventText: '还有两站就下车，请提前准备',
