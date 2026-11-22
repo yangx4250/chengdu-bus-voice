@@ -1325,7 +1325,9 @@
   /* 模糊搜索：接口一次只回 8 条，短数字前缀就并行展开（输入 2 → 查 20…29）
      缓存里只存「原始合并池」，过滤和排序在读取时现算，方便以后改匹配规则 */
   async function searchLinesFuzzy(key) {
-    var cacheKey = "cdbus.lines2." + key;      // v2：避免读到旧版「前缀过滤」缓存
+    /* v3：v2 缓存是「只查前缀」时代的产物（缺尾缀/区县线路），
+       换 key 让老缓存自动失效，否则用户升级后仍然看到旧结果。 */
+    var cacheKey = "cdbus.lines3." + key;
     var hit = cacheGet(cacheKey);
     var pool;
 
@@ -1414,6 +1416,21 @@
     searching = true;
     var list = $("plist");
     list.innerHTML = "";
+
+    /* 同一条线（名字相同）只留一条：上下行是两个不同 lineId，
+       但用户搜线路时要的是「这条线」，方向进详情页再切。
+       优先保留 direction=0 的那条，没有就用第一条。 */
+    var byName = {};
+    var order = [];
+    lines.forEach(function (line) {
+      var name = String(line.name || "");
+      if (!byName[name]) { byName[name] = line; order.push(name); return; }
+      /* 已有 direction=0 就保留；否则遇到 direction=0 的替换掉 */
+      if (String(byName[name].direction) !== "0" && String(line.direction) === "0") {
+        byName[name] = line;
+      }
+    });
+    lines = order.map(function (n) { return byName[n]; });
 
     var timeCells = [];
 
@@ -4412,7 +4429,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.50";
+  var APP_FALLBACK_VERSION = "9.51";
 
   function fillAbout() {
     var verEl = $("abVersion");

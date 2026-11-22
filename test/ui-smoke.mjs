@@ -232,10 +232,16 @@ const bridge = {
       if (/^\d/.test(key)) {
         const names = ['2', '20', '20快', '21', '201', '106', '1060', 'P106', 'T106']
           .filter((n) => n.toUpperCase().includes(key));
-        return JSON.stringify({ state: 'ok', data: names.map((n) => ({
-          lineId: '028-' + n + '-0', name: n, direction: 0,
-          startSn: n + '起', endSn: n + '终', firstTime: '06:00', lastTime: '23:00',
-        })) });
+        /* 真实接口每条线都返回上下行两个 direction，
+           搜索结果页要按线路名去重，这里按真实形态造数据 */
+        const rows = [];
+        names.forEach((n) => {
+          rows.push({ lineId: '028-' + n + '-0', name: n, direction: 0,
+            startSn: n + '起', endSn: n + '终', firstTime: '06:00', lastTime: '23:00' });
+          rows.push({ lineId: '028-' + n + '-1', name: n, direction: 1,
+            startSn: n + '终', endSn: n + '起', firstTime: '06:00', lastTime: '23:00' });
+        });
+        return JSON.stringify({ state: 'ok', data: rows });
       }
       const pLines = [
         { lineId: '028-p36-0', name: 'P36', endSn: '花园公交站', startSn: '郫都区客运中心', direction: 0, firstTime: '06:00', lastTime: '22:30' },
@@ -533,7 +539,7 @@ await new Promise((r) => setTimeout(r, 600));
     if (method === 'lines') queries.push(String(JSON.parse(payload).key));
     return origStart.apply(this, arguments);
   };
-  localStorage.removeItem('cdbus.lines2.36');
+  localStorage.removeItem('cdbus.lines3.36');
   await searchLines('36');
   window.AndroidBus.start = origStart;
 
@@ -1675,6 +1681,18 @@ if (typeof window.cdBusShouldAutoRefresh === 'function' && window.cdBusShouldAut
 }
 const pickerCards = findByClass(document.getElementById('plist'), 'bus');
 if (pickerCards.length < 2) stage6.push('候选线路列表过少：' + pickerCards.length);
+
+/* 同一条线（名字相同）只显示一条：上下行两个 direction 必须被去重，
+   否则搜「2」会出现 20路/20路、20快/20快 这样的重复项 */
+{
+  const names = pickerCards.map((c) => {
+    const m = String(c.__rawHtml || '').match(/class="line-name">([^<]*)</);
+    return m ? m[1] : '';
+  });
+  const dup = names.filter((n, i) => n && names.indexOf(n) !== i);
+  if (dup.length) stage6.push('搜索结果有重复方向：' + dup.join(','));
+  if (!names.includes('20路')) stage6.push('去重后丢了「20路」：' + names.join(','));
+}
 
 if (pickerCards.length) {
   pickerCards[0].onclick();
