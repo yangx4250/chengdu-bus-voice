@@ -3526,7 +3526,7 @@
     setStatus("搜索 " + key + " …");
     var candidates = await searchLinesFuzzy(key);
     if (!candidates.length) {
-      throw new Error("没有查到「" + key + "」开头的线路。都江堰线路请带前缀，如「都江堰1」");
+      throw new Error("没有查到「" + key + "」相关的线路，换个关键词试试（如线路号或站名）");
     }
 
     var nameSet = {};
@@ -4412,7 +4412,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.49";
+  var APP_FALLBACK_VERSION = "9.50";
 
   function fillAbout() {
     var verEl = $("abVersion");
