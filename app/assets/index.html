@@ -2486,12 +2486,12 @@
 
       chip.appendChild(line1);
       chip.appendChild(line2);
+      /* 点车辆芯片：只切换选中车辆并原地刷新下方到站表，不跳车辆二级页 */
       chip.onclick = function () {
         view.index = i;
         view.selectedBusId = bus.busId;
         renderBusChips();
         renderTimes();
-        openVehicleView();
       };
       box.appendChild(chip);
     });
@@ -4108,7 +4108,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.23";
+  var APP_FALLBACK_VERSION = "9.24";
 
   function fillAbout() {
     var verEl = $("abVersion");

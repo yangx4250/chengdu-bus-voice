@@ -1096,65 +1096,45 @@ console.log('✓ 收藏进详情通过：芯片显示「已过收藏站 · 距�
       stage5b.push('点收藏卡没有进入详情页');
     }
 
-    // ① 点车辆芯片 → 车辆二级页（不再原地换列表）
+    // ① 点车辆芯片：原地切换选中车辆并刷新到站表，不再跳车辆二级页
     const chips = findByClass(document.getElementById('dbuses'), 'chip');
     if (!chips.length) stage5b.push('详情页没有车辆芯片');
     else {
+      const beforeExit0 = exitLog.length;
       chips[0].onclick();
       await new Promise((r) => setTimeout(r, 300));
-      if (String(document.getElementById('veh').className).includes('hidden')) {
-        stage5b.push('点车辆后没有进入车辆二级页');
+      if (!String(document.getElementById('detail').className).includes('hidden') === false) {
+        stage5b.push('点车辆芯片后离开了详情页');
       }
-      if (!String(document.getElementById('detail').className).includes('hidden')) {
-        stage5b.push('车辆页显示时详情页仍然可见');
+      if (String(document.getElementById('detail').className).includes('hidden')) {
+        stage5b.push('点车辆芯片后详情页消失了');
       }
-      const vtitle = String(document.getElementById('vtitle').textContent || '');
-      if (!/车牌/.test(vtitle)) stage5b.push('车辆页没有显示车牌：' + vtitle);
-      const vlist = textOf(document.getElementById('vlist'));
-      if (!vlist.includes('srow')) stage5b.push('车辆页没有列出到站表');
-      if (!/花园永泉/.test(vlist)) stage5b.push('车辆页到站表缺少站点：' + vlist.slice(0, 120));
-      // ① 点车辆跳进来后，离我最近的那一站要有标注（定位桩返回 30.657,104.065，
-      //    三个候选站里最近的是 30.7,103.95 的花园永泉（order 9））
-      if (!/srow[^"]*nearest[^"]*"[^>]*data-order="9"[^>]*data-name="花园永泉"/.test(vlist)) {
-        stage5b.push('离我最近的站（花园永泉 order 9）没有标注 nearest');
-      }
-      if (!/离我最近/.test(vlist)) stage5b.push('车辆页没有「离我最近」徽标');
-      const nearestCount = (vlist.match(/class="srow[^"]*nearest/g) || []).length;
-      if (nearestCount !== 1) stage5b.push('nearest 标注数量不对：' + nearestCount);
+      // 到站表要更新成选中那辆车的（dlist 里有车牌行）
+      const dlistText = textOf(document.getElementById('dlist'));
+      if (!/车牌/.test(dlistText)) stage5b.push('到站表没有车牌行：' + dlistText.slice(0, 80));
+      if (exitLog.length !== beforeExit0) stage5b.push('点车辆芯片触发了退出');
 
-      // ② 车辆页返回 → 回详情页（不是回桌面）
-      const beforeExit = exitLog.length;
+      // ② 详情页返回 → 回首页
+      const beforeExit2 = exitLog.length;
       window.cdBusBackView();
       await new Promise((r) => setTimeout(r, 200));
-      if (String(document.getElementById('detail').className).includes('hidden')) {
-        stage5b.push('车辆页返回没有回到详情页');
+      if (String(document.getElementById('home').className).includes('hidden')) {
+        stage5b.push('详情页返回没有回到首页');
       }
-      if (String(document.getElementById('veh').className).includes('hidden') === false) {
-        stage5b.push('车辆页返回后车辆页仍然可见');
-      }
-      if (exitLog.length !== beforeExit) stage5b.push('车辆页返回时退出了 App');
-    }
+      if (exitLog.length !== beforeExit2) stage5b.push('详情页返回时退出了 App');
 
-    // ③ 详情页再返回 → 回首页
-    const beforeExit2 = exitLog.length;
-    window.cdBusBackView();
-    await new Promise((r) => setTimeout(r, 200));
-    if (String(document.getElementById('home').className).includes('hidden')) {
-      stage5b.push('详情页返回没有回到首页');
+      // ③ 首页再返回 → 才退出 App
+      window.cdBusBackView();
+      if (exitLog.length !== beforeExit2 + 1) stage5b.push('首页返回没有退出 App');
     }
-    if (exitLog.length !== beforeExit2) stage5b.push('详情页返回时退出了 App');
-
-    // ④ 首页再返回 → 才退出 App
-    window.cdBusBackView();
-    if (exitLog.length !== beforeExit2 + 1) stage5b.push('首页返回没有退出 App');
   }
 
   if (stage5b.length) {
-    console.error('✗ UI 冒烟失败（车辆二级页 / 返回栈）：');
+    console.error('✗ UI 冒烟失败（车辆芯片 / 返回栈）：');
     for (const f of stage5b) console.error('  - ' + f);
     process.exit(1);
   }
-  console.log('✓ 车辆二级页通过：点车进新页、返回逐级回退、只有首页才退出');
+  console.log('✓ 车辆芯片通过：点车原地刷新到站表、返回逐级回退、只有首页才退出');
 }
 
 // -------------------------------------------------- 第五阶段附加：下车提醒
