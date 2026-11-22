@@ -753,15 +753,13 @@
     return !!info.ttsReady || (engines && engines !== "无" && engines !== "null");
   }
 
-  /* 默认策略：有系统 TTS 就走系统 TTS（离线、音质好）；
-     没有（或用户手动打开开关）才走 WebView 播放。 */
+  /* 默认策略：**走系统 TTS**。
+     实测（用户反馈确认）：系统 TTS 有声音，打开「语音走 WebView」反而没声音。
+     所以默认 false；只有用户显式打开开关（存 "1"）才走 WebView。 */
   function webAudioOn() {
     try {
-      var saved = localStorage.getItem(WEB_MODE_KEY);
-      if (saved === "1") return true;
-      if (saved === "0") return false;
-      return !hasSystemTts();
-    } catch (e) { return !hasSystemTts(); }
+      return localStorage.getItem(WEB_MODE_KEY) === "1";
+    } catch (e) { return false; }
   }
 
   function setWebAudio(on) {
@@ -1022,6 +1020,7 @@
       } catch (e) { /* 忽略 */ }
     }, 1400);
   }
+
 
 
 
@@ -4109,7 +4108,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.22";
+  var APP_FALLBACK_VERSION = "9.23";
 
   function fillAbout() {
     var verEl = $("abVersion");
