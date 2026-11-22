@@ -1052,6 +1052,14 @@
     return true;
   }
 
+  /* 「不在运营时段」的统一文案：带上首末班时间，用户一眼知道什么时候有车 */
+  function endedText(firstTime, lastTime) {
+    var parts = [];
+    if (firstTime) parts.push("首班 " + firstTime);
+    if (lastTime) parts.push("末班 " + lastTime);
+    return parts.length ? "不在运营时段（" + parts.join(" · ") + "）" : "不在运营时段";
+  }
+
   function stationLabel(name) {
     var text = String(name || "");
     return /站$/.test(text) ? text : text + "站";
@@ -1490,7 +1498,7 @@
           var hot = false;
 
           if (ended) {
-            text += "不在运营时段";
+            text += endedText(dir.firstTime || detail.firstTime, dir.lastTime || detail.lastTime);
             row.style.opacity = ".5";
           } else {
             var buses = await rpc("arrivals", {
@@ -1586,7 +1594,7 @@
       var hot = false;
 
       if (ended) {
-        text += "不在运营时段";
+        text += endedText(other.firstTime || detail.firstTime, other.lastTime || detail.lastTime);
       } else {
         var buses = await rpc("arrivals", {
           lineId: other.lineId,
@@ -1659,7 +1667,7 @@
     if (!buses.length) {
       var endedNow = state.detail && outsideService(state.detail.firstTime, state.detail.lastTime);
       list.innerHTML = '<div class="empty">' + (endedNow
-        ? "不在运营时段" + (state.detail.lastTime ? "<br>末班 " + state.detail.lastTime : "")
+        ? endedText(state.detail.firstTime, state.detail.lastTime)
         : "暂无即将到站的车辆<br>（可能收班或区间调度中）") + "</div>";
       return;
     }
@@ -1673,8 +1681,7 @@
       var tip = document.createElement("div");
       tip.className = "empty";
       tip.style.padding = "6px 8px";
-      tip.textContent = "不在运营时段" +
-        (state.detail.lastTime ? "（末班 " + state.detail.lastTime + "）" : "");
+      tip.textContent = endedText(state.detail.firstTime, state.detail.lastTime);
       list.appendChild(tip);
     }
 
@@ -1780,7 +1787,7 @@
 
         var preStart = a.preStartTime || a.preArrivalTime || "";
         var liveText = ended
-          ? "不在运营时段"
+          ? endedText(a.firstTime, a.lastTime)
           : hasBus ? describe(a)
           : preStart ? ("待发车 " + preStart)
           : "暂无实时车辆";
@@ -2011,6 +2018,8 @@
   }
 
   function backHandler() {
+    /* 设置页有内部层级：先退回设置主页，再退回上一级视图 */
+    if (view.name === "diag" && backFromDiag()) return true;
     if (goBack()) return true;
     if (bridge && bridge.exitApp) {
       try { bridge.exitApp(); return true; } catch (e) {}
@@ -2342,7 +2351,7 @@
       var card = document.createElement("div");
       card.className = "bus tap";
       var ended = outsideService(a.firstTime, a.lastTime, a);
-      var text = ended ? "不在运营时段"
+      var text = ended ? endedText(a.firstTime, a.lastTime)
         : (a.etaSeconds !== null && a.etaSeconds !== undefined ? fmtEta(a.etaSeconds)
           : (a.preStartTime ? "待发车 " + a.preStartTime : "暂无实时车辆"));
       var hot = !ended && isUrgent(a);
@@ -2804,7 +2813,7 @@
           text += "暂无实时";
         } else {
           var ended = outsideService(a.firstTime, a.lastTime, a);
-          text += ended ? "不在运营"
+          text += ended ? ("不在运营 " + (a.lastTime ? "末班" + a.lastTime : ""))
             : (a.etaSeconds !== null ? describe(a) : (a.preStartTime ? "待发车" : "暂无实时"));
         }
         chip.textContent = text;
@@ -3277,7 +3286,7 @@
 
   async function fillFavEta(fav, el) {
     if (outsideService(fav.firstTime, fav.lastTime, null)) {
-      el.textContent = "不在运营时段";
+      el.textContent = endedText(fav.firstTime, fav.lastTime);
       el.className = "fe off";
       return;
     }
@@ -4240,7 +4249,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.41";
+  var APP_FALLBACK_VERSION = "9.42";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -4418,7 +4427,7 @@
       groups.slice(0, 2).forEach(function (group) {
         html += '<div class="meta" style="margin-top:8px">' + group.name + "（" + group.distance + " 米）</div>";
         (group.arrivals || []).slice(0, 2).forEach(function (a) {
-          var text = outsideService(a.firstTime, a.lastTime, a) ? "不在运营时段"
+          var text = outsideService(a.firstTime, a.lastTime, a) ? endedText(a.firstTime, a.lastTime)
             : (a.etaSeconds !== null ? describe(a)
               : (a.preStartTime ? "待发车 " + a.preStartTime : "暂无实时车辆"));
           html += '<div class="meta">' + a.lineName + "路 → " + (a.toward || "") + "　" + text + "</div>";

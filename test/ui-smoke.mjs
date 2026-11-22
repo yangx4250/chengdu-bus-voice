@@ -504,6 +504,10 @@ if (/is not a function|is not defined|undefined 的/.test(rendered)) {
 if (!rendered.includes('花园永泉')) failures.push('没有渲染出站点「花园永泉」');
 if (!rendered.includes('龙溪村委会')) failures.push('没有渲染出站点「龙溪村委会」');
 if (!rendered.includes('不在运营时段')) failures.push('收班线路没有标「不在运营时段」');
+/* 收班提示要带首末班时间，让用户知道什么时候有车 */
+if (!/不在运营时段（[^）]*首班[^）]*）/.test(rendered)) {
+  failures.push('「不在运营时段」没有带首末班时间：' + (rendered.match(/不在运营时段[^<]*/) || [''])[0]);
+}
 if (!rendered.includes('暂无实时车辆')) failures.push('没有到站数据的站点没有标「暂无实时车辆」');
 /* 首页站点卡右上角要有 🧭 导航按钮，点了能调起地图 */
 
@@ -527,6 +531,24 @@ else {
   settingsBtn.onclick();
   if (String(document.getElementById('diag').className).includes('hidden')) {
     failures.push('点设置没有打开面板');
+  }
+
+  /* 设置页二级菜单：进入分类后按返回应回设置主页，而不是直接回首页 */
+  {
+    document.getElementById('setVoice').onclick();
+    await new Promise((r) => setTimeout(r, 100));
+    if (String(document.getElementById('setPageVoice').className).includes('hidden')) {
+      failures.push('点「语音与播报」没有进入二级页');
+    }
+    // 模拟系统返回键
+    window.cdBusBackView && window.cdBusBackView();
+    await new Promise((r) => setTimeout(r, 100));
+    if (String(document.getElementById('diag').className).includes('hidden')) {
+      failures.push('二级页返回直接跳出了设置（应回设置主页）');
+    }
+    if (String(document.getElementById('setHome').className).includes('hidden')) {
+      failures.push('二级页返回没有回到设置主页');
+    }
   }
 
   // 后台心跳按钮：用来测锁屏/后台播报（走原生前台服务，不是页面定时器）
