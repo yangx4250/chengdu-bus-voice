@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v9.54）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v9.55）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -513,6 +513,7 @@ Java 合成 mp3 → base64 → WebView <audio> 播放
 - 站点选中按 **order**（这条线上的位置）判定，不按 `stationId`：真实数据里一条线上的
   多个「招呼站」共用同一个 `stationId`（实测 P36 去程 5 个招呼站都是 `028-4519`），
   只比 `stationId` 会导致点一个、一串一起高亮；
+- 搜索结果卡片**只显示线路名**（起终点方向和首末班进线路页再看，减少干扰也省掉每条线的补数据请求）；
 - 搜索结果**按线路名自然顺序排列**（字母按字典序、数字按数值大小，
   `2` < `10`、`36` < `361`、`136` < `P36` < `T36`），同一条线只显示一次（不列上下行）；
 - 在搜索结果里点一条线路，进的是**线路页**（`#lineview`），不再退回首页：

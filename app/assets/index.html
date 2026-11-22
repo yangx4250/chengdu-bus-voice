@@ -104,12 +104,10 @@
   .bus .line-name { font-size: 19px; font-weight: 700; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .bus .toward { color: var(--muted); font-size: 13px; }
-  /* 搜索结果页的卡：线路名一行、起终点另起一行，长站名不再挤压线路名 */
+  /* 搜索结果页的卡：只显示线路名，方向/首末班进线路页再看 */
   .bus .pickhead { display: block; }
   .bus .pickhead .line-name { display: block; overflow: visible;
-    text-overflow: clip; margin-bottom: 4px; }
-  .bus .pickhead .toward { display: block; white-space: normal;
-    overflow: hidden; text-overflow: ellipsis; line-height: 1.4; }
+    text-overflow: clip; }
   .bus .eta { font-size: 26px; font-weight: 700; margin-top: 8px; color: var(--accent); }
   .bus .eta.hot { color: var(--hot); }
   .bus .meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
@@ -123,7 +121,6 @@
     word-break: break-all; line-height: 1.3; }
   .armeta .armain-r2:empty { display: none; }
   .armeta .arrow { flex: 0 0 auto; color: #56637d; }
-  .timesline { margin-top: 8px; font-size: var(--fs-sm); color: #8fa0bd; }
   .armeta .spk { flex: 0 0 auto; padding: 2px 8px; border: 1px solid var(--line);
     border-radius: 8px; font-size: 12px; line-height: 1; color: #b9c6dd; }
   .armeta .spk:active { background: #22304a; color: #fff; }
@@ -1480,47 +1477,18 @@
     });
     lines = order.map(function (n) { return byName[n]; });
 
-    var timeCells = [];
-
+    /* 卡片只显示线路名：起终点方向和首末班进线路页再看，
+       这页是「选线路」用的，信息越少扫得越快；
+       省掉的 fillTimes 补首末班逻辑（每条一条 getDetail 请求）也一并删除。 */
     lines.forEach(function (line) {
       var card = document.createElement("div");
       card.className = "bus tap";
-      /* 线路名和起终点分两行：同一行时长站名会把「340路」挤成「3...」 */
-      card.innerHTML = '<div class="head pickhead"><span class="line-name">' + lineLabel(line) + "</span>" +
-        '<div class="toward">' + (line.startSn || "?") + " → " + (line.endSn || "?") + "</div></div>" +
-        '<div class="meta timesline">' + (line.firstTime && line.lastTime
-          ? "首班 " + line.firstTime + " · 末班 " + line.lastTime
-          : "首末班加载中…") + "</div>";
+      card.innerHTML = '<div class="head pickhead"><span class="line-name">' + lineLabel(line) + "</span></div>";
       card.onclick = function () {
         run(function () { return applyLine(line, stopName, true); });
       };
       list.appendChild(card);
-      if (!(line.firstTime && line.lastTime)) {
-        timeCells.push({ line: line, el: card.querySelector ? card.querySelector(".timesline") : null });
-      }
     });
-
-    // 搜索结果里没有首末班，逐条用（缓存的）线路详情补上
-    (function fillTimes() {
-      if (!timeCells.length) return;
-      var pending = timeCells.slice();
-      function next() {
-        var job = pending.shift();
-        if (!job || !job.el) return;
-        getDetail(job.line.lineId).then(function (detail) {
-          if (detail && detail.firstTime && detail.lastTime) {
-            job.el.textContent = "首班 " + detail.firstTime + " · 末班 " + detail.lastTime;
-          } else {
-            job.el.textContent = "首末班未知";
-          }
-        }).catch(function () {
-          if (job.el) job.el.textContent = "首末班未知";
-        }).then(function () {
-          next();
-        });
-      }
-      next();
-    })();
     setStatus("匹配 " + lines.length + " 条线路");
     if ($("ptitle")) $("ptitle").textContent = "搜索结果";
     if ($("psub")) $("psub").textContent = "共 " + lines.length + " 条匹配线路，点一条查看";
@@ -4503,7 +4471,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.54";
+  var APP_FALLBACK_VERSION = "9.55";
 
   function fillAbout() {
     var verEl = $("abVersion");

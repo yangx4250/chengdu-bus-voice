@@ -1717,8 +1717,9 @@ await new Promise((r) => setTimeout(r, 900));
 
 const stage6 = [];
 const pickerHtml = textOf(document.getElementById('plist'));
-// 列表里不再放重复标题（数量在顶栏 #psub），改查线路卡本身
-if (!pickerHtml.includes('timesline')) stage6.push('输入 2 没有出现候选线路：' + pickerHtml.slice(0, 160));
+// 列表里不再放重复标题（数量在顶栏 #psub），改查线路卡本身。
+// 卡片只显示线路名（方向/首末班进线路页再看），所以查 line-name。
+if (!pickerHtml.includes('line-name')) stage6.push('输入 2 没有出现候选线路：' + pickerHtml.slice(0, 160));
 // 候选线路应进入「搜索结果」二级页，而不是继续占用首页列表
 if (String(document.getElementById('pick').className).includes('hidden')) {
   stage6.push('多条匹配时没有进入搜索结果二级页');
@@ -1873,12 +1874,18 @@ if (stage7.length) {
   process.exit(1);
 }
 {
+  /* 搜索结果卡片现在只显示线路名：方向、首末班都进线路页再看。
+     这里反过来断言「不再出现」这些信息，防止哪天又被加回去。 */
   const pickText = textOf(document.getElementById('plist'));
-  if (!/首班 \d{2}:\d{2} · 末班 \d{2}:\d{2}/.test(pickText)) {
-    console.error('✗ UI 冒烟失败：搜索结果没有首/末班时间：' + pickText.slice(0, 240));
+  if (/首班 \d{2}:\d{2} · 末班 \d{2}:\d{2}/.test(pickText)) {
+    console.error('✗ UI 冒烟失败：搜索结果又显示首末班了：' + pickText.slice(0, 240));
     process.exit(1);
   }
-  console.log('✓ 搜索结果首末班通过：每条线路显示首班/末班');
+  if (/ → /.test(pickText)) {
+    console.error('✗ UI 冒烟失败：搜索结果又显示起终点方向了：' + pickText.slice(0, 240));
+    process.exit(1);
+  }
+  console.log('✓ 搜索结果只显示线路名：不含方向与首末班');
 }
 console.log('✓ 包含匹配通过：输入 106 列出 P106 / T106 / 1060');
 
