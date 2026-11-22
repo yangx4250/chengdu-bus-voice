@@ -807,15 +807,18 @@ if (/⇄/.test(cardsHtml)) stage3.push('首页还残留 ⇄ 换向按钮');
 if (!cardsHtml.includes('→ 花园公交站')) stage3.push('没有显示正向：' + cardsHtml.slice(0, 200));
 if (!cardsHtml.includes('→ 郫都区客运中心')) stage3.push('没有补出反方向：' + cardsHtml.slice(0, 200));
 if (!/P36路 → 花园公交站[^›]*还有 3 站/.test(cardsHtml)) {
-  stage3.push('近似站名没有合并/数据没带过来：' + cardsHtml.slice(0, 240));
+  stage3.push('P36路到站数据没带过来：' + cardsHtml.slice(0, 240));
 }
 if (!/下辆 \d+ 站/.test(cardsHtml)) stage3.push('同一方向多辆车时没有显示「下辆 N 站」：' + cardsHtml.slice(0, 240));
 if (!cardsHtml.includes('待发车 09:24')) stage3.push('起点站没有显示待发车时间：' + cardsHtml.slice(0, 240));
 if (!/720路[^›]*待发车 09:24/.test(cardsHtml.replace(/\n/g, ''))) {
   stage3.push('720路起点站那一行不是「待发车 09:24」');
 }
-// 同名站点应该合并成一张卡片
-if (stopCards.length !== 4) stage3.push('站点卡片数不对：' + stopCards.length);
+/* v9.29 起按 stationId 严格分组：同名双向站是不同站台，**不再合并**，
+   各自成卡并标注方向 —— 这样才能拿到准确坐标和方向。 */
+if (stopCards.length < 4) stage3.push('站点卡片数不对：' + stopCards.length);
+// 同名站拆开后应该能看到方向标注
+if (!/开往/.test(cardsHtml)) stage3.push('同名站拆开后没有显示「开往」方向：' + cardsHtml.slice(0, 200));
 if (!cardsHtml.includes('途经')) stage3.push('站点卡缺少途经线路');
 if (!/🔊/.test(cardsHtml)) stage3.push('线路行没有单独的播报按钮');
 const allRows = findByClass(document.getElementById('list'), 'armeta');
