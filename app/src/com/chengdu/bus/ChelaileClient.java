@@ -279,6 +279,9 @@ public final class ChelaileClient {
                 stop.put("name", st.optString("sn"));
                 stop.put("distanceMeters", st.optInt("distance"));
                 stop.put("lineNames", st.optString("lineNames"));
+                /* 站点经纬度：首页的 🧭 导航按钮要用（没有就点不了） */
+                stop.put("lat", st.optDouble("lat", 0));
+                stop.put("lng", st.optDouble("lng", 0));
                 JSONArray own = new JSONArray();
                 for (int k = 0; k < arrivals.length(); k++) {
                     JSONObject a = arrivals.getJSONObject(k);

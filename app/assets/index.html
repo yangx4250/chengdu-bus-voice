@@ -275,6 +275,11 @@
   /* 车辆页里离我最近的站：绿色描边高亮 + 「离我最近」徽标 */
   .srow.nearest { border-color: var(--ok); background: #12302a; }
   .srow.nearest .sname { color: #d8fff1; font-weight: 600; }
+  /* 首页站点卡右上角的导航图标 */
+  .bus .stopnav { display: inline-block; font-size: 15px; line-height: 1;
+    padding: 2px 5px; margin: 0 2px; border-radius: 8px; vertical-align: middle;
+    color: var(--accent); }
+  .bus .stopnav:active { background: #22304a; }
   .srow .spk.nb { font-style: normal; font-size: 10px; color: #06130e; background: var(--ok);
     border-radius: 999px; padding: 2px 7px; line-height: 1.5; white-space: nowrap; }
 
@@ -910,13 +915,29 @@
   }
 
   /* 现在是否在运营时段内（支持跨夜线路，如 22:00—01:30） */
-  function outsideService(firstTime, lastTime) {
+  /* 现在是否已过末班时间（只看时间，不看有没有车） */
+  function pastLastTime(firstTime, lastTime) {
     var first = minutesOf(firstTime), last = minutesOf(lastTime);
     if (first === null || last === null) return false;
     var now = new Date();
     var cur = now.getHours() * 60 + now.getMinutes();
     if (last >= first) return !(cur >= first - 30 && cur <= last + 5);
     return !(cur >= first - 30 || cur <= last + 5);
+  }
+
+  /* 是否「不在运营时段」。
+     关键：**末班车过了本站之后**才算 —— 只看时间会把还在路上的末班车
+     误判成「已收班」。所以传入 arrival 时，若有在途车辆一律算在运营。 */
+  function outsideService(firstTime, lastTime, arrival) {
+    if (!pastLastTime(firstTime, lastTime)) return false;   // 还没到末班时间
+    /* 已过末班时间：但如果还有在途车辆（或还没到站的），说明车还在跑 */
+    if (arrival) {
+      var hasBus = arrival.stationsAway !== null && arrival.stationsAway !== undefined
+        && arrival.stationsAway >= 0 && arrival.etaSeconds !== null;
+      if (hasBus) return false;
+      if (arrival.preStartTime || arrival.preArrivalTime) return false;   // 待发车
+    }
+    return true;
   }
 
   function stationLabel(name) {
@@ -985,7 +1006,7 @@
     var lines = [];
     (groups || []).slice(0, 3).forEach(function (group) {
       var live = (group.arrivals || []).filter(function (a) {
-        if (outsideService(a.firstTime, a.lastTime)) return false;
+        if (outsideService(a.firstTime, a.lastTime, a)) return false;
         return (a.stationsAway !== null && a.stationsAway >= 0 && a.etaSeconds !== null) ||
                Boolean(a.preStartTime);
       });
@@ -1384,7 +1405,7 @@
           }
           if (!station) continue;
 
-          var ended = outsideService(dir.firstTime || detail.firstTime, dir.lastTime || detail.lastTime);
+          var ended = outsideService(dir.firstTime || detail.firstTime, dir.lastTime || detail.lastTime, null);
           var row = document.createElement("div");
           row.className = "armeta";
           row.style.marginTop = "8px";
@@ -1486,7 +1507,7 @@
       }
       if (!station) return;
 
-      var ended = outsideService(other.firstTime || detail.firstTime, other.lastTime || detail.lastTime);
+      var ended = outsideService(other.firstTime || detail.firstTime, other.lastTime || detail.lastTime, null);
       var text = arrival.lineName + "路 → " + (other.endSn || detail.endSn || "") + "　";
       var hot = false;
 
@@ -1662,15 +1683,15 @@
         seen[key] = true;
         return true;
       }).sort(function (a, b) {
-        var ea = outsideService(a.firstTime, a.lastTime) ? 1 : 0;
-        var eb = outsideService(b.firstTime, b.lastTime) ? 1 : 0;
+        var ea = outsideService(a.firstTime, a.lastTime, a) ? 1 : 0;
+        var eb = outsideService(b.firstTime, b.lastTime, b) ? 1 : 0;
         if (ea !== eb) return ea - eb;
         if (String(a.lineName) !== String(b.lineName)) return String(a.lineName) < String(b.lineName) ? -1 : 1;
         return (a.stationsAway === null ? 999 : a.stationsAway) - (b.stationsAway === null ? 999 : b.stationsAway);
       });
 
       var rowEls = rows.map(function (a) {
-        var ended = outsideService(a.firstTime, a.lastTime);
+        var ended = outsideService(a.firstTime, a.lastTime, a);
         var hasBus = a.stationsAway !== null && a.stationsAway >= 0 && a.etaSeconds !== null;
         var hot = !ended && (a.arrived || (a.stationsAway !== null && a.stationsAway <= 2));
 
@@ -1737,6 +1758,7 @@
       });
       card.innerHTML = '<div class="head"><span class="line-name">' + group.name +
         '</span><span class="toward">' + group.distance + ' 米' +
+        ' <span class="stopnav" title="导航到这个站">🧭</span>' +
         ' <span class="stopstar">' + (stopFav ? "★" : "☆") + '</span></span></div>';
 
       var rowsBox = document.createElement("div");
@@ -1750,6 +1772,24 @@
         via.style.opacity = ".55";
         via.textContent = "途经 " + group.lineNames;
         card.appendChild(via);
+      }
+
+      /* 站点旁的 🧭：直接调起已装的地图 App 导航到这个站 */
+      var navEl = card.querySelector ? card.querySelector(".stopnav") : null;
+      if (navEl) {
+        navEl.onclick = (function (stop) {
+          return function (ev) {
+            if (ev && ev.stopPropagation) ev.stopPropagation();
+            var lat = Number(stop.lat), lng = Number(stop.lng);
+            /* 首页的 nearby 结果可能没有经纬度，这时用当前定位兜底（导航到自己附近意义不大），
+               所以优先用站点坐标；没有就提示。 */
+            if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) {
+              setStatus("这个站没有坐标，无法导航", true);
+              return;
+            }
+            navToPoint(stop.name, lat, lng);
+          };
+        })(group);
       }
 
       var starEl = card.querySelector ? card.querySelector(".stopstar") : null;
@@ -2040,6 +2080,27 @@
     }
   }
 
+  /* 通用导航：给「站名 + 坐标」直接调起地图（首页站点用） */
+  function navToPoint(name, lat, lng) {
+    if (!bridge || !bridge.navigate) { setStatus("导航需要在 App 里用", true); return; }
+    var fromLat = NaN, fromLng = NaN;
+    if (state.fix && typeof state.fix.lat === "number" && typeof state.fix.lng === "number") {
+      fromLat = state.fix.lat;
+      fromLng = state.fix.lng;
+    }
+    var res = null;
+    try {
+      res = JSON.parse(bridge.navigate("", lat, lng, name, fromLat, fromLng));
+    } catch (e) { res = null; }
+    if (!res) { setStatus("导航失败", true); return; }
+    if (res.ok) {
+      var modeText = res.mode === "walk" ? "步行" : "驾车";
+      setStatus("正在用" + (res.label || "地图") + modeText + "导航到 " + name);
+    } else {
+      setStatus(res.error || "导航失败", true);
+    }
+  }
+
   /* 当前该用步行还是驾车：500 米内步行（与原生侧规则一致，用于按钮提示） */
   function navModeFor(station) {
     if (!station || !state.fix) return "drive";
@@ -2245,7 +2306,7 @@
     arrivals.forEach(function (a) {
       var card = document.createElement("div");
       card.className = "bus tap";
-      var ended = outsideService(a.firstTime, a.lastTime);
+      var ended = outsideService(a.firstTime, a.lastTime, a);
       var text = ended ? "不在运营时段"
         : (a.etaSeconds !== null && a.etaSeconds !== undefined ? fmtEta(a.etaSeconds)
           : (a.preStartTime ? "待发车 " + a.preStartTime : "暂无实时车辆"));
@@ -2721,7 +2782,7 @@
         if (!a) {
           text += "暂无实时";
         } else {
-          var ended = outsideService(a.firstTime, a.lastTime);
+          var ended = outsideService(a.firstTime, a.lastTime, a);
           text += ended ? "不在运营"
             : (a.etaSeconds !== null ? describe(a) : (a.preStartTime ? "待发车" : "暂无实时"));
         }
@@ -3181,7 +3242,7 @@
   }
 
   async function fillFavEta(fav, el) {
-    if (outsideService(fav.firstTime, fav.lastTime)) {
+    if (outsideService(fav.firstTime, fav.lastTime, null)) {
       el.textContent = "不在运营时段";
       el.className = "fe off";
       return;
@@ -4141,7 +4202,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.27";
+  var APP_FALLBACK_VERSION = "9.28";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -4301,7 +4362,7 @@
       groups.slice(0, 2).forEach(function (group) {
         html += '<div class="meta" style="margin-top:8px">' + group.name + "（" + group.distance + " 米）</div>";
         (group.arrivals || []).slice(0, 2).forEach(function (a) {
-          var text = outsideService(a.firstTime, a.lastTime) ? "不在运营时段"
+          var text = outsideService(a.firstTime, a.lastTime, a) ? "不在运营时段"
             : (a.etaSeconds !== null ? describe(a)
               : (a.preStartTime ? "待发车 " + a.preStartTime : "暂无实时车辆"));
           html += '<div class="meta">' + a.lineName + "路 → " + (a.toward || "") + "　" + text + "</div>";

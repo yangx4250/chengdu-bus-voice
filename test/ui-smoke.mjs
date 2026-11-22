@@ -147,6 +147,7 @@ const nearbyPayload = {
   stops: [
     {
       stationId: '028-1', name: '花园永泉', distanceMeters: 9, lineNames: 'P02路、716路、720路、45路',
+      lat: 30.7, lng: 103.95,
       lineNameList: ['P02路', '716路', '720路', '45路'],
       arrivals: [
         { stationId: '028-1', stationName: '花园永泉', stationOrder: 5, lineId: '028-p02-0',
@@ -162,7 +163,7 @@ const nearbyPayload = {
     },
     {
       /* 对面站台：名字接近、不同 stationId、方向相反 —— 不该混进「同站其它」 */
-      stationId: '028-1b', name: '花园永泉东', distanceMeters: 25,
+      stationId: '028-1b', name: '花园永泉东', distanceMeters: 25, lat: 30.7002, lng: 103.9502,
       lineNames: '801路', lineNameList: ['801路'],
       arrivals: [
         { stationId: '028-1b', stationName: '花园永泉东', stationOrder: 2,
@@ -171,7 +172,7 @@ const nearbyPayload = {
       ],
     },
     {
-      stationId: '028-2', name: '龙溪村委会', distanceMeters: 302, lineNames: 'P36路',
+      stationId: '028-2', name: '龙溪村委会', distanceMeters: 302, lineNames: 'P36路', lat: 30.702, lng: 103.953,
       arrivals: [],
     },
     {
@@ -488,6 +489,8 @@ if (!rendered.includes('花园永泉')) failures.push('没有渲染出站点「�
 if (!rendered.includes('龙溪村委会')) failures.push('没有渲染出站点「龙溪村委会」');
 if (!rendered.includes('不在运营时段')) failures.push('收班线路没有标「不在运营时段」');
 if (!rendered.includes('暂无实时车辆')) failures.push('没有到站数据的站点没有标「暂无实时车辆」');
+/* 首页站点卡右上角要有 🧭 导航按钮，点了能调起地图 */
+if (!rendered.includes('🧭')) failures.push('首页站点卡没有导航按钮');
 if (!/^\d+$/.test(String(document.getElementById('refreshNote').textContent || '').trim())) {
   failures.push('倒计时应只显示数字：' + document.getElementById('refreshNote').textContent);
 }
