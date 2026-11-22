@@ -3623,6 +3623,9 @@
           watchMarks.five = true;
           watchMarks.two = true;
           speak(headF + "已到站，请准备上车。", true);
+          /* 车到了就结束盯站：不再盯下一辆。
+             延迟 4 秒让语音播完，再收掉页面状态和服务。 */
+          setTimeout(function () { watchArrivedCleanup(); }, 4000);
         }
       } else {
         if (etaF > 0 && etaF <= 600 && !watchMarks.ten) {
@@ -3645,6 +3648,23 @@
     if (!view.open) {
       setStatus(clockTime() + " 盯站 · " + watch.liveText);
     }
+  }
+
+  /* 到站后自动结束盯站：停页面定时器、停后台服务、清状态和持久化 */
+  function watchArrivedCleanup() {
+    if (!watch.on) return;
+    if (watch.timer) { clearInterval(watch.timer); watch.timer = null; }
+    stopBackgroundWatch();
+    watch.on = false;
+    watch.target = null;
+    watch.liveText = "已到站，盯站结束";
+
+    var checkbox = $("watch");
+    if (checkbox) checkbox.checked = false;
+    setStatus("已到站，盯站自动结束", false);
+    updateWatchUI();
+    if (view.name === "detail" && view.data) renderTimes({ scroll: false });
+    if (view.name === "veh") renderVehicleTimes();
   }
 
   function clockTime() {
@@ -4121,7 +4141,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.26";
+  var APP_FALLBACK_VERSION = "9.27";
 
   function fillAbout() {
     var verEl = $("abVersion");

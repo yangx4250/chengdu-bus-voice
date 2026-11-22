@@ -60,6 +60,7 @@ public final class WatchService extends Service {
     private static volatile boolean WAKE_HELD = false;
     /** 诊断模式：每次轮询都出声，用来确认服务到底有没有在跑。 */
     private static volatile boolean DIAG_SPEAK = false;
+    private volatile boolean autoStopping = false;
     private static volatile int diagCount = 0;
 
     /** 切换诊断模式（每轮轮询都出声）。 */
@@ -143,6 +144,7 @@ public final class WatchService extends Service {
         }
 
         currentBusId = "";
+        autoStopping = false;
         spoke10m = false;
         spoke5m = false;
         spoke2s = false;
@@ -296,14 +298,17 @@ public final class WatchService extends Service {
             boolean arrivedNow = (away == 0) || (eta == 0);
 
             if (arrivedNow) {
-                /* 到站优先：一旦到站就只播「已到站」，不再补播前面的节点 */
+                /* 到站优先：一旦到站就只播「已到站」，不再补播前面的节点。
+                   播完即**自动取消盯站** —— 盯站是「等这一辆车」，
+                   车到了任务就完成，不接着盯下一辆（避免半夜被后续车辆吵醒）。 */
                 if (!spokeArrived) {
                     spokeArrived = true;
                     spoke10m = true;   // 标记为已播，防止后续 tick 再补
                     spoke5m = true;
                     spoke2s = true;
-                    updateNotification(stationName + " · 已到站");
+                    updateNotification(stationName + " · 已到站，盯站结束");
                     announce("已到站");
+                    finishAndStop(4 * 1000);   // 留 4 秒让语音播完再停
                 }
             } else {
                 if (eta > 0 && eta <= 600 && !spoke10m) {
@@ -324,6 +329,34 @@ public final class WatchService extends Service {
             updateNotification("⚠ 查询失败：" + (e.getMessage() == null ? e.toString() : e.getMessage()));
             LAST_SPEAK = "查询失败：" + (e.getMessage() == null ? e.toString() : e.getMessage());
         }
+    }
+
+    /**
+     * 到站后的自动收尾：延迟几秒（让「已到站」播完），
+     * 然后清掉持久化目标、停掉前台服务 —— 盯站就此结束，不再盯下一辆车。
+     */
+    private void finishAndStop(long delayMs) {
+        if (autoStopping) return;
+        autoStopping = true;
+        Log.i(TAG, "盯站到站，"+ delayMs +"ms 后自动结束");
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    // 清掉保存的目标，App 重启后不会又自动盯上
+                    getSharedPreferences("cdbus_watch", MODE_PRIVATE).edit().clear().apply();
+                    RUNNING = false;
+                    WAKE_HELD = false;
+                    LAST_SPEAK = "已到站，盯站自动结束";
+                    LAST_SPEAK_AT = System.currentTimeMillis();
+                    stopForeground(true);
+                    stopSelf();
+                    Log.i(TAG, "盯站已自动结束");
+                } catch (Throwable e) {
+                    Log.w(TAG, "自动结束盯站失败", e);
+                }
+            }
+        }, delayMs);
     }
 
     /** 把秒数说成中文：「大约 6 分 30 秒」/「大约 10 分钟」/「30 秒内」。 */

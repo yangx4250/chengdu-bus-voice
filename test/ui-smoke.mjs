@@ -940,6 +940,20 @@ else {
       stage4.push('到站后仍在重复播报：' + speakLog.slice(before).join('|'));
     }
 
+    /* ⑤ 到站后自动取消盯站（不等下一辆车）：
+       等页面那个 4 秒定时器跑完，盯站开关应复位、服务应被停掉。 */
+    await new Promise((r) => setTimeout(r, 4500));
+    if (document.getElementById('watch').checked) {
+      stage4.push('到站后盯站开关没有自动关闭');
+    }
+    if (!watchServiceLog.some((x) => x[0] === 'stop')) {
+      stage4.push('到站后没有停止后台盯站服务');
+    }
+    const statusAfter = String(document.getElementById('status').textContent || '');
+    if (!/自动结束|已到站/.test(statusAfter)) {
+      stage4.push('到站后状态栏没有提示自动结束：' + statusAfter);
+    }
+
     arrivalsEta = null;
     arrivalsArrived = false;
   }
@@ -970,6 +984,14 @@ if (!/startBackgroundWatch\(\)/.test(html)) {
 console.log('✓ 前台播报通过：页面自身仍会按 10/5/2 播报，服务只在后台说话');
 
 // 首页盯站卡片：显示 + 点击进详情
+/* 上一步「到站自动取消盯站」已经把盯站关掉了，这里重新开一个用于卡片测试 */
+{
+  const pins2 = findByText(document.getElementById('favs'), '📌');
+  if (pins2.length) {
+    pins2[0].onclick({ stopPropagation() {} });
+    await new Promise((r) => setTimeout(r, 200));
+  }
+}
 const wcText = textOf(document.getElementById('watchcard'));
 if (!/盯站中/.test(wcText)) {
   console.error('✗ UI 冒烟失败：首页没有显示盯站卡片');
