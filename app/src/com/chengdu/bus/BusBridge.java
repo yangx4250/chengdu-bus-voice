@@ -180,6 +180,56 @@ public final class BusBridge {
         }
     }
 
+    /** 启动下车提醒：目的地站名/站序/坐标 + 该线路全部站点（用来算还剩几站）。 */
+    @JavascriptInterface
+    public void startAlightService(String payload) {
+        try {
+            JSONObject args = new JSONObject(payload == null ? "{}" : payload);
+            android.content.Intent intent = new android.content.Intent(activity, AlightService.class);
+            intent.setAction(AlightService.ACTION_START);
+            intent.putExtra("lineName", args.optString("lineName"));
+            intent.putExtra("toward", args.optString("toward"));
+            intent.putExtra("destName", args.optString("destName"));
+            intent.putExtra("destOrder", args.optInt("destOrder", 1));
+            intent.putExtra("destLat", args.optDouble("destLat", 0));
+            intent.putExtra("destLng", args.optDouble("destLng", 0));
+            intent.putExtra("stations", args.optString("stations"));
+            if (android.os.Build.VERSION.SDK_INT >= 26) activity.startForegroundService(intent);
+            else activity.startService(intent);
+        } catch (Exception e) {
+            Log.w(TAG, "启动下车提醒失败", e);
+        }
+    }
+
+    @JavascriptInterface
+    public void stopAlightService() {
+        try {
+            android.content.Intent intent = new android.content.Intent(activity, AlightService.class);
+            intent.setAction(AlightService.ACTION_STOP);
+            activity.startService(intent);
+            activity.stopService(new android.content.Intent(activity, AlightService.class));
+        } catch (Exception e) {
+            Log.w(TAG, "停止下车提醒失败", e);
+        }
+    }
+
+    /** 下车提醒的实时状态（剩余站数 / 距离 / 是否已到站），同步返回 JSON。 */
+    @JavascriptInterface
+    public String alightStatus() {
+        return AlightService.statusJson();
+    }
+
+    /** 页面视图栈已经到底了：退出 App。 */
+    @JavascriptInterface
+    public void exitApp() {
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.finish();
+            }
+        });
+    }
+
     @JavascriptInterface
     public void note(String text) {
         speech.note(text);

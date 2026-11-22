@@ -102,16 +102,12 @@ public final class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        // 详情页 / 地铁页里按返回：先回首页，而不是退出 App
-        if (bridge != null && !"home".equals(bridge.currentView()) && web != null) {
+        // 返回键一律交给页面：页面自己维护视图栈，栈底时才回退退出
+        if (web != null) {
             web.evaluateJavascript("window.cdBusBackView && window.cdBusBackView()", null);
             return;
         }
-        if (web != null && web.canGoBack()) {
-            web.goBack();
-        } else {
-            super.onBackPressed();
-        }
+        super.onBackPressed();
     }
 
     @Override

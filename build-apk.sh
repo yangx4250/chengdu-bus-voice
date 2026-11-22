@@ -21,7 +21,7 @@ if ! javac -nowarn -source 8 -target 8 -bootclasspath "$SDK" \
       -d "$OUT/classes" @"$OUT/sources.txt" > "$OUT/javac.log" 2>&1; then
   echo "!! javac 失败"; grep -E "error:" "$OUT/javac.log" | head -10; exit 1
 fi
-for class in MainActivity BusBridge ChelaileClient Speech Locator; do
+for class in MainActivity BusBridge ChelaileClient Speech Locator AlightService; do
   [ -f "$OUT/classes/com/chengdu/bus/$class.class" ] || { echo "!! 缺少 $class.class（编译没产出）"; exit 1; }
 done
 
@@ -70,7 +70,7 @@ apk = sys.argv[1]
 dex = zipfile.ZipFile(apk).read("classes.dex")
 need = [b"Lcom/chengdu/bus/MainActivity;", b"Lcom/chengdu/bus/BusBridge;",
         b"Lcom/chengdu/bus/ChelaileClient;", b"Lcom/chengdu/bus/Speech;",
-        b"Lcom/chengdu/bus/Locator;"]
+        b"Lcom/chengdu/bus/Locator;", b"Lcom/chengdu/bus/AlightService;"]
 missing = [n.decode() for n in need if n not in dex]
 if missing:
     print("!! dex 缺少类:", missing); sys.exit(1)

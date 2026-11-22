@@ -56,6 +56,11 @@
     font-size: 13px; color: #b9c6dd; white-space: nowrap; line-height: 1.25;
     min-height: 34px; }
   .chip.on { border-color: var(--accent); color: #fff; }
+  /* 站名条里「离我最近」的那一站 */
+  .chip.nearest { border-color: var(--ok); background: #12302a; }
+  .chip.nearest .nbadge { font-style: normal; font-size: 10px; line-height: 1.5;
+    background: var(--ok); color: #06130e; border-radius: 999px; padding: 0 5px;
+    margin-left: 5px; }
 
   /* 车辆芯片：上排车牌、下排距离，两排显示更好读 */
   .vchip { display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
@@ -82,11 +87,17 @@
     border: 1px solid var(--accent); border-radius: 999px; padding: 0 6px; line-height: 1.6; }
 
   /* 站名芯片竖排（像车来了的站点条）：横向滑动、每个站名从上往下读 */
-  .chips.vertical { align-items: flex-start; }
+  .chips.vertical { align-items: stretch; padding-top: 2px; }
   .chips.vertical .chip { writing-mode: vertical-rl; text-orientation: upright;
     display: inline-flex; align-items: center; justify-content: flex-start;
-    padding: 10px 7px; min-height: 96px; max-height: 172px; overflow: hidden;
-    line-height: 1.15; letter-spacing: 1px; font-size: 13px; }
+    padding: 10px 7px; height: 132px; overflow: hidden;
+    line-height: 1.15; letter-spacing: 1px; font-size: 13px;
+    position: relative; }
+  /* 竖排时徽标不能横在字中间：挪到顶部，独立一行小字 */
+  .chips.vertical .chip.nearest { padding-top: 20px; }
+  .chips.vertical .chip .nbadge { writing-mode: horizontal-tb; position: absolute;
+    top: 4px; left: 50%; transform: translateX(-50%); margin: 0;
+    font-size: 9px; line-height: 1.6; padding: 0 4px; letter-spacing: 0; }
 
   .bus { background: var(--card); border: 1px solid var(--line); border-radius: 16px;
     padding: 14px; margin-bottom: 10px; }
@@ -175,6 +186,22 @@
   .dwatchstop:active { background: #22304a; color: #fff; }
   .stpin.off { opacity: .28; }
 
+  /* 下车提醒：站点行 🔔、详情页状态条、首页卡片 */
+  .srow .bell { flex: 0 0 auto; padding: 2px 7px; border: 1px solid var(--line);
+    border-radius: 8px; font-size: 12px; line-height: 1; color: #b9c6dd; }
+  .srow .bell:active { background: #22304a; }
+  .srow .bell.on { border-color: var(--hot); color: #ffd9d4; background: #3a1f22; }
+  #alightbar { border-color: var(--hot); }
+  #alightbar .dot3 { width: 7px; height: 7px; border-radius: 50%; background: var(--hot); flex: 0 0 auto; }
+  .alightcard { background: #2a1a1e; border: 1px solid var(--hot); border-radius: 14px;
+    padding: 12px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+  .alightcard:active { background: #352025; }
+  .alightcard .ac-main { flex: 1; min-width: 0; }
+  .alightcard .ac-title { font-size: 14px; font-weight: 600; color: #fff; }
+  .alightcard .ac-sub { font-size: 12px; color: #e6b3ad; margin-top: 4px; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  .alightcard .ac-go { font-size: 12px; color: var(--hot); white-space: nowrap; }
+
   .watchcard { background: #16233a; border: 1px solid var(--accent); border-radius: 14px;
     padding: 12px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
   .watchcard:active { background: #1b2b46; }
@@ -210,7 +237,7 @@
     line-height: 1; opacity: .85; }
   .fav .pin:active { opacity: 1; }
 
-  #dtop { position: sticky; top: 0; z-index: 20; background: var(--bg);
+  #dtop, #ltop { position: sticky; top: 0; z-index: 20; background: var(--bg);
     margin: 0 -14px; padding: 2px 14px 8px; }
   .detail-head { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
   .detail-head .dh-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -239,6 +266,11 @@
   .srow.picked { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
   .srow.arrived .swhen { color: #ff5b5b; font-weight: 700; }
   .srow.current .sname { color: #fff; font-weight: 600; }
+  /* 车辆页里离我最近的站：绿色描边高亮 + 「离我最近」徽标 */
+  .srow.nearest { border-color: var(--ok); background: #12302a; }
+  .srow.nearest .sname { color: #d8fff1; font-weight: 600; }
+  .srow .spk.nb { font-style: normal; font-size: 10px; color: #06130e; background: var(--ok);
+    border-radius: 999px; padding: 2px 7px; line-height: 1.5; white-space: nowrap; }
 
   /* 自检面板 */
   #diag { position: fixed; inset: 0; background: rgba(6,10,20,.96); z-index: 50;
@@ -290,7 +322,7 @@
   .watchcard .wc-title { font-size: var(--fs); }
   .watchcard .wc-sub { font-size: var(--fs-sm); }
 
-  #dtop { margin: 0 calc(-1 * var(--pad)); padding: 2px var(--pad) 6px; }
+  #dtop, #ltop { margin: 0 calc(-1 * var(--pad)); padding: 2px var(--pad) 6px; }
   #dtop #ddirs, #dtop #dbuses { margin-bottom: 8px; }
   #depbar { margin: 0 2px 8px; }
   #deptext { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -349,6 +381,7 @@
 
   <div id="favs"></div>
   <div id="watchcard"></div>
+  <div id="alightcard"></div>
   <div id="selbar" class="selbar hidden">
     <span class="seltext" id="seltext"></span>
     <button id="hfav">☆ 收藏</button>
@@ -422,6 +455,62 @@
   <div id="mlist"><div class="empty">选一条线路查看站点</div></div>
 </div>
 
+<div id="pick" class="hidden">
+  <div id="ptop">
+    <div class="detail-head">
+      <div class="dh-row">
+        <button id="pback">← 返回</button>
+        <div class="dh-actions">
+          <button id="prefresh">刷新</button>
+        </div>
+      </div>
+      <div class="titles">
+        <div id="ptitle">搜索结果</div>
+        <div id="psub">选一条线路</div>
+      </div>
+    </div>
+  </div>
+  <div id="plist"></div>
+</div>
+
+<div id="veh" class="hidden">
+  <div id="vtop">
+    <div class="detail-head">
+      <div class="dh-row">
+        <button id="vback">← 返回</button>
+        <div class="dh-actions">
+          <button id="vrefresh">刷新</button>
+        </div>
+      </div>
+      <div class="titles">
+        <div id="vtitle">车辆</div>
+        <div id="vsub"></div>
+      </div>
+    </div>
+  </div>
+  <div id="vlist"></div>
+</div>
+
+<div id="lineview" class="hidden">
+  <div id="ltop">
+    <div class="detail-head">
+      <div class="dh-row">
+        <button id="lback">← 返回</button>
+        <div class="dh-actions">
+          <button id="lrefresh">刷新</button>
+        </div>
+      </div>
+      <div class="titles">
+        <div id="ltitle">线路</div>
+        <div id="lsub"></div>
+      </div>
+    </div>
+    <div id="ldirs" class="chips"></div>
+    <div id="lchips" class="chips vertical"></div>
+  </div>
+  <div id="llist"></div>
+</div>
+
 <div id="detail" class="hidden">
   <div id="dtop">
     <div class="detail-head">
@@ -440,6 +529,11 @@
     <div id="dwatchbar" class="selbar hidden">
       <span class="seltext" id="dwatchtext"></span>
       <span id="dwatchStop" class="dwatchstop">停止</span>
+    </div>
+    <div id="alightbar" class="selbar hidden">
+      <span class="dot3"></span>
+      <span class="seltext" id="alighttext"></span>
+      <span id="alightStop" class="dwatchstop">取消</span>
     </div>
     <div id="ddirs" class="chips"></div>
     <div id="dbuses" class="chips"></div>
@@ -467,7 +561,9 @@
     timer: null,
     lastSpoken: 0,
     lastUrgent: false,
-    busy: false
+    busy: false,
+    lineView: null,     // 线路页：{lineId,name,startSn,endSn,firstTime,lastTime,stations,directions}
+    favView: null       // 收藏站点视图：{stationId,name}
   };
 
   var view = {
@@ -914,11 +1010,55 @@
     return all.filter(function (l) { return l.name && String(l.name).indexOf(keys[0]) === 0; });
   }
 
-  function centerActiveChip(box) {
+  /* 把某个元素滚到视口中间。
+     WebView 里「平滑滚动」那个 API 有时完全不生效（尤其是列表刚 innerHTML 重建、
+     布局还没稳定时），所以这里先算位置，再用 window.scrollTo 兜底一次。 */
+  function scrollElementIntoView(el, delay) {
+    if (!el) return;
+    function go() {
+      var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+      if (!rect) return;
+      var viewH = window.innerHeight || 0;
+      /* 已经在视口中部就别再动，避免自动刷新时页面抖动 */
+      var centerY = rect.top + rect.height / 2;
+      if (viewH && centerY > viewH * 0.25 && centerY < viewH * 0.75) return;
+      var target = rect.top + (window.scrollY || window.pageYOffset || 0) - viewH / 2 + rect.height / 2;
+      if (target < 0) target = 0;
+      try {
+        if (typeof window.scrollTo === "function") {
+          window.scrollTo({ top: target, behavior: "smooth" });
+        }
+      } catch (e) {
+        try { window.scrollTo(0, target); } catch (e2) {}
+      }
+    }
+    setTimeout(go, delay === undefined ? 80 : delay);
+    /* 再补一次：字体/图片加载完布局会变，第一次算出来的位置可能不准 */
+    setTimeout(go, (delay === undefined ? 80 : delay) + 350);
+  }
+
+  /* 横向 chips 把选中项滚到中间 */
+  function centerActiveChip(box, opts) {
     if (!box || typeof box.querySelector !== "function") return;
     var active = box.querySelector(".chip.on");
-    if (active && typeof active.scrollIntoView === "function") {
-      active.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+    if (!active) return;
+    var rect = active.getBoundingClientRect ? active.getBoundingClientRect() : null;
+    var boxRect = box.getBoundingClientRect ? box.getBoundingClientRect() : null;
+    if (rect && boxRect) {
+      /* 已经在可视范围内就别滚 */
+      if (rect.left >= boxRect.left && rect.right <= boxRect.right) return;
+      var target = box.scrollLeft + (rect.left - boxRect.left) - (boxRect.width - rect.width) / 2;
+      if (target < 0) target = 0;
+      try {
+        if (typeof box.scrollTo === "function") box.scrollTo({ left: target, behavior: "smooth" });
+        else box.scrollLeft = target;
+      } catch (e) {
+        box.scrollLeft = target;
+      }
+      return;
+    }
+    if (typeof active.scrollIntoView === "function") {
+      try { active.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" }); } catch (e) {}
     }
   }
 
@@ -1018,10 +1158,10 @@
     return matches;
   }
 
-  /* 多条匹配时列出候选线路，点一条再进站名选择 */
+  /* 多条匹配时进「搜索结果」二级页：列出候选线路，点一条再进站名选择 */
   function renderLinePicker(lines, stopName) {
     searching = true;
-    var list = $("list");
+    var list = $("plist");
     list.innerHTML = "";
     var title = document.createElement("div");
     title.className = "stop-title";
@@ -1069,6 +1209,9 @@
       next();
     })();
     setStatus("匹配 " + lines.length + " 条线路");
+    if ($("ptitle")) $("ptitle").textContent = "搜索结果";
+    if ($("psub")) $("psub").textContent = "共 " + lines.length + " 条匹配线路，点一条查看";
+    showView("pick");
   }
 
   function dirLabel(l) {
@@ -1132,7 +1275,8 @@
     return slim;
   }
 
-  function pickStation(detail, stationId, name) {
+  /* 在一条线路的站点表里按 stationId（退化为站名）找站 */
+  function findStation(detail, stationId, name) {
     var list = (detail && detail.stations) || [];
     for (var i = 0; i < list.length; i++) if (list[i].stationId === stationId) return list[i];
     for (var k = 0; k < list.length; k++) if (list[k].name === name) return list[k];
@@ -1143,7 +1287,7 @@
   async function enrichRow(mainEl, arrival, groupName) {
     try {
       var detail = await getDetail(arrival.lineId);
-      var station = pickStation(detail, arrival.stationId, groupName);
+      var station = findStation(detail, arrival.stationId, groupName);
       if (!station) return;
       var buses = await rpc("arrivals", {
         lineId: arrival.lineId,
@@ -1379,8 +1523,14 @@
 
   /* ------------------------------------------------------------ 首页渲染 */
 
+  /* 到站列表画在哪：线路页有自己的列表，首页的附近站点不能被动过 */
+  function arrivalsBox() {
+    if (view.name === "lineview" && $("llist")) return $("llist");
+    return $("list");
+  }
+
   function renderBuses(buses) {
-    var list = $("list");
+    var list = arrivalsBox();
     list.innerHTML = "";
     if (!buses.length) {
       var endedNow = state.detail && outsideService(state.detail.firstTime, state.detail.lastTime);
@@ -1392,7 +1542,7 @@
     var title = document.createElement("div");
     title.className = "stop-title";
     title.innerHTML = state.detail.name + "路 · " + state.station.name +
-      ' <small>开往 ' + state.detail.endSn + " · 点车辆看沿途各站</small>";
+      ' <small>开往 ' + state.detail.endSn + " · 点车辆看这辆车到各站</small>";
     list.appendChild(title);
 
     if (outsideService(state.detail.firstTime, state.detail.lastTime)) {
@@ -1418,14 +1568,7 @@
           ? "车已在本站 · 点开看这辆车到各站时间"
           : "还有 " + bus.stationsAway + " 站 · 距站约 " + bus.distanceMeters + " 米 · 点开看这辆车到各站时间") + "</div>";
       card.onclick = function () {
-        openDetail({
-          lineId: state.detail.lineId,
-          lineName: state.detail.name,
-          stationId: state.station.stationId,
-          stationName: state.station.name,
-          fromOrder: state.station.order,
-          title: state.detail.name + "路 · " + state.station.name
-        });
+        openVehicleForBus(bus);
       };
       list.appendChild(card);
     });
@@ -1687,16 +1830,341 @@
 
   /* ------------------------------------------------------------ 详情页 */
 
-  function showView(name) {
-    $("home").classList.toggle("hidden", name !== "home");
-    $("detail").classList.toggle("hidden", name !== "detail");
-    if ($("metro")) $("metro").classList.toggle("hidden", name !== "metro");
-    if ($("fabSpeak")) $("fabSpeak").classList.toggle("hidden", name !== "detail");
+  /* 视图栈：每进一层记一层，返回键永远是「回上一页」，只有栈底才退出 App */
+  var VIEWS = ["home", "detail", "metro", "diag", "pick", "veh", "lineview"];
+  var viewStack = ["home"];
+
+  function showView(name, opts) {
+    if (VIEWS.indexOf(name) < 0) name = "home";
+    VIEWS.forEach(function (v) {
+      var el = $(v);
+      if (el) el.classList.toggle("hidden", v !== name);
+    });
+    if ($("fabSpeak")) $("fabSpeak").classList.toggle("hidden", name !== "detail" && name !== "veh");
+    // 详情和车辆页共用一份 30 秒刷新，其它页面停掉
+    if (name !== "detail" && name !== "veh") stopDetailAutoRefresh();
     view.name = name;
     view.open = name !== "home";
     if (name !== "detail") view.pickedStation = null;
+    if (!opts || !opts.push) {
+      var top = viewStack[viewStack.length - 1];
+      if (top !== name) {
+        if (name === "home") viewStack = ["home"];
+        else viewStack.push(name);
+        while (viewStack.length > 10) viewStack.splice(1, 1);
+      }
+    }
+    // 回到首页 = 这次查询结束：线路页/站点页的状态和搜索栏一起收起来，
+    // 首页继续显示附近站点（这里不发请求，过期了由 catchUpHome 补一次）
+    if (name === "home" && (state.lineView || state.favView || state.detail || searching)) {
+      searching = false;
+      state.lineView = null;
+      state.favView = null;
+      state.stationView = null;
+      state.detail = null;
+      state.directions = [];
+      state.station = null;
+      state.buses = [];
+      state.first = null;
+      if ($("chips")) $("chips").innerHTML = "";
+      if ($("dirs")) $("dirs").innerHTML = "";
+      if ($("hfav")) $("hfav").style.display = "";
+      updateSelbar();
+    }
     if (name === "home") catchUpHome();
     if (bridge && bridge.setView) { try { bridge.setView(name); } catch (e) {} }
+  }
+
+  /* 返回上一页；已经在栈底返回 false（交给原生退出 App） */
+  function goBack() {
+    if (viewStack.length > 1) {
+      viewStack.pop();
+      showView(viewStack[viewStack.length - 1] || "home", { push: true });
+      return true;
+    }
+    if (view.name !== "home") { showView("home", { push: true }); return true; }
+    return false;
+  }
+
+  function backHandler() {
+    if (goBack()) return true;
+    if (bridge && bridge.exitApp) {
+      try { bridge.exitApp(); return true; } catch (e) {}
+    }
+    return false;
+  }
+
+  /* ------------------------------------------------------------ 线路页 */
+
+  /* 搜索选中一条线路后进这里：方向、站名、这一站的车，都留在本页，
+     首页继续显示附近站点，不会被搜索结果顶掉 */
+  async function openLineView(opts) {
+    var lineId = opts && opts.lineId;
+    var name = (opts && opts.lineName) || "";
+    if (!lineId) { setStatus("没有选中线路", true); return; }
+
+    var detail = await rpc("detail", { lineId: lineId });
+    var directions = [];
+    try { directions = await loadDirections(detail.name || name); } catch (e) { directions = []; }
+
+    var stations = (detail.stations || []).slice().sort(function (a, b) {
+      return Number(a.order) - Number(b.order);
+    });
+    state.lineView = {
+      lineId: detail.lineId || lineId,
+      name: detail.name || name,
+      startSn: detail.startSn || "",
+      endSn: detail.endSn || "",
+      firstTime: detail.firstTime || "",
+      lastTime: detail.lastTime || "",
+      stations: stations,
+      directions: directions
+    };
+    // 首页那份状态也跟上，从线路页进详情时用的是同一套数据
+    state.detail = detail;
+    state.directions = directions;
+    state.station = null;
+
+    var station = null;
+    if (opts.stationId) station = findStation(detail, opts.stationId, opts.stationName);
+    else if (opts.stationName) station = findStation(detail, null, opts.stationName);
+    if (station) state.station = station;
+
+    renderLineView();
+    showView("lineview");
+    /* 没指定站时，把「离我最近」那一站滚到横向中间，方便一眼看到 */
+    renderLineStations({ scroll: !opts.stationId && !opts.stationName });
+    if (state.station) await refresh(false);
+    else renderLineEmpty();
+  }
+
+  /* 重新画线路页的顶栏 + 站名（方向切换、返回时都用它） */
+  function renderLineView() {
+    var lv = state.lineView;
+    if (!lv) return;
+    var titleEl = $("ltitle");
+    var subEl = $("lsub");
+    if (titleEl) titleEl.textContent = lineLabel(lv) + " · " + lv.startSn + " → " + lv.endSn;
+    if (subEl) {
+      subEl.textContent = "全程 " + lv.stations.length + " 站 · " +
+        (state.station ? state.station.name : "点下面的站名查看实时到站");
+    }
+    renderLineDirections();
+    renderLineStations();
+  }
+
+  function renderLineDirections() {
+    var box = $("ldirs");
+    if (!box) return;
+    box.innerHTML = "";
+    var lv = state.lineView;
+    if (!lv || !lv.directions || lv.directions.length < 2) return;
+    lv.directions.forEach(function (dir) {
+      var chip = document.createElement("div");
+      chip.className = "chip" + (dir.lineId === lv.lineId ? " on" : "");
+      chip.textContent = dirLabel(dir);
+      chip.onclick = function () {
+        if (dir.lineId === lv.lineId) return;
+        run(function () { return switchLineDirection(dir.lineId); });
+      };
+      box.appendChild(chip);
+    });
+    centerActiveChip(box);
+  }
+
+  function renderLineStations(opts) {
+    var box = $("lchips");
+    if (!box) return;
+    box.innerHTML = "";
+    var lv = state.lineView;
+    if (!lv) return;
+    /* 离我最近的站：用当前定位算，线路页的站名条也要标出来 */
+    var nearSt = nearestStation(lv.stations);
+    var nearestId = nearSt ? nearSt.stationId : null;
+    lv.stations.slice(0, 60).forEach(function (station) {
+      var chip = document.createElement("div");
+      var isNearest = nearestId && station.stationId === nearestId;
+      var classes = "chip";
+      if (state.station && state.station.stationId === station.stationId) classes += " on";
+      if (isNearest) classes += " nearest";
+      chip.className = classes;
+      /* 站名单独一个 span：徽标是绝对定位的，不能被当成正文挤在一起 */
+      var nameEl = document.createElement("span");
+      nameEl.className = "cname";
+      nameEl.textContent = station.name;
+      chip.appendChild(nameEl);
+      if (isNearest) {
+        var nb = document.createElement("i");
+        nb.className = "nbadge";
+        nb.textContent = nearSt.distanceMeters >= 0 ? nearSt.distanceMeters + "m" : "最近";
+        nb.title = "离我最近";
+        chip.appendChild(nb);
+      }
+      chip.onclick = function () {
+        state.station = station;
+        renderLineStations();
+        renderLineView();
+        run(function () { return refresh(true); });
+      };
+      box.appendChild(chip);
+    });
+    if (opts && opts.scroll && nearestId) {
+      /* 没有选中站时，把「离我最近」那个芯片滚到横向中间 */
+      var target = box.querySelector ? box.querySelector(".chip.nearest") : null;
+      if (target) {
+        setTimeout(function () {
+          var rect = target.getBoundingClientRect ? target.getBoundingClientRect() : null;
+          var boxRect = box.getBoundingClientRect ? box.getBoundingClientRect() : null;
+          if (!rect || !boxRect) return;
+          var left = box.scrollLeft + (rect.left - boxRect.left) - (boxRect.width - rect.width) / 2;
+          if (left < 0) left = 0;
+          try {
+            if (typeof box.scrollTo === "function") box.scrollTo({ left: left, behavior: "smooth" });
+            else box.scrollLeft = left;
+          } catch (e) { box.scrollLeft = left; }
+        }, 80);
+      }
+    }
+    centerActiveChip(box);
+  }
+
+  function renderLineEmpty() {
+    var box = $("llist");
+    if (!box) return;
+    var lv = state.lineView;
+    if (!lv) { box.innerHTML = '<div class="empty">还没有选线路</div>'; return; }
+    box.innerHTML = '<div class="empty">共 ' + lv.stations.length +
+      " 站，点上面任意站名查看实时到站</div>";
+  }
+
+  /* 线路页切方向：同一条线的另一头，尽量保住当前选中的站 */
+  async function switchLineDirection(lineId) {
+    var keep = state.station ? state.station.stationId : null;
+    var detail = await rpc("detail", { lineId: lineId });
+    var lv = state.lineView || {};
+    lv.lineId = detail.lineId || lineId;
+    lv.name = detail.name || lv.name;
+    lv.startSn = detail.startSn || "";
+    lv.endSn = detail.endSn || "";
+    lv.firstTime = detail.firstTime || "";
+    lv.lastTime = detail.lastTime || "";
+    lv.stations = (detail.stations || []).slice().sort(function (a, b) {
+      return Number(a.order) - Number(b.order);
+    });
+    try { lv.directions = await loadDirections(detail.name || lv.name); } catch (e) {}
+    state.lineView = lv;
+    state.detail = detail;
+    state.directions = lv.directions;
+    state.station = keep ? findStation(detail, keep, null) : null;
+    renderLineView();
+    if (state.station) await refresh(false);
+    else renderLineEmpty();
+  }
+
+  /* 收藏的站点：单独一页列出这一站所有线路，不占用首页列表 */
+  function renderFavStopPage(stops) {
+    var stop = stops && stops[0];
+    if (!stop) return;
+    state.lineView = null;
+    var titleEl = $("ltitle");
+    var subEl = $("lsub");
+    if (titleEl) titleEl.textContent = "站点 · " + (stop.name || "");
+    var arrivals = stop.arrivals || [];
+    if (subEl) {
+      subEl.textContent = (stop.distanceMeters !== undefined && stop.distanceMeters !== null
+        ? Math.round(stop.distanceMeters) + " 米 · " : "") +
+        (arrivals.length ? arrivals.length + " 条线路" : "暂无实时到站");
+    }
+    var dirs = $("ldirs");
+    if (dirs) dirs.innerHTML = "";
+    var chips = $("lchips");
+    if (chips) chips.innerHTML = "";
+    var box = $("llist");
+    if (!box) return;
+    box.innerHTML = "";
+    if (!arrivals.length) {
+      box.innerHTML = '<div class="empty">这一站暂时没有即将到站的车辆</div>';
+      return;
+    }
+    arrivals.forEach(function (a) {
+      var card = document.createElement("div");
+      card.className = "bus tap";
+      var ended = outsideService(a.firstTime, a.lastTime);
+      var text = ended ? "不在运营时段"
+        : (a.etaSeconds !== null && a.etaSeconds !== undefined ? fmtEta(a.etaSeconds)
+          : (a.preStartTime ? "待发车 " + a.preStartTime : "暂无实时车辆"));
+      var hot = !ended && isUrgent(a);
+      card.innerHTML =
+        '<div class="head"><span class="line-name">' + (a.lineName || "") + "路</span>" +
+        '<span class="toward">往 ' + (a.toward || "") + "</span></div>" +
+        '<div class="eta' + (hot ? " hot" : "") + '">' + text + "</div>" +
+        '<div class="meta">' + (ended ? "该线路不在运营时段" : describe(a)) + "</div>";
+      card.onclick = function () {
+        openDetail({
+          lineId: a.lineId,
+          lineName: a.lineName,
+          stationId: a.stationId || stop.stationId,
+          stationName: a.stationName || stop.name,
+          fromOrder: a.stationOrder || 1,
+          title: (a.lineName || "") + "路 · " + (stop.name || "")
+        });
+      };
+      box.appendChild(card);
+    });
+  }
+
+  /* 收藏站点页的刷新：按保存的坐标再查一次这一站（不重新定位，省电） */
+  function refreshFavStopPage() {
+    var fav = state.favView;
+    if (!fav) return Promise.resolve();
+    var lat = fav.lat !== undefined && fav.lat !== null ? fav.lat
+      : (state.fix ? state.fix.lat : DEFAULT_LAT);
+    var lng = fav.lng !== undefined && fav.lng !== null ? fav.lng
+      : (state.fix ? state.fix.lng : DEFAULT_LNG);
+    return rpc("nearby", { lat: lat, lng: lng, limit: 8 }).then(function (data) {
+      var stops = (data && data.stops) || [];
+      var hit = null;
+      for (var i = 0; i < stops.length; i++) {
+        if (String(stops[i].stationId) === String(fav.stationId)) { hit = stops[i]; break; }
+      }
+      if (hit) {
+        state.favView = { stationId: hit.stationId, name: hit.name, lat: lat, lng: lng };
+        renderFavStopPage([hit]);
+        setStatus("已刷新站点 " + hit.name);
+      } else {
+        setStatus("这一站暂时没查到", true);
+      }
+    });
+  }
+
+  /* 首页「最近一辆」卡片 → 直接进这辆车的页面 */
+  async function openVehicleForBus(bus) {
+    var station = state.station;
+    var detail = state.detail;
+    if (!station || !detail || !bus) return;
+    view.lineId = detail.lineId;
+    view.lineName = detail.name;
+    view.stationId = station.stationId;
+    view.stationName = station.name;
+    view.fromOrder = station.order;
+    view.fromFavorite = false;
+    view.index = 0;
+    view.selectedBusId = bus.busId;
+    $("vtitle").textContent = "车牌 " + (bus.plate || String(bus.busId).slice(-4));
+    $("vsub").textContent = detail.name + "路 · 正在加载沿途各站…";
+    $("vlist").innerHTML = '<div class="empty">加载中…</div>';
+    showView("veh");
+    startDetailAutoRefresh();
+    await loadMatrix({ auto: true });
+    // 车辆页里换成用户点的那一辆
+    var buses = view.buses || [];
+    for (var i = 0; i < buses.length; i++) {
+      if (buses[i].busId === bus.busId) { view.index = i; break; }
+    }
+    if (buses[view.index]) view.selectedBusId = buses[view.index].busId;
+    renderBusChips();
+    // 跳进车辆页：自动滑到离我最近的那一站并标注
+    openVehicleView({ scroll: true });
   }
 
   async function openDetail(opts) {
@@ -1716,6 +2184,7 @@
     $("dlist").innerHTML = '<div class="empty">加载中…</div>';
     showView("detail");
     updateWatchUI();
+    updateAlightUI();
     setTimeout(syncTopOffset, 30);
     startDetailAutoRefresh();
     await Promise.all([loadMatrix(), loadDetailDirections()]);
@@ -1817,6 +2286,7 @@
       updateFavStar();
       renderBusChips();
       renderTimes({ scroll: !auto });
+      if (view.name === "veh") renderVehicleTimes();
     } catch (err) {
       $("dsub").textContent = "";
       $("dlist").innerHTML = '<div class="empty">' + (err.message || "加载失败") + "</div>";
@@ -1865,6 +2335,7 @@
         view.selectedBusId = bus.busId;
         renderBusChips();
         renderTimes();
+        openVehicleView();
       };
       box.appendChild(chip);
     });
@@ -2178,7 +2649,9 @@
         '<span class="spk stpin' +
           (watch.on && watch.target && watch.target.order === station.order &&
            String(watch.target.lineId) === String(view.lineId) ? " off" : "") +
-          '" data-pin="' + station.order + '">📌</span></div>';
+          '" data-pin="' + station.order + '">📌</span>' +
+        '<span class="spk bell' + (alightRunning && alightDest && Number(alightDest.order) === Number(station.order) ? " on" : "") +
+          '" data-bell="' + station.order + '">🔔</span></div>';
     });
     html += '<div class="dhead" style="margin-top:4px">点任一站名看该站其它线路；时间为预测，仅供参考</div>';
     list.innerHTML = html;
@@ -2195,6 +2668,13 @@
           pinEl.onclick = function (ev) {
             if (ev && ev.stopPropagation) ev.stopPropagation();
             watchStationByOrder(order);
+          };
+        }
+        var bellEl = rowEl.querySelector ? rowEl.querySelector(".bell") : null;
+        if (bellEl) {
+          bellEl.onclick = function (ev) {
+            if (ev && ev.stopPropagation) ev.stopPropagation();
+            startAlight(order);
           };
         }
       })(rows[i]);
@@ -2261,6 +2741,11 @@
     var text = $("seltext");
     var button = $("hfav");
     if (!state.detail) {
+      bar.className = "selbar hidden";
+      return;
+    }
+    // 线路/车辆页有自己的顶栏，首页那条收藏条不用跟着出现
+    if (view.name === "lineview" || view.name === "veh") {
       bar.className = "selbar hidden";
       return;
     }
@@ -2332,11 +2817,9 @@
       if (!stop) throw new Error("附近没有查到该站（可能不在 500 米内）");
 
       state.stationView = fav;
-      showView("home");
-      renderStops([stop]);
-      $("seltext").textContent = "站点 · " + stop.name;
-      $("selbar").className = "selbar";
-      $("hfav").style.display = "none";
+      state.favView = { stationId: stop.stationId, name: stop.name, lat: fav.lat, lng: fav.lng };
+      renderFavStopPage([stop]);
+      showView("lineview");
       setStatus("站点 · " + stop.name + " · " + (stop.arrivals || []).length + " 条线路");
     } catch (err) {
       setStatus(err.message || "加载失败", true);
@@ -2547,18 +3030,10 @@
   window.cdBusBuildGroups = buildGroups;
   window.cdBusShouldAutoRefresh = shouldAutoRefreshHome;
   window.cdBusCloseDetail = closeDetail;
-  window.cdBusBack = function () {
-    if (view.name === "detail") { closeDetail(); return true; }
-    if (view.name === "metro") { showView("home"); return true; }
-    return false;
-  };
+  window.cdBusBack = function () { return backHandler(); };
 
-  /* 原生返回键调用这个：任何非首页视图都先回首页 */
-  window.cdBusBackView = function () {
-    if (view.name === "detail") { closeDetail(); return true; }
-    if (view.name === "metro") { showView("home"); return true; }
-    return false;
-  };
+  /* 原生返回键调用这个：无论第几级页面都回上一页，只有首页才退出 App */
+  window.cdBusBackView = function () { return backHandler(); };
 
   /* ------------------------------------------------------------ 流程 */
 
@@ -2576,37 +3051,26 @@
     }
   }
 
+  /* 选中一条线路：进独立的线路页（方向 + 站名 + 到站），不再回首页 */
   async function applyLine(line, stopName, announce) {
     searching = true;
-    var detail = await rpc("detail", { lineId: line.lineId });
-
-    var switchedLine = !state.detail || state.detail.lineId !== detail.lineId;
-    state.detail = detail;
-    state.directions = await loadDirections(detail.name);
-    if (switchedLine) state.station = null;
-
-    if (stopName) {
-      var found = detail.stations.find(function (s) { return s.name === stopName; }) ||
-                  detail.stations.find(function (s) { return s.name.indexOf(stopName) >= 0; });
-      if (!found) throw new Error("该线路没有「" + stopName + "」站，点下面的站名选一个");
-      state.station = found;
+    await openLineView({
+      lineId: line.lineId,
+      lineName: line.name,
+      stationName: stopName || ""
+    });
+    if (announce && state.station && voiceOn()) {
+      speak(stationText(state.buses));
+      state.lastSpoken = Date.now();
     }
-    renderHomeDirections();
-    renderStationChips();
-    updateSelbar();
-
-    if (!state.station) {
-      $("list").innerHTML = '<div class="empty">共 ' + detail.stations.length +
-        ' 站，点上面任意站名查看实时到站</div>';
-      setStatus(lineLabel(line) + " " + detail.startSn + " → " + detail.endSn);
-      return;
-    }
-    await refresh(announce);
   }
 
   async function queryLine(announce) {
     var key = $("line").value.trim().replace(/路$/, "");
+    // 搜索框支持「16路 天府广场南」这种写法：空格后面当站名
     var stopName = "";
+    var m = key.match(/^(\S+)\s+(.+)$/);
+    if (m) { key = m[1]; stopName = m[2].trim(); }
     if (!key) throw new Error("请先填线路号");
 
     setStatus("搜索 " + key + " …");
@@ -2675,9 +3139,10 @@
 
   function shouldAutoRefreshHome() {
     if (document.hidden) return false;              // 退到后台
-    if (state.busy || view.open) return false;      // 正在查询 / 停在详情页
+    if (state.busy || view.open) return false;      // 正在查询 / 停在二级页面
     if (searching) return false;                    // 正在看搜索结果（候选线路或某线路）
     if (state.detail || state.station) return false;
+    if (state.lineView || state.favView) return false;   // 线路页 / 站点页还没退出
     return true;
   }
 
@@ -2698,6 +3163,7 @@
   function countdownVisible() {
     if (document.hidden) return false;
     if (view.open || searching) return false;
+    if (state.lineView || state.favView) return false;
     return true;
   }
 
@@ -2765,6 +3231,8 @@
     }
     state.detail = null;
     state.station = null;
+    state.lineView = null;
+    state.favView = null;
     state.fix = fix;
     await refreshHome({ announce: true, budget: 18 });
     startHomeAutoRefresh();
@@ -2792,7 +3260,7 @@
       await task();
     } catch (err) {
       setStatus(err.message || String(err), true);
-      $("list").innerHTML = '<div class="empty">' + (err.message || "出错了") + "</div>";
+      if (!view.open) $("list").innerHTML = '<div class="empty">' + (err.message || "出错了") + "</div>";
     } finally {
       state.busy = false;
       $("go").disabled = false;
@@ -2979,6 +3447,391 @@
     return new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
   }
 
+  /* ------------------------------------------------------------ 车辆二级页 */
+
+  /* 两点球面距离（米），用于在车辆页找「离我最近的站点」 */
+  function geoDistanceMeters(lat1, lng1, lat2, lng2) {
+    var R = 6371000;
+    var dLat = (lat2 - lat1) * Math.PI / 180;
+    var dLng = (lng2 - lng1) * Math.PI / 180;
+    var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  /* 车辆页里离我（当前定位）最近的站序；没有定位时退回打开的那一站 */
+  function nearestStationOrder() {
+    var stations = (view.data && view.data.stations) || [];
+    if (!stations.length) return view.fromOrder;
+    var st = nearestStation(stations);
+    return st ? st.order : view.fromOrder;
+  }
+
+  /* 在一组站点里找离当前定位最近的那个（按经纬度算真实距离） */
+  function nearestStation(stations) {
+    if (!stations || !stations.length) return null;
+    var fix = state.fix && typeof state.fix.lat === "number" && typeof state.fix.lng === "number" ? state.fix : null;
+    if (!fix) return null;
+    var best = null, bestDist = Infinity;
+    stations.forEach(function (s) {
+      var lat = Number(s.lat), lng = Number(s.lng);
+      if (!isFinite(lat) || !isFinite(lng)) return;   // 跳过没有坐标的站
+      if (lat === 0 && lng === 0) return;             // 接口没给坐标时是 0,0
+      var d = geoDistanceMeters(fix.lat, fix.lng, lat, lng);
+      if (d < bestDist) { bestDist = d; best = s; }
+    });
+    if (!best) return null;
+    best.distanceMeters = Math.round(bestDist);
+    return best;
+  }
+
+  /* 按 stationId 找最近站（线路页站名条用） */
+  function nearestStationId(stations) {
+    var st = nearestStation(stations);
+    return st ? st.stationId : null;
+  }
+
+  function openVehicleView(opts) {
+    if (!view.data || !view.buses || !view.buses.length) {
+      setStatus("这条线暂时没有在途车辆", true);
+      return;
+    }
+    var bus = view.buses[view.index] || view.buses[0];
+    var box = $("vlist");
+    if (box) box.innerHTML = "";
+    if ($("vtitle")) $("vtitle").textContent = "车牌 " + (bus.plate || String(bus.busId).slice(-4));
+    if ($("vsub")) {
+      $("vsub").textContent = (view.lineName || "") + "路 · 当前在第 " + bus.order + " 站 · 全程 " +
+        ((view.data.stations || []).length) + " 站";
+    }
+    showView("veh");
+    renderVehicleTimes(opts);
+  }
+
+  /* 车辆页的到站表：和详情页同一套行样式，只列这一辆车的预测 */
+  /* opts.scroll：跳进车辆页时，自动滚到离我最近的那一站并标注 */
+  function renderVehicleTimes(opts) {
+    var box = $("vlist");
+    if (!box) return;
+    var data = view.data;
+    var bus = (view.buses || [])[view.index] || (view.buses || [])[0];
+    if (!data || !bus) { box.innerHTML = '<div class="empty">暂无车辆信息</div>'; return; }
+    var stations = data.stations || [];
+    var timesByOrder = {};
+    (bus.times || []).forEach(function (t) { timesByOrder[t.order] = t; });
+    var queriedFrom = data.queriedFrom || 1;
+    var nearSt = nearestStation(stations);
+    var nearestOrder = nearSt ? nearSt.order : view.fromOrder;
+    var nearDist = nearSt && nearSt.distanceMeters >= 0 ? nearSt.distanceMeters : null;
+
+    var html = "";
+    stations.forEach(function (station) {
+      var t = timesByOrder[station.order];
+      var passed = t ? t.passed : (station.order < queriedFrom);
+      var hot = t && !passed && t.etaSeconds >= 0 && t.etaSeconds <= 150;
+      var arrived = !passed && (
+        (Number(station.order) === Number(bus.order)) ||
+        (t && t.etaSeconds !== null && t.etaSeconds !== undefined && Number(t.etaSeconds) <= 0)
+      );
+      var isNearest = Number(station.order) === Number(nearestOrder);
+      var when;
+      if (passed) when = "已过";
+      else if (arrived) when = "已到站";
+      else if (t && t.etaSeconds >= 0) when = fmtEta(t.etaSeconds);
+      else if (t) when = "暂无";
+      else when = "—";
+      var clock = (t && !passed && t.arrivalAt) ? " · " + fmtClock(t.arrivalAt) : "";
+      html += '<div class="srow' + (isNearest ? " nearest" : "") +
+        (arrived ? " arrived" : "") + (passed ? " passed" : hot ? " hot" : "") +
+        '" data-order="' + station.order + '" data-name="' + station.name + '">' +
+        '<span class="idx">' + station.order + "</span>" +
+        '<span class="sname">' + station.name + "</span>" +
+        '<span class="swhen">' + when + clock + "</span>" +
+        (isNearest ? '<span class="spk nb">离我最近' +
+          (nearDist !== null ? " · " + nearDist + " 米" : "") + '</span>' : "") +
+        '<span class="spk bell' + (alightRunning && alightDest && Number(alightDest.order) === Number(station.order) ? " on" : "") +
+          '" data-bell="' + station.order + '">🔔</span></div>';
+    });
+    html += '<div class="dhead" style="margin-top:4px">点 🔔 把这站设为下车提醒；时间仅供参考</div>';
+    box.innerHTML = html;
+
+    var rows = box.children;
+    var nearestRow = null;
+    for (var i = 0; i < rows.length; i++) {
+      (function (rowEl) {
+        var order = parseInt(rowEl.getAttribute ? rowEl.getAttribute("data-order") : rowEl.dataset.order, 10);
+        if (Number(order) === Number(nearestOrder)) nearestRow = rowEl;
+        var bellEl = rowEl.querySelector ? rowEl.querySelector(".bell") : null;
+        if (bellEl) {
+          bellEl.onclick = function (ev) {
+            if (ev && ev.stopPropagation) ev.stopPropagation();
+            startAlight(order);
+          };
+        }
+        rowEl.onclick = function (ev) {
+          if (ev && ev.target && ev.target.getAttribute && ev.target.getAttribute("data-bell")) return;
+          startAlight(order);
+        };
+      })(rows[i]);
+    }
+
+    /* 点车辆跳进来时，自动滚到离我最近的那一站 */
+    if (opts && opts.scroll && nearestRow) {
+      scrollElementIntoView(nearestRow, 120);
+    }
+  }
+
+  /* ------------------------------------------------------------ 下车提醒 */
+
+  var ALIGHT_KEY = "cdbus.alight";
+  var ALIGHT_TICK_MS = 5000;
+  var alight = { running: false, destName: "", lineName: "", remaining: -1, distance: null,
+                 arrived: false, event: 0, eventText: "", message: "", fresh: false };
+  var alightDest = null;          // {name, order, stationId, lat, lng}
+  var alightLine = null;          // {lineId, lineName, toward}
+  var alightRunning = false;
+  var alightTimer = null;
+  var alightSpeakEvent = 0;
+  var alightSpeakAt = 0;
+  var alightLastText = "";
+
+  function alightSave() {
+    try {
+      localStorage.setItem(ALIGHT_KEY, JSON.stringify({ dest: alightDest, line: alightLine }));
+    } catch (e) {}
+  }
+
+  function alightRestore() {
+    var raw = null;
+    try { raw = localStorage.getItem(ALIGHT_KEY); } catch (e) { raw = null; }
+    if (!raw) return;
+    try {
+      var saved = JSON.parse(raw);
+      if (saved && saved.dest && saved.dest.name) {
+        alightDest = saved.dest;
+        alightLine = saved.line || null;
+      }
+    } catch (e) {}
+  }
+
+  function startAlight(order) {
+    var stations = (view.data && view.data.stations) || [];
+    var target = null;
+    for (var i = 0; i < stations.length; i++) {
+      if (Number(stations[i].order) === Number(order)) { target = stations[i]; break; }
+    }
+    if (!target) { setStatus("没有找到这一站", true); return; }
+    if (!bridge || !bridge.startAlightService) {
+      setStatus("下车提醒要在 App 里用（需要后台定位）", true);
+      return;
+    }
+    var list = [];
+    for (var j = 0; j < stations.length; j++) {
+      list.push({ order: stations[j].order, lat: stations[j].lat || 0, lng: stations[j].lng || 0 });
+    }
+    alightDest = { name: target.name, order: target.order, stationId: target.stationId,
+                   lat: target.lat || 0, lng: target.lng || 0 };
+    alightLine = { lineId: view.lineId, lineName: view.lineName || "",
+                   toward: (view.data && view.data.line && view.data.line.endSn) || "" };
+    alightRunning = true;
+    alightSpeakEvent = 0;
+    alightSpeakAt = 0;
+    alightSave();
+    try {
+      bridge.startAlightService(JSON.stringify({
+        lineName: alightLine.lineName,
+        toward: alightLine.toward,
+        destName: alightDest.name,
+        destOrder: alightDest.order,
+        destLat: alightDest.lat,
+        destLng: alightDest.lng,
+        stations: list
+      }));
+    } catch (e) {}
+    setStatus("下车提醒已开 · " + alightDest.name + " · 每 5 秒看一次定位");
+    updateAlightUI();
+    startAlightTimer();
+    if (view.name === "detail" && view.data) renderTimes({ scroll: false });
+    if (view.name === "veh") renderVehicleTimes();
+  }
+
+  function stopAlight() {
+    alightRunning = false;
+    alight.remaining = -1;
+    alight.distance = null;
+    alight.arrived = false;
+    alight.eventText = "";
+    alight.message = "";
+    if (alightTimer) { clearInterval(alightTimer); alightTimer = null; }
+    if (bridge && bridge.stopAlightService) {
+      try { bridge.stopAlightService(); } catch (e) {}
+    }
+    setStatus(alightDest ? "已取消下车提醒（" + alightDest.name + "）" : "已取消下车提醒");
+    updateAlightUI();
+    if (view.name === "detail" && view.data) renderTimes({ scroll: false });
+    if (view.name === "veh") renderVehicleTimes();
+  }
+
+  function startAlightTimer() {
+    if (alightTimer) clearInterval(alightTimer);
+    alightTimer = setInterval(function () {
+      // 后台也照常轮询：进度继续更新，播报交给原生服务（alightPoll 里判断）
+      alightPoll();
+    }, ALIGHT_TICK_MS);
+  }
+
+  function alightPoll() {
+    if (!bridge || !bridge.alightStatus) return;
+    var info = null;
+    try { info = JSON.parse(bridge.alightStatus()); } catch (e) { info = null; }
+    if (!info) return;
+    if (!info.running) {
+      // 服务已经停了（被系统回收或用户取消）：轮询也要停，别一直空转
+      if (alightTimer) { clearInterval(alightTimer); alightTimer = null; }
+      alightRunning = false;
+      alight.remaining = -1;
+      alight.message = "";
+      updateAlightUI();
+      return;
+    }
+    alightRunning = true;
+    alight.destName = info.destName || (alightDest && alightDest.name) || "";
+    alight.lineName = info.lineName || (alightLine && alightLine.lineName) || "";
+    alight.remaining = info.remaining === undefined || info.remaining === null ? -1 : Number(info.remaining);
+    alight.distance = info.distance === undefined || info.distance === null ? null : Number(info.distance);
+    alight.arrived = Boolean(info.arrived);
+    alight.event = Number(info.event) || 0;
+    alight.eventText = info.eventText || "";
+    alight.message = info.message || "";
+    alight.fresh = Boolean(info.fresh);
+    if (alight.arrived && alightTimer) {
+      // 到站就是终态：服务那边也停了定位和刷新，页面别再来回问
+      clearInterval(alightTimer);
+      alightTimer = null;
+    }
+    // 服务被系统重启后事件号会从头开始，旧进度必须一起归零，否则新提醒会被当成旧的吞掉
+    if (alight.event < alightSpeakEvent) {
+      alightSpeakEvent = 0;
+      alightLastText = "";
+    }
+    // 界面可见时服务不播，由页面补一次（同一条只播一次）；
+    // 后台时服务自己会播，这里只记进度，免得回到前台补念一条过时的消息
+    if (alight.event > alightSpeakEvent && alight.eventText) {
+      alightSpeakEvent = alight.event;
+      if (!document.hidden) {
+        // 同一条提醒 2 秒内不重复；不同提醒（两站 → 到站）必须都念
+        var sameAsLast = alight.eventText === alightLastText && Date.now() - alightSpeakAt <= 2000;
+        if (!sameAsLast) {
+          alightSpeakAt = Date.now();
+          alightLastText = alight.eventText;
+          speak(alightLinePrefix() + alight.eventText + "。" + (alight.destName || "") + "站。", true);
+        }
+      }
+    }
+    updateAlightUI();
+  }
+
+  function alightLinePrefix() {
+    return alight.lineName ? alight.lineName + "路，" : "";
+  }
+
+  function alightStateText() {
+    if (!alightRunning) return "";
+    if (!alight.destName) return "正在准备…";
+    if (alight.arrived) return "已到 " + alight.destName + "，请下车";
+    if (alight.remaining > 0) {
+      return "还有 " + alight.remaining + " 站到 " + alight.destName;
+    }
+    if (alight.distance !== null && alight.distance > 0) {
+      return "离 " + alight.destName + " 约 " + Math.round(alight.distance) + " 米";
+    }
+    // 还没拿到定位就别猜「快到了」，不然刚开提醒时会显示一个假进度
+    if (!alight.fresh) return "正在定位…";
+    return "快到 " + alight.destName + " 了";
+  }
+
+  /* 详情页顶部状态条 */
+  function updateAlightBar() {
+    var bar = $("alightbar");
+    if (!bar) return;
+    if (!alightRunning) { bar.className = "selbar hidden"; return; }
+    bar.className = "selbar";
+    var text = "下车提醒：" + (alight.destName || "");
+    var state = alightStateText();
+    // 服务给的 message 更具体（带米数），优先用它；没有才退回本地算出来的状态
+    if (alight.message && alight.message !== state) text += " · " + alight.message;
+    else if (state) text += " · " + state;
+    // 到站后服务会停掉 GPS，这时别再提示「定位中…」
+    if (!alight.fresh && !alight.arrived) text += " · 定位中…";
+    var el = $("alighttext");
+    if (el) el.textContent = text;
+  }
+
+  /* 首页的下车提醒卡片 */
+  function renderAlightCard() {
+    var box = $("alightcard");
+    if (!box) return;
+    box.innerHTML = "";
+    if (!alightRunning || !alightDest) return;
+    var card = document.createElement("div");
+    card.className = "alightcard";
+    var main = document.createElement("div");
+    main.className = "ac-main";
+    var title = document.createElement("div");
+    title.className = "ac-title";
+    title.textContent = "下车提醒 · " + (alight.destName || "");
+    var sub = document.createElement("div");
+    sub.className = "ac-sub";
+    sub.textContent = alightStateText() || "正在获取定位…";
+    main.appendChild(title);
+    main.appendChild(sub);
+    var go = document.createElement("span");
+    go.className = "ac-go";
+    go.textContent = "关闭";
+    go.onclick = function (ev) {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      stopAlight();
+    };
+    // 点卡片回到这条线的详情，不用重新搜
+    card.onclick = function () {
+      if (!alightLine || !alightLine.lineId) return;
+      var dest = alightDest || {};
+      openDetail({
+        lineId: alightLine.lineId,
+        lineName: alightLine.lineName || "",
+        stationId: dest.stationId,
+        stationName: dest.name,
+        fromOrder: dest.order || 1,
+        title: (alightLine.lineName ? alightLine.lineName + "路 · " : "") + (dest.name || "下车提醒")
+      });
+    };
+    card.appendChild(main);
+    card.appendChild(go);
+    box.appendChild(card);
+  }
+
+  function updateAlightUI() {
+    updateAlightBar();
+    renderAlightCard();
+  }
+
+  function alightResume() {
+    alightRestore();
+    if (!bridge || !bridge.alightStatus) return;
+    var info = null;
+    try { info = JSON.parse(bridge.alightStatus()); } catch (e) { info = null; }
+    if (info && info.running) {
+      alightRunning = true;
+      alightPoll();
+      startAlightTimer();
+    }
+  }
+
+  window.cdBusStartAlight = startAlight;
+  window.cdBusStopAlight = stopAlight;
+  window.cdBusAlightPoll = alightPoll;
+
   /* ------------------------------------------------------------ 语音自检 */
 
   var diagTimer = null;
@@ -3005,7 +3858,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.4";
+  var APP_FALLBACK_VERSION = "9.8";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -3026,16 +3879,22 @@
   }
 
   window.cdBusFillAbout = fillAbout;
+  window.cdBusOpenLine = function (lineId, lineName, stationName) {
+    return openLineView({ lineId: lineId, lineName: lineName, stationName: stationName });
+  };
+  window.cdBusViewName = function () { return view.name; };
 
   function openDiag() {
-    $("diag").classList.remove("hidden");
+    showView("diag");
+    fillAbout();
     renderDiag();
     if (diagTimer) clearInterval(diagTimer);
     diagTimer = setInterval(renderDiag, 900);
   }
 
   function closeDiag() {
-    $("diag").classList.add("hidden");
+    if (view.name === "diag") goBack();
+    else showView("home", { push: true });
     if (diagTimer) { clearInterval(diagTimer); diagTimer = null; }
   }
 
@@ -3267,6 +4126,7 @@
 
   function exitSearchView() {
     searching = false;
+    if (view.name !== "home") showView("home");
     state.stationView = null;
     state.detail = null;
     state.directions = [];
@@ -3274,9 +4134,15 @@
     state.buses = [];
     state.first = null;
     state.groups = [];
+    state.lineView = null;
+    state.favView = null;
+    state.stationView = null;
     $("line").value = "";
     $("chips").innerHTML = "";
     $("dirs").innerHTML = "";
+    if ($("lchips")) $("lchips").innerHTML = "";
+    if ($("ldirs")) $("ldirs").innerHTML = "";
+    if ($("llist")) $("llist").innerHTML = "";
     if ($("hfav")) $("hfav").style.display = "";
     updateSelbar();
     run(function () { return refreshHome({ announce: false, budget: 18 }); });
@@ -3333,121 +4199,6 @@
     });
   };
 
-  $("settingsBtn").onclick = openDiag;
-  $("dClose").onclick = closeDiag;
-  $("dVolume").onclick = function () { if (bridge && bridge.setVolume) bridge.setVolume(80); };
-  $("dTone").onclick = function () { if (bridge && bridge.testTone) bridge.testTone(); };
-  $("dPcm").onclick = function () { if (bridge && bridge.testPcm) bridge.testPcm(); };
-  $("dSysWeb").onclick = function () {
-    playUrl("data:audio/wav;base64," + testWavBase64(), "网页WAV测试", null);
-  };
-  $("dMp3").onclick = function () {
-    setStatus("MP3 合成中…");
-    rpc("synth", { text: "成都公交播报，语音测试。" }).then(function (res) {
-      if (!res || !res.base64) throw new Error("合成结果为空");
-      playBytes(res.base64, "audio/mpeg", "MP3测试", function () {
-        wavFallback("成都公交播报，语音测试。");
-      });
-    }).catch(function (e) {
-      note("MP3 合成失败：" + e.message);
-      setStatus("MP3 合成失败：" + e.message, true);
-    });
-  };
-  $("dSample").onclick = function () {
-    var text = SAMPLE_TEXTS[sampleIndex % SAMPLE_TEXTS.length];
-    sampleIndex++;
-    setStatus("示例 " + sampleIndex + "/" + SAMPLE_TEXTS.length);
-    speak(text, true);
-  };
-
-  $("webMode").checked = (function () {
-    try { return localStorage.getItem(WEB_MODE_KEY) === "1"; } catch (e) { return false; }
-  })();
-  $("webMode").onchange = function () {
-    setWebAudio(this.checked);
-    setStatus(this.checked ? "语音已切到网页播放" : "语音已切回 App 播放");
-  };
-  $("dSys").onclick = function () { if (bridge && bridge.testSysTone) bridge.testSysTone(); };
-  $("dSpeak").onclick = function () { if (bridge && bridge.testSpeak) bridge.testSpeak(); };
-
-  $("back").onclick = closeDetail;
-  $("drefresh").onclick = function () { loadMatrix(); };
-
-  function speakCurrentStation() {
-    var lineName = view.lineName || (view.data && view.data.line && view.data.line.name) || "";
-    var picked = view.pickedStation;
-    var stationName = (picked && picked.name) || view.stationName || "";
-    var order = Number((picked && picked.order) || view.fromOrder);
-    if (!stationName) { setStatus("还没有选站点", true); return; }
-
-    var text = lineName + "路，" + stationLabel(stationName);
-    var bus = (view.buses || [])[view.index];
-    var slice = null;
-    if (bus) {
-      (bus.times || []).forEach(function (t) { if (Number(t.order) === order) slice = t; });
-    }
-
-    if (slice && slice.passed) {
-      text += "，已经过了。";
-    } else if (bus && order === Number(bus.order)) {
-      text += "，已到站。";
-    } else if (slice && slice.etaSeconds !== null && Number(slice.etaSeconds) >= 0) {
-      var away = Math.max(0, order - Number(bus.order));
-      text += "，还有 " + away + " 站，" + etaWords(slice.etaSeconds) + "。";
-    } else {
-      text += "，暂无到站时间。";
-    }
-    speak(text, true);
-  }
-
-  $("fabSpeak").onclick = function () { speakCurrentStation(); };
-
-  function exitSearchView() {
-    searching = false;
-    state.stationView = null;
-    state.detail = null;
-    state.directions = [];
-    state.station = null;
-    state.buses = [];
-    state.first = null;
-    state.groups = [];
-    $("line").value = "";
-    $("chips").innerHTML = "";
-    $("dirs").innerHTML = "";
-    if ($("hfav")) $("hfav").style.display = "";
-    updateSelbar();
-    run(function () { return refreshHome({ announce: false, budget: 18 }); });
-  }
-
-  $("exitSearch").onclick = exitSearchView;
-
-  $("openMetro").onclick = function () { run(openMetro); };
-  $("mback").onclick = function () { showView("home"); };
-
-  $("hfav").onclick = function () {
-    if (!state.detail || !state.station) {
-      setStatus("先选一个站点再收藏", true);
-      return;
-    }
-    toggleFav({
-      lineId: state.detail.lineId,
-      lineName: state.detail.name,
-      endSn: state.detail.endSn || "",
-      stationId: state.station.stationId,
-      stationName: state.station.name,
-      order: state.station.order,
-      lat: state.station.lat || 0,
-      lng: state.station.lng || 0,
-      firstTime: state.detail.firstTime || "",
-      lastTime: state.detail.lastTime || "",
-      addedAt: Date.now()
-    });
-    updateSelbar();
-  };
-
-  
-
-
   $("watch").onchange = function () {
     if (!this.checked) { stopWatch(); return; }
     if (!state.detail || !state.station) {
@@ -3491,11 +4242,40 @@
     stopWatch();
   };
 
+  /* 二级页面的返回 / 刷新 */
+  $("pback").onclick = function () { backHandler(); };
+  $("prefresh").onclick = function () {
+    // 搜索页重跑一次同样的关键字，首末班没加载出来的会补上
+    runSearchFromInput();
+  };
+  $("lback").onclick = function () { backHandler(); };
+  $("lrefresh").onclick = function () {
+    run(function () {
+      if (state.lineView && state.station) return refresh(false).then(function () {
+        setStatus(clockTime() + " 已刷新当前站点");
+      });
+      if (state.lineView) { renderLineView(); setStatus("已刷新线路站点"); return Promise.resolve(); }
+      if (state.favView) return refreshFavStopPage();
+      setStatus("没有可刷新的线路", true);
+      return Promise.resolve();
+    });
+  };
+  $("vback").onclick = function () { backHandler(); };
+  $("vrefresh").onclick = function () {
+    // loadMatrix 末尾会在 veh 视图下自己重画车辆页，这里不用再画一遍
+    loadMatrix({ auto: true }).catch(function () {});
+  };
+  $("alightStop").onclick = function (ev) {
+    if (ev && ev.stopPropagation) ev.stopPropagation();
+    stopAlight();
+  };
+
   setStatus(bridge ? "语音：" + bridge.backend() : "仅支持 App 内使用");
   restoreVoiceSetting();
   bindVoiceSetting();
   renderFavs();
   renderHistory();
+  alightResume();
   if (bridge) startAuto(false);
 })();
 </script>

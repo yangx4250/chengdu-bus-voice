@@ -49,6 +49,14 @@ function makeElement(id = '') {
       return node;
     },
     querySelectorAll() { return []; },
+    /* 布局桩：真实 WebView 里有，页面里的滚动定位要用到 */
+    getBoundingClientRect() {
+      return { top: 0, left: 0, right: 360, bottom: 60, width: 360, height: 60 };
+    },
+    scrollTo() {},
+    scrollIntoView() {},
+    scrollLeft: 0,
+    scrollTop: 0,
     classList: {
       add(cls) {
         const set = new Set(String(el.className || '').split(/\s+/).filter(Boolean));
@@ -176,6 +184,9 @@ const nearbyPayload = {
 const calls = [];
 const speakLog = [];
 const watchServiceLog = [];
+const alightServiceLog = [];
+const exitLog = [];
+let alightStatusState = { running: false };
 const payloads = new Map();
 let seq = 0;
 const bridge = {
@@ -286,8 +297,12 @@ const bridge = {
   speak(text) { speakLog.push(String(text)); },
   startWatchService(payload) { watchServiceLog.push(['start', String(payload || '')]); },
   stopWatchService() { watchServiceLog.push(['stop', '']); },
+  startAlightService(payload) { alightServiceLog.push(['start', String(payload || '')]); },
+  stopAlightService() { alightServiceLog.push(['stop', '']); },
+  alightStatus() { return JSON.stringify(alightStatusState); },
+  exitApp() { exitLog.push(Date.now()); },
   appInfo() {
-    return JSON.stringify({ version: '9.4', code: 85, pkg: 'com.chengdu.bus', android: '15', sdk: 35, device: 'Redmi 2211133C' });
+    return JSON.stringify({ version: '9.7', code: 88, pkg: 'com.chengdu.bus', android: '15', sdk: 35, device: 'Redmi 2211133C' });
   },
   status() {
     return JSON.stringify({ ttsReady: true, backend: '系统语音', engines: 'com.xiaomi.tts', mediaVolume: 10, mediaMax: 29, ringerMode: 2, outputs: '扬声器', lastResult: '已交给系统 TTS' });
@@ -299,7 +314,17 @@ const bridge = {
   location() { return '30.657,104.065'; },
 };
 
-const window = { AndroidBus: bridge };
+const window = {
+  AndroidBus: bridge,
+  /* 布局桩：页面里的滚动定位会用 window.innerHeight / scrollY / scrollTo */
+  innerHeight: 800,
+  innerWidth: 400,
+  scrollY: 0,
+  pageYOffset: 0,
+  scrollTo() {},
+  addEventListener() {},
+  requestAnimationFrame(fn) { return setTimeout(fn, 0); },
+};
 
 // ---------------------------------------------------- 静态检查：调用了但没定义的函数
 
@@ -323,7 +348,7 @@ const builtins = new Set([
   'if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'new', 'function', 'await', 'async',
   'do', 'else', 'try', 'throw', 'delete', 'void', 'in', 'of', 'instanceof', 'yield',
   'JSON', 'String', 'Number', 'Boolean', 'Math', 'Date', 'Object', 'Array', 'Promise', 'Error', 'Blob', 'URL',
-  'setTimeout', 'setInterval', 'clearInterval', 'clearTimeout', 'requestAnimationFrame', 'parseInt', 'parseFloat', 'isNaN',
+  'setTimeout', 'setInterval', 'clearInterval', 'clearTimeout', 'requestAnimationFrame', 'parseInt', 'parseFloat', 'isNaN', 'isFinite',
   'encodeURIComponent', 'decodeURIComponent', 'btoa', 'atob', 'Uint8Array', 'ArrayBuffer',
   'DataView', 'Audio', 'localStorage', 'document', 'window', 'console', 'fetch', 'rpc', 'speak',
 ]);
@@ -446,40 +471,82 @@ document.getElementById('line').value = 'P36';
 document.getElementById('go').onclick();
 await new Promise((r) => setTimeout(r, 800));
 
-// 现在只搜线路，站名靠点芯片选择
-const stationChips = findByText(document.getElementById('chips'), '花园公交站');
+// 选中线路后进「线路页」，站名芯片在这页上
+const stage2 = [];
+if (String(document.getElementById('lineview').className).includes('hidden')) {
+  stage2.push('搜索单条线路后没有进入线路页');
+}
+if (!String(document.getElementById('home').className).includes('hidden')) {
+  stage2.push('线路页显示时首页仍然可见');
+}
+const homeListBefore = String(document.getElementById('list').innerHTML || '');
+if (!homeListBefore.includes('花园永泉')) {
+  stage2.push('进线路页后首页的附近站点被顶掉了：' + homeListBefore.slice(0, 120));
+}
+
+const stationChips = findByClass(document.getElementById('lchips'), 'chip');
 if (!stationChips.length) {
   console.error('✗ UI 冒烟失败：选线路后没有出现站名芯片');
+  process.exit(1);
+}
+
+// 线路页站名条也要标出「离我最近」的那一站（定位桩 30.657,104.065，
+// P36 三个站里最近的是 30.7,103.95 的花园公交站）
+{
+  const lchips = document.getElementById('lchips');
+  const nearestChips = findByClass(lchips, 'nearest');
+  if (!nearestChips.length) stage2.push('线路页站名条没有标出离我最近的站');
+  else {
+    if (!textOf(nearestChips[0]).includes('花园公交站')) {
+      stage2.push('线路页最近站标错了：' + textOf(nearestChips[0]).slice(0, 60));
+    }
+    // 徽标显示实际距离（如「1234m」），没有距离时退回「最近」
+    if (!/(\d+m|最近)/.test(textOf(nearestChips[0]))) {
+      stage2.push('线路页最近站没有距离/最近徽标');
+    }
+  }
+}
+
+if (typeof stationChips[0].onclick !== 'function') {
+  console.error('✗ UI 冒烟失败：站名芯片没有绑定点击事件');
   process.exit(1);
 }
 stationChips[0].onclick();
 await new Promise((r) => setTimeout(r, 800));
 
-// 搜索页点刷新：只刷当前站点，不能拉回首页
+// 线路页点刷新：只刷当前站点，不能拉回首页
 document.getElementById('refreshHome').onclick();
 await new Promise((r) => setTimeout(r, 800));
-if (!document.getElementById('chips').children.length) {
+if (!document.getElementById('lchips').children.length) {
   stage2.push('刷新后站名芯片消失（被拉回首页）');
 }
-if (textOf(document.getElementById('list')).includes('途经')) {
-  stage2.push('刷新后列表变成了附近站点');
+if (String(document.getElementById('lineview').className).includes('hidden')) {
+  stage2.push('刷新后离开了线路页');
+}
+if (!/P36路/.test(String(document.getElementById('ltitle').textContent || ''))) {
+  stage2.push('线路页标题没有显示线路：' + String(document.getElementById('ltitle').textContent || ''));
 }
 
+// 收藏仍走详情页（线路页只负责选站，不重复一套收藏条）
 const selbar = document.getElementById('selbar');
-const seltext = String(document.getElementById('seltext').textContent || '');
-const hfav = document.getElementById('hfav');
-const stage2 = [];
-if (String(selbar.className).includes('hidden')) stage2.push('选站后仍没有收藏条');
-if (!seltext.includes('P36路')) stage2.push('收藏条没有显示线路：' + seltext);
-if (!seltext.includes('花园公交站')) stage2.push('收藏条没有显示站点：' + seltext);
-if (!String(hfav.textContent).includes('☆')) stage2.push('收藏按钮状态不对：' + hfav.textContent);
-
-const before = JSON.parse(storage.get('cdbus.favorites') || '[]').length;
-hfav.onclick();
-const after = JSON.parse(storage.get('cdbus.favorites') || '[]').length;
-if (after !== before + 1) stage2.push(`点收藏没写入（${before} → ${after}）`);
-if (!String(document.getElementById('status').textContent).includes('已收藏')) stage2.push('状态栏没有提示已收藏');
-if (!String(document.getElementById('favs').innerHTML).includes('P36路')) stage2.push('首页收藏区没有出现 P36路');
+if (!String(selbar.className).includes('hidden')) stage2.push('线路页上首页收藏条不该出现');
+const favRows = findByClass(document.getElementById('llist'), 'bus');
+if (!favRows.length) stage2.push('选站后线路页没有列出到站车辆');
+else {
+  favRows[0].onclick();
+  await new Promise((r) => setTimeout(r, 900));
+  if (String(document.getElementById('veh').className).includes('hidden')) {
+    stage2.push('点线路页的车辆没有进车辆页');
+  }
+  const before = JSON.parse(storage.get('cdbus.favorites') || '[]').length;
+  document.getElementById('dfav').onclick();
+  const after = JSON.parse(storage.get('cdbus.favorites') || '[]').length;
+  if (after !== before + 1) stage2.push(`点收藏没写入（${before} → ${after}）`);
+  if (!String(document.getElementById('status').textContent).includes('已收藏')) stage2.push('状态栏没有提示已收藏');
+  if (!String(document.getElementById('favs').innerHTML).includes('P36路')) stage2.push('首页收藏区没有出现 P36路');
+  window.cdBusBackView();
+  await new Promise((r) => setTimeout(r, 300));
+}
 
 // 站点收藏：卡片 + 点进去看该站全部线路
 const favCardsAll = findByClass(document.getElementById('favs'), 'fav');
@@ -509,11 +576,17 @@ if (!stationCard) {
 } else {
   stationCard.onclick();
   await new Promise((r) => setTimeout(r, 900));
-  const selText = String(document.getElementById('seltext').textContent || '');
-  if (!/站点 · /.test(selText)) stage2.push('点站点收藏没有进入站点视图：' + selText);
-  const listNow = textOf(document.getElementById('list'));
-  if (!listNow.includes('花园永泉')) stage2.push('站点视图没有列出该站：' + listNow.slice(0, 120));
-  document.getElementById('exitSearch').onclick();
+  const stopTitle = String(document.getElementById('ltitle').textContent || '');
+  if (!/站点 · /.test(stopTitle)) stage2.push('点站点收藏没有进入站点页：' + stopTitle);
+  if (String(document.getElementById('lineview').className).includes('hidden')) {
+    stage2.push('站点页没有显示');
+  }
+  const listNow = textOf(document.getElementById('llist'));
+  if (!listNow.includes('P02路')) stage2.push('站点页没有列出该站的线路：' + listNow.slice(0, 120));
+  if (!textOf(document.getElementById('list')).includes('花园永泉')) {
+    stage2.push('站点页把首页的附近站点顶掉了');
+  }
+  window.cdBusBackView();
   await new Promise((r) => setTimeout(r, 700));
 }
 
@@ -808,6 +881,197 @@ if (stage5.length) {
 
 console.log('✓ 收藏进详情通过：芯片显示「已过收藏站 · 距终点 N 站」');
 
+// ------------------------------------- 第五阶段附加：车辆二级页 / 下车提醒 / 返回栈
+{
+  const stage5b = [];
+  const favCard = findByClass(document.getElementById('favs'), 'fav').find((c) => !textOf(c).includes('站点收藏'));
+  if (!favCard) stage5b.push('没有线路收藏卡，无法进入详情');
+  else {
+    favCard.onclick();
+    await new Promise((r) => setTimeout(r, 900));
+    if (String(document.getElementById('detail').className).includes('hidden')) {
+      stage5b.push('点收藏卡没有进入详情页');
+    }
+
+    // ① 点车辆芯片 → 车辆二级页（不再原地换列表）
+    const chips = findByClass(document.getElementById('dbuses'), 'chip');
+    if (!chips.length) stage5b.push('详情页没有车辆芯片');
+    else {
+      chips[0].onclick();
+      await new Promise((r) => setTimeout(r, 300));
+      if (String(document.getElementById('veh').className).includes('hidden')) {
+        stage5b.push('点车辆后没有进入车辆二级页');
+      }
+      if (!String(document.getElementById('detail').className).includes('hidden')) {
+        stage5b.push('车辆页显示时详情页仍然可见');
+      }
+      const vtitle = String(document.getElementById('vtitle').textContent || '');
+      if (!/车牌/.test(vtitle)) stage5b.push('车辆页没有显示车牌：' + vtitle);
+      const vlist = textOf(document.getElementById('vlist'));
+      if (!vlist.includes('srow')) stage5b.push('车辆页没有列出到站表');
+      if (!/花园永泉/.test(vlist)) stage5b.push('车辆页到站表缺少站点：' + vlist.slice(0, 120));
+      // ① 点车辆跳进来后，离我最近的那一站要有标注（定位桩返回 30.657,104.065，
+      //    三个候选站里最近的是 30.7,103.95 的花园永泉（order 9））
+      if (!/srow[^"]*nearest[^"]*"[^>]*data-order="9"[^>]*data-name="花园永泉"/.test(vlist)) {
+        stage5b.push('离我最近的站（花园永泉 order 9）没有标注 nearest');
+      }
+      if (!/离我最近/.test(vlist)) stage5b.push('车辆页没有「离我最近」徽标');
+      const nearestCount = (vlist.match(/class="srow[^"]*nearest/g) || []).length;
+      if (nearestCount !== 1) stage5b.push('nearest 标注数量不对：' + nearestCount);
+
+      // ② 车辆页返回 → 回详情页（不是回桌面）
+      const beforeExit = exitLog.length;
+      window.cdBusBackView();
+      await new Promise((r) => setTimeout(r, 200));
+      if (String(document.getElementById('detail').className).includes('hidden')) {
+        stage5b.push('车辆页返回没有回到详情页');
+      }
+      if (String(document.getElementById('veh').className).includes('hidden') === false) {
+        stage5b.push('车辆页返回后车辆页仍然可见');
+      }
+      if (exitLog.length !== beforeExit) stage5b.push('车辆页返回时退出了 App');
+    }
+
+    // ③ 详情页再返回 → 回首页
+    const beforeExit2 = exitLog.length;
+    window.cdBusBackView();
+    await new Promise((r) => setTimeout(r, 200));
+    if (String(document.getElementById('home').className).includes('hidden')) {
+      stage5b.push('详情页返回没有回到首页');
+    }
+    if (exitLog.length !== beforeExit2) stage5b.push('详情页返回时退出了 App');
+
+    // ④ 首页再返回 → 才退出 App
+    window.cdBusBackView();
+    if (exitLog.length !== beforeExit2 + 1) stage5b.push('首页返回没有退出 App');
+  }
+
+  if (stage5b.length) {
+    console.error('✗ UI 冒烟失败（车辆二级页 / 返回栈）：');
+    for (const f of stage5b) console.error('  - ' + f);
+    process.exit(1);
+  }
+  console.log('✓ 车辆二级页通过：点车进新页、返回逐级回退、只有首页才退出');
+}
+
+// -------------------------------------------------- 第五阶段附加：下车提醒
+{
+  const stage5c = [];
+  const favCard = findByClass(document.getElementById('favs'), 'fav').find((c) => !textOf(c).includes('站点收藏'));
+  if (!favCard) stage5c.push('没有线路收藏卡，无法进入详情');
+  else {
+    favCard.onclick();
+    await new Promise((r) => setTimeout(r, 900));
+    const before = alightServiceLog.length;
+    if (typeof window.cdBusStartAlight !== 'function') stage5c.push('没有暴露下车提醒接口');
+    else {
+      window.cdBusStartAlight(9);
+      await new Promise((r) => setTimeout(r, 200));
+      const started = alightServiceLog.slice(before).filter((x) => x[0] === 'start');
+      if (!started.length) stage5c.push('设下车提醒没有启动原生服务');
+      else {
+        let payload = null;
+        try { payload = JSON.parse(started[0][1]); } catch (e) { payload = null; }
+        if (!payload) stage5c.push('下车提醒参数不是合法 JSON');
+        else {
+          if (!/花园永泉/.test(String(payload.destName))) stage5c.push('目的地站名不对：' + payload.destName);
+          if (Number(payload.destOrder) !== 9) stage5c.push('目的地站序不对：' + payload.destOrder);
+          if (!Array.isArray(payload.stations) || payload.stations.length < 3) {
+            stage5c.push('没有把整条线的站点传给服务：' + JSON.stringify(payload.stations).slice(0, 80));
+          } else if (payload.stations[0].lat === undefined || payload.stations[0].order === undefined) {
+            stage5c.push('站点缺少 order/lat：' + JSON.stringify(payload.stations[0]));
+          }
+        }
+      }
+      const bar = document.getElementById('alightbar');
+      if (String(bar.className).includes('hidden')) stage5c.push('设了终点后详情页没有提醒条');
+
+      // 服务上报「还有两站」→ 页面要同步状态并按事件播报一次
+      alightStatusState = { running: true, destName: '花园永泉', lineName: 'P02', toward: '花园公交站',
+        remaining: 2, distance: 800, arrived: false, event: 1, eventText: '还有两站就下车，请提前准备',
+        message: '', fresh: true };
+      const speakBefore = speakLog.length;
+      window.cdBusAlightPoll();
+      await new Promise((r) => setTimeout(r, 100));
+      const barText = String(document.getElementById('alighttext').textContent || '');
+      if (!/还有 2 站/.test(barText)) stage5c.push('提醒条没有同步剩余站数：' + barText);
+      if (speakLog.length <= speakBefore) stage5c.push('到站前两站没有播报');
+      else if (!/提前准备/.test(speakLog[speakLog.length - 1])) {
+        stage5c.push('播报内容不对：' + speakLog[speakLog.length - 1]);
+      }
+      // 同一条事件不重复播
+      const speakAfterFirst = speakLog.length;
+      window.cdBusAlightPoll();
+      if (speakLog.length !== speakAfterFirst) stage5c.push('同一条提醒被重复播报');
+
+      // 到站事件
+      alightStatusState = { running: true, destName: '花园永泉', lineName: 'P02', toward: '花园公交站',
+        remaining: 0, distance: 40, arrived: true, event: 2, eventText: '到站了，请下车',
+        message: '', fresh: true };
+      window.cdBusAlightPoll();
+      await new Promise((r) => setTimeout(r, 100));
+      if (!/到站了/.test(speakLog[speakLog.length - 1] || '')) {
+        stage5c.push('到站没有播报：' + speakLog[speakLog.length - 1]);
+      }
+
+      // 首页卡片（可点回线路详情）
+      const cardHtml = textOf(document.getElementById('alightcard'));
+      if (!/下车提醒/.test(cardHtml)) stage5c.push('首页没有下车提醒卡片：' + cardHtml.slice(0, 80));
+      const cardEl = findByClass(document.getElementById('alightcard'), 'alightcard')[0];
+      if (!cardEl) stage5c.push('首页下车提醒卡片没有 .alightcard 节点');
+      else if (typeof cardEl.onclick !== 'function') stage5c.push('首页下车提醒卡片点不进线路详情');
+
+      // 服务重启后事件号从头算：新提醒不能被当成旧事件吞掉
+      alightStatusState = { running: true, destName: '花园永泉', lineName: 'P02', toward: '花园公交站',
+        remaining: 2, distance: 800, arrived: false, event: 1, eventText: '还有两站就下车，请提前准备',
+        message: '', fresh: true };
+      const speakBeforeRestart = speakLog.length;
+      window.cdBusAlightPoll();
+      await new Promise((r) => setTimeout(r, 100));
+      if (speakLog.length <= speakBeforeRestart) stage5c.push('服务重启后的事件没有重新播报');
+
+      // 取消：停服务、清卡片
+      const stopBefore = alightServiceLog.length;
+      window.cdBusStopAlight();
+      await new Promise((r) => setTimeout(r, 100));
+      if (!alightServiceLog.slice(stopBefore).some((x) => x[0] === 'stop')) {
+        stage5c.push('取消下车提醒没有停原生服务');
+      }
+      if (String(document.getElementById('alightbar').className).indexOf('hidden') < 0) {
+        stage5c.push('取消后详情页提醒条没有隐藏');
+      }
+      if (/下车提醒/.test(textOf(document.getElementById('alightcard')))) {
+        stage5c.push('取消后首页卡片没有移除');
+      }
+
+      // 服务被系统回收：轮询自己停，界面回落到未运行
+      window.cdBusStartAlight(9);
+      await new Promise((r) => setTimeout(r, 100));
+      alightStatusState = { running: true, destName: '花园永泉', lineName: 'P02', toward: '花园公交站',
+        remaining: 3, distance: 1200, arrived: false, event: 1, eventText: '', message: '', fresh: true };
+      window.cdBusAlightPoll();
+      alightStatusState = { running: false };
+      window.cdBusAlightPoll();
+      await new Promise((r) => setTimeout(r, 100));
+      if (String(document.getElementById('alightbar').className).indexOf('hidden') < 0) {
+        stage5c.push('服务停了以后详情页提醒条还亮着');
+      }
+      if (/下车提醒/.test(textOf(document.getElementById('alightcard')))) {
+        stage5c.push('服务停了以后首页卡片还在');
+      }
+    }
+    document.getElementById('back').onclick();
+    await new Promise((r) => setTimeout(r, 300));
+  }
+
+  if (stage5c.length) {
+    console.error('✗ UI 冒烟失败（下车提醒）：');
+    for (const f of stage5c) console.error('  - ' + f);
+    process.exit(1);
+  }
+  console.log('✓ 下车提醒通过：选终点启动服务、两站/到站各播一次、可取消');
+}
+
 // --------------------------------------------- 第六阶段：模糊搜索（输入 2 列出 2 开头线路）
 
 document.getElementById('line').value = '2';
@@ -816,22 +1080,68 @@ document.getElementById('go').onclick();
 await new Promise((r) => setTimeout(r, 900));
 
 const stage6 = [];
-const pickerHtml = textOf(document.getElementById('list'));
+const pickerHtml = textOf(document.getElementById('plist'));
 if (!pickerHtml.includes('匹配到')) stage6.push('输入 2 没有出现候选线路：' + pickerHtml.slice(0, 160));
+// 候选线路应进入「搜索结果」二级页，而不是继续占用首页列表
+if (String(document.getElementById('pick').className).includes('hidden')) {
+  stage6.push('多条匹配时没有进入搜索结果二级页');
+}
+if (!String(document.getElementById('home').className).includes('hidden')) {
+  stage6.push('搜索结果页显示时首页仍然可见');
+}
+if (!String(document.getElementById('ptitle').textContent || '').includes('搜索')) {
+  stage6.push('搜索结果页缺少标题：' + String(document.getElementById('ptitle').textContent || ''));
+}
 for (const expect of ['20路', '20快', '21路']) {
   if (!pickerHtml.includes(expect)) stage6.push('候选里缺少 ' + expect);
 }
 if (typeof window.cdBusShouldAutoRefresh === 'function' && window.cdBusShouldAutoRefresh()) {
   stage6.push('搜索结果显示时，首页自动刷新没有被跳过');
 }
-const pickerCards = findByClass(document.getElementById('list'), 'bus');
+const pickerCards = findByClass(document.getElementById('plist'), 'bus');
 if (pickerCards.length < 2) stage6.push('候选线路列表过少：' + pickerCards.length);
 
 if (pickerCards.length) {
   pickerCards[0].onclick();
-  await new Promise((r) => setTimeout(r, 900));
-  if (String(document.getElementById('selbar').className).includes('hidden')) {
-    stage6.push('点候选线路后没有进入该线路');
+  await new Promise((r) => setTimeout(r, 1200));
+  if (String(document.getElementById('pick').className).includes('hidden') === false) {
+    stage6.push('选中候选线路后没有离开搜索结果页');
+  }
+  if (String(document.getElementById('lineview').className).includes('hidden')) {
+    stage6.push('点候选线路后没有进入该线路的新页面');
+  }
+  if (!String(document.getElementById('home').className).includes('hidden')) {
+    stage6.push('线路页显示时首页仍然可见');
+  }
+  const ltitle = String(document.getElementById('ltitle').textContent || '');
+  if (!/路/.test(ltitle) || !/→/.test(ltitle)) stage6.push('线路页标题没有显示选中的线路：' + ltitle);
+  if (!/全程 \d+ 站/.test(String(document.getElementById('lsub').textContent || ''))) {
+    stage6.push('线路页没有显示站点数：' + String(document.getElementById('lsub').textContent || ''));
+  }
+  const lineChips = findByClass(document.getElementById('lchips'), 'chip');
+  if (!lineChips.length) {
+    stage6.push('线路页没有列出站名');
+  } else {
+    lineChips[0].onclick();
+    await new Promise((r) => setTimeout(r, 1200));
+    const arrivals = findByClass(document.getElementById('llist'), 'bus');
+    if (!arrivals.length) {
+      stage6.push('线路页选站后没有列出到站信息：' + textOf(document.getElementById('llist')).slice(0, 120));
+    }
+    if (!/站/.test(String(document.getElementById('lsub').textContent || ''))) {
+      stage6.push('线路页选站后副标题没更新');
+    }
+  }
+  // 从线路页返回，应回到搜索结果页（上一级），而不是直接回首页
+  window.cdBusBackView();
+  await new Promise((r) => setTimeout(r, 500));
+  if (String(document.getElementById('pick').className).includes('hidden')) {
+    stage6.push('线路页返回没有回到搜索结果页');
+  }
+  window.cdBusBackView();
+  await new Promise((r) => setTimeout(r, 500));
+  if (String(document.getElementById('home').className).includes('hidden')) {
+    stage6.push('搜索结果页返回没有回到首页');
   }
 }
 
@@ -855,7 +1165,7 @@ storage.set('cdbus.lines.106', JSON.stringify({
 document.getElementById('line').value = '106';
 document.getElementById('go').onclick();
 await new Promise((r) => setTimeout(r, 900));
-const containsHtml = textOf(document.getElementById('list'));
+const containsHtml = textOf(document.getElementById('plist'));
 const stage7 = [];
 for (const expect of ['P106路', 'T106路', '1060路']) {
   if (!containsHtml.includes(expect)) stage7.push('输入 106 没有列出 ' + expect + '：' + containsHtml.slice(0, 200));
@@ -866,7 +1176,7 @@ if (stage7.length) {
   process.exit(1);
 }
 {
-  const pickText = textOf(document.getElementById('list'));
+  const pickText = textOf(document.getElementById('plist'));
   if (!/首班 \d{2}:\d{2} · 末班 \d{2}:\d{2}/.test(pickText)) {
     console.error('✗ UI 冒烟失败：搜索结果没有首/末班时间：' + pickText.slice(0, 240));
     process.exit(1);
@@ -890,7 +1200,7 @@ console.log('✓ 包含匹配通过：输入 106 列出 P106 / T106 / 1060');
   document.getElementById('line').value = '';
   histChips[0].onclick();
   await new Promise((r) => setTimeout(r, 800));
-  if (!/P106|106/.test(textOf(document.getElementById('list')))) {
+  if (!/P106|106/.test(textOf(document.getElementById('plist')))) {
     console.error('✗ UI 冒烟失败：点历史关键字没有触发搜索');
     process.exit(1);
   }
