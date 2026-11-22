@@ -897,26 +897,51 @@ else {
     arrivalsArrived = false;
   }
 
-  /* 播报文案必须用实际 ETA，不能写死「10 分钟」。
-     构造一辆 390 秒（6 分 30 秒）的车，断言播报里出现「6 分 30 秒」而不是「10 分钟」。 */
+  /* 播报规则（v9.26 重置）：只有四个节点，各播一次，绝不重复。
+     逐节点验证：10 分钟 / 5 分钟 / 2 站 / 已到站。 */
   {
+    // ① 10 分钟节点：ETA=390 秒 → 播「6 分 30 秒」，且不能是写死的「10 分钟」
     arrivalsArrived = false;
     arrivalsEta = 390;
-    const before = speakLog.length;
+    let before = speakLog.length;
     window.cdBusWatchTick && window.cdBusWatchTick();
     await new Promise((r) => setTimeout(r, 300));
-    const said = speakLog.slice(before).join('|');
-    if (!said) {
-      stage4.push('ETA=390 秒时没有播报');
-    } else {
-      if (!/6 分 30 秒/.test(said)) {
-        stage4.push('播报没有用实际 ETA（应为「6 分 30 秒」）：' + said);
-      }
-      if (/10 分钟/.test(said)) {
-        stage4.push('播报写死了「10 分钟」，与实际 ETA 不符：' + said);
-      }
+    let said = speakLog.slice(before).join('|');
+    if (!said) stage4.push('ETA=390 秒时没有播报');
+    else {
+      if (!/6 分 30 秒/.test(said)) stage4.push('播报没用实际 ETA（应「6 分 30 秒」）：' + said);
+      if (/10 分钟/.test(said)) stage4.push('播报写死了「10 分钟」：' + said);
     }
+
+    // ② 同一节点不重复播：再 tick 一次不应该再响
+    before = speakLog.length;
+    window.cdBusWatchTick && window.cdBusWatchTick();
+    await new Promise((r) => setTimeout(r, 300));
+    if (speakLog.length > before) {
+      stage4.push('同一节点被重复播报：' + speakLog.slice(before).join('|'));
+    }
+
+    // ③ 已到站：只播「已到站」一次，不补播其他节点
+    arrivalsEta = null;        // 先清掉 ETA 场景，否则桩仍返回 b7
+    arrivalsArrived = true;
+    before = speakLog.length;
+    window.cdBusWatchTick && window.cdBusWatchTick();
+    await new Promise((r) => setTimeout(r, 300));
+    said = speakLog.slice(before).join('|');
+    if (!/已到站/.test(said)) stage4.push('到站没有播报：' + said);
+    const arrivedCount = (said.match(/已到站/g) || []).length;
+    if (arrivedCount > 1) stage4.push('到站播报了 ' + arrivedCount + ' 次（应只 1 次）');
+
+    // ④ 到站后再 tick：不能再响
+    before = speakLog.length;
+    window.cdBusWatchTick && window.cdBusWatchTick();
+    await new Promise((r) => setTimeout(r, 300));
+    if (speakLog.length > before) {
+      stage4.push('到站后仍在重复播报：' + speakLog.slice(before).join('|'));
+    }
+
     arrivalsEta = null;
+    arrivalsArrived = false;
   }
 }
 

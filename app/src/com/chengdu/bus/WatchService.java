@@ -286,28 +286,38 @@ public final class WatchService extends Service {
             }
             updateNotification(detail.isEmpty() ? "等待车辆" : detail);
 
-            // 四个节点各播一次（已到站单独一次，比「马上进站」更明确）
-            /* 阈值只决定「什么时候播」，文案必须用**实际 ETA**：
-               6 分 30 秒的车被念成「大约 10 分钟」会误导。 */
-            if (eta > 0 && eta <= 600 && !spoke10m) {
-                spoke10m = true;
-                announce(etaWords(eta));
-            }
-            if (eta > 0 && eta <= 300 && !spoke5m) {
-                spoke5m = true;
-                announce(etaWords(eta));
-            }
-            if (away >= 0 && away <= 2 && !spoke2s) {
-                spoke2s = true;
-                announce(away <= 0 ? "马上就要进站" : "还有 2 站到站");
-            }
-            /* 车已经到站（stationsAway == 0）或 ETA 归零：单独播一次「已到站」，
-               和上面「马上就要进站」是两件事，用户要听到「到了」而不是「快到了」 */
+            /* 播报规则（v9.26 重置）：**只有四个节点，各播一次，绝不重复**
+                 ① 10 分钟：0 < eta <= 600
+                 ② 5 分钟 ：0 < eta <= 300
+                 ③ 2 站   ：0 < away <= 2
+                 ④ 已到站 ：away == 0 或 eta == 0
+               注意 ③ 用 away > 0（不含 0），避免和 ④ 连播两句「马上进站」+「已到站」。
+               阈值只决定「什么时候播」，文案用实际 ETA。 */
             boolean arrivedNow = (away == 0) || (eta == 0);
-            if (arrivedNow && !spokeArrived) {
-                spokeArrived = true;
-                updateNotification(stationName + " · 已到站");
-                announce("已到站");
+
+            if (arrivedNow) {
+                /* 到站优先：一旦到站就只播「已到站」，不再补播前面的节点 */
+                if (!spokeArrived) {
+                    spokeArrived = true;
+                    spoke10m = true;   // 标记为已播，防止后续 tick 再补
+                    spoke5m = true;
+                    spoke2s = true;
+                    updateNotification(stationName + " · 已到站");
+                    announce("已到站");
+                }
+            } else {
+                if (eta > 0 && eta <= 600 && !spoke10m) {
+                    spoke10m = true;
+                    announce(etaWords(eta));
+                }
+                if (eta > 0 && eta <= 300 && !spoke5m) {
+                    spoke5m = true;
+                    announce(etaWords(eta));
+                }
+                if (away > 0 && away <= 2 && !spoke2s) {
+                    spoke2s = true;
+                    announce("还有 " + away + " 站到站");
+                }
             }
         } catch (Exception e) {
             Log.w(TAG, "盯站刷新失败", e);
