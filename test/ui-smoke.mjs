@@ -229,6 +229,23 @@ const bridge = {
     try { args = JSON.parse(payloads.get(id) || '{}'); } catch (e) {}
     if (method === 'lines') {
       const key = String(args.key || '').toUpperCase();
+      /* 区县名（都江堰…）：模拟真实接口的 10 条硬上限——
+         单查「都江堰」只给 5 条线（×2 方向 = 10 条），
+         必须靠前端按数字前缀展开才拿得全。 */
+      if (/^都江堰/.test(key)) {
+        const djy = ['都江堰1', '都江堰2', '都江堰3', '都江堰4', '都江堰5', '都江堰6',
+          '都江堰10', '都江堰11', '都江堰12', '都江堰20', '都江堰32', '都江堰101'];
+        const hit = djy.filter((n) => n.startsWith(key));
+        const capped = hit.slice(0, 5);   // 每条线 2 方向 → 10 条，正好被截断
+        const rows = [];
+        capped.forEach((n) => {
+          rows.push({ lineId: '028-djy-' + n + '-0', name: n, direction: 0,
+            startSn: n + '起', endSn: n + '终', firstTime: '06:00', lastTime: '22:00' });
+          rows.push({ lineId: '028-djy-' + n + '-1', name: n, direction: 1,
+            startSn: n + '终', endSn: n + '起', firstTime: '06:00', lastTime: '22:00' });
+        });
+        return JSON.stringify({ state: 'ok', data: rows });
+      }
       if (/^\d/.test(key)) {
         const names = ['2', '20', '20快', '21', '201', '106', '1060', 'P106', 'T106']
           .filter((n) => n.toUpperCase().includes(key));
@@ -1769,6 +1786,29 @@ if (stage6.length) {
   process.exit(1);
 }
 console.log('✓ 模糊搜索通过：输入 2 列出 20 / 20快 / 21 … 并可点选');
+
+/* 区县名搜索：接口对「都江堰」只吐前 10 条（5 条线），
+   前端必须按数字前缀展开才拿得到全部 12 条桩数据。 */
+document.getElementById('line').value = '都江堰';
+document.getElementById('go').onclick();
+await new Promise((r) => setTimeout(r, 1500));
+const djyHtml = textOf(document.getElementById('plist'));
+const djyNames = [...new Set(
+  (djyHtml.match(/都江堰\d+[A-Z]?路/g) || []).map((n) => n.replace(/路$/, '')),
+)];
+const stage6b = [];
+if (djyNames.length < 10) {
+  stage6b.push('搜「都江堰」只拿到 ' + djyNames.length + ' 条线，被 10 条上限截断了：' + djyNames.join(','));
+}
+for (const expect of ['都江堰6', '都江堰12', '都江堰101']) {
+  if (!djyNames.includes(expect)) stage6b.push('搜「都江堰」漏了 ' + expect);
+}
+if (stage6b.length) {
+  console.error('✗ UI 冒烟失败（区县线路展开）：');
+  for (const f of stage6b) console.error('  - ' + f);
+  process.exit(1);
+}
+console.log('✓ 区县线路展开通过：搜「都江堰」拿到 ' + djyNames.length + ' 条线');
 
 // 输入 106 应列出所有含 106 的线路（P106 / T106 / 1060）
 document.getElementById('exitSearch').onclick();

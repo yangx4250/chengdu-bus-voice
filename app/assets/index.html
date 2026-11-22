@@ -1349,10 +1349,13 @@
     return (a.length - ia) - (b.length - ib);
   }
 
+  /* 成都只有这几个区县用「地名+数字」命名线路（郫都/双流/温江等都不带地名前缀） */
+  var REGION_PREFIXES = ["都江堰", "简阳", "彭州", "崇州", "蒲江", "新津"];
+
   async function searchLinesFuzzy(key) {
     /* v3：v2 缓存是「只查前缀」时代的产物（缺尾缀/区县线路），
        换 key 让老缓存自动失效，否则用户升级后仍然看到旧结果。 */
-    var cacheKey = "cdbus.lines3." + key;
+    var cacheKey = "cdbus.lines4." + key;
     var hit = cacheGet(cacheKey);
     var pool;
 
@@ -1375,14 +1378,49 @@
           for (var j = 1; j <= 9; j++) queries.push(j + key);
         }
         /* 区县前缀：实测成都只有这几个区县用「地名+数字」命名线路 */
-        var REGION_PREFIXES = ["都江堰", "简阳", "彭州", "崇州", "蒲江", "新津"];
         REGION_PREFIXES.forEach(function (prefix) {
           queries.push(prefix + key);
         });
       }
-      var lists = await Promise.all(queries.map(function (q) {
-        return rpc("lines", { key: q }).catch(function () { return []; });
-      }));
+      /* 区县名单独处理：搜「都江堰」接口只吐前 10 条（5 条线 × 上下行），
+         真实的都江堰线路有 34 条。这里做两轮扫描：
+           第一轮 都江堰0..9  →  拿到 21 条
+           第二轮 只对「返回满 10 条」的前缀（说明被截断）再补 都江堰i0..i9
+         实测 40 次请求就能覆盖全部 34 条，比盲扫 110 次省一大半。
+         用户输入「都江堰3」时同理，展开成 都江堰30..39。 */
+      var regionHit = null;
+      REGION_PREFIXES.forEach(function (prefix) {
+        if (regionHit) return;
+        if (key.indexOf(prefix) === 0) {
+          var rest = key.slice(prefix.length);
+          if (/^\d{0,2}$/.test(rest)) regionHit = { prefix: prefix, rest: rest };
+        }
+      });
+      var lists;
+      if (regionHit) {
+        var rq = regionHit.rest ? [key] : [];
+        for (var r = 0; r <= 9; r++) rq.push(regionHit.prefix + regionHit.rest + r);
+        var firstLists = await Promise.all(rq.map(function (q) {
+          return rpc("lines", { key: q }).catch(function () { return []; });
+        }));
+        /* 返回满 10 条 = 被服务端截断，这一支要再往下钻一层 */
+        var dq = [];
+        firstLists.forEach(function (list, idx) {
+          if ((list || []).length < 10) return;
+          var suf = rq[idx].slice(regionHit.prefix.length);
+          for (var d2 = 0; d2 <= 9; d2++) dq.push(regionHit.prefix + suf + d2);
+        });
+        var deepLists = dq.length
+          ? await Promise.all(dq.map(function (q) {
+              return rpc("lines", { key: q }).catch(function () { return []; });
+            }))
+          : [];
+        lists = firstLists.concat(deepLists);
+      } else {
+        lists = await Promise.all(queries.map(function (q) {
+          return rpc("lines", { key: q }).catch(function () { return []; });
+        }));
+      }
 
       var seen = {};
       pool = [];
@@ -4439,7 +4477,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.52";
+  var APP_FALLBACK_VERSION = "9.53";
 
   function fillAbout() {
     var verEl = $("abVersion");
