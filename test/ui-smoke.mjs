@@ -490,6 +490,34 @@ try {
 
 await new Promise((r) => setTimeout(r, 600));
 
+/* 首次打开必须自动弹使用说明（未读状态下，1.5 秒后触发）。
+   这是真实路径，不是手动调 openGuideModal —— 之前 view.name 没初始化
+   导致条件恒为 false，弹窗永远不出现。 */
+{
+  // 假 DOM 不解析 HTML 属性，不能靠 className 判断「是否隐藏」；
+  // 直接等自动触发（脚本里是 1500ms）后检查内容是否被填进来。
+  const gmBox = document.getElementById('guideModalList');
+  for (let i = 0; i < 40 && !String(gmBox.__rawHtml || '').includes('盯站'); i++) {
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  const gml = textOf(gmBox);
+  if (!gml.includes('盯站')) {
+    console.error('✗ 首次打开没有自动弹出使用说明（1.5 秒后仍未填充内容）');
+    process.exit(1);
+  }
+  if (!gml.includes('下车提醒')) {
+    console.error('✗ 首次弹窗内容不完整：' + gml.slice(0, 100));
+    process.exit(1);
+  }
+  // 点「知道了」→ 记录已读并关闭
+  document.getElementById('guideOk').onclick();
+  await new Promise((r) => setTimeout(r, 60));
+  if (localStorage.getItem('cdbus.guide.seen') !== '1') {
+    console.error('✗ 点「知道了」后没有记录已读标记');
+    process.exit(1);
+  }
+}
+
 // ---------------------------------------------------------------- 断言
 
 const list = document.getElementById('list');

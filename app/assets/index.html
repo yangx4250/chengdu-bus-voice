@@ -801,6 +801,7 @@
   };
 
   var view = {
+    name: "home",        /* 初始就在首页；showView() 会继续维护 */
     open: false,
     lineId: null,
     lineName: null,
@@ -4376,7 +4377,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.45";
+  var APP_FALLBACK_VERSION = "9.46";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -4759,10 +4760,14 @@
   $("guideModal").onclick = function (ev) {
     if (ev && ev.target === this) closeGuideModal(false);
   };
+  /* 首次打开：等定位/首页渲染完再弹，避免和首屏加载抢焦点。
+     注意 view.name 初始是 undefined（只在 showView 里赋值），
+     所以用「没有打开任何二级页」来判断当前在首页。 */
   if (!guideSeen()) {
     setTimeout(function () {
-      if (view.name === "home") openGuideModal();
-    }, 1200);
+      /* 只有仍在首页、且没有打开任何二级页时才弹 */
+      if (!view.open) openGuideModal();
+    }, 1500);
   }
 
   $("setGuide").onclick = function () { enterSet("setPageGuide"); };
