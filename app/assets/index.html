@@ -300,16 +300,39 @@
   .navrow .navbtn:active { background: #1b2b46; }
   .navrow .navbtn .navico { font-size: 13px; }
 
-  /* 自检面板 */
-  #diag { position: fixed; inset: 0; background: rgba(6,10,20,.96); z-index: 50;
-    padding: 16px 14px 20px; overflow-y: auto; }
-  #diag h2 { font-size: 17px; margin: 4px 0 12px; }
-  #diag .kv { display: flex; gap: 8px; font-size: 13px; padding: 7px 0;
+  /* 设置页：分类入口 + 二级面板（仿系统设置） */
+  #diag { position: fixed; inset: 0; background: var(--bg); z-index: 50;
+    overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  #diag > div { min-height: 100%; }
+  .sethead { position: sticky; top: 0; background: var(--bg); z-index: 5;
+    display: flex; align-items: center; gap: 10px; padding: 10px var(--pad);
+    border-bottom: 1px solid var(--line); }
+  .setback { flex: 0 0 auto; width: 36px; height: 36px; padding: 0;
+    font-size: 22px; line-height: 1; border-radius: 50%; background: transparent;
+    border: none; color: var(--text); }
+  .settitle { font-size: var(--fs-lg); font-weight: 700; }
+  .setlist { padding: 10px var(--pad); }
+  .setitem { display: flex; align-items: center; gap: 12px; padding: 15px 6px;
+    border-bottom: 1px solid var(--line); }
+  .setitem:active { background: #141c2c; }
+  .seticon { flex: 0 0 auto; font-size: 22px; width: 30px; text-align: center; }
+  .setinfo { flex: 1; min-width: 0; }
+  .setname { font-size: var(--fs); }
+  .setsub { font-size: var(--fs-sm); color: var(--muted); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .setarrow { flex: 0 0 auto; color: #56637d; font-size: 20px; }
+  .setpage .setbody { padding: 10px var(--pad) 24px; }
+  .setcard { background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+  .setcardtitle { font-size: var(--fs-sm); color: var(--muted); margin-bottom: 8px;
+    letter-spacing: .5px; }
+  #diag .kv { display: flex; gap: 8px; font-size: var(--fs-sm); padding: 7px 0;
     border-bottom: 1px solid #1d273b; }
-  #diag .kv span:first-child { color: var(--muted); width: 96px; flex: 0 0 auto; }
-  #diag .kv span:last-child { word-break: break-all; }
-  #diag .btns { display: flex; gap: 10px; margin: 14px 0; flex-wrap: wrap; }
-  #diag .btns button { flex: 1; min-width: 120px; }
+  #diag .kv span:first-child { color: var(--muted); flex: 0 0 auto; width: 6em; }
+  #diag .kv span:last-child { word-break: break-all; text-align: right; flex: 1; }
+  #diag .btns { display: flex; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
+  #diag .btns button { flex: 1 1 140px; min-width: 120px; padding: 10px 12px;
+    font-size: var(--fs-sm); }
   .srow:active { background: #1a2336; }
 
   /* ------------------------------------------------------------ 自适应排版
@@ -452,54 +475,122 @@
 </div>
 
 <div id="diag" class="hidden">
-  <h2>设置 · 语音自检</h2>
-  <div id="diagRows"></div>
-  <div class="btns">
-    <button id="dVolume">调大媒体音量</button>
-    <button id="dTone">测试音·播放器</button>
-  </div>
-  <div class="btns">
-    <button id="dPcm">测试·PCM 直出</button>
-    <button id="dSys">测试·系统音效</button>
-  </div>
-  <div class="btns">
-    <button id="dSysWeb">测试·网页播放</button>
-    <button id="dSpeak">试播一句话</button>
-  </div>
-  <div class="btns">
-    <button id="dSample">示例播报（3 种场景）</button>
-    <button id="dMp3">测试·MP3 网页</button>
-  </div>
-  <div class="btns">
-    <button id="dBattery">加入电池优化白名单</button>
-  </div>
-  <div class="btns">
-    <button id="dHeartbeat">开始后台心跳（每 30 秒报一次）</button>
-  </div>
-  <div class="btns">
-    <button id="dWatchDiag">盯站诊断模式（每轮都出声）</button>
-  </div>
-  <div id="heartbeatInfo" class="dhead"></div>
-  <div class="dhead">息屏后不播报，多半是系统把后台清掉了。点上面的按钮把本应用加入白名单，再锁屏试试。</div>
-  <div class="kv" style="border:none">
-    <span>网页播放</span>
-    <span><label class="switch" style="display:inline-flex"><input type="checkbox" id="webMode"><span class="knob"></span>语音走 WebView</label></span>
-  </div>
-  <div class="aboutbox">
-    <div class="abouttitle">关于</div>
-    <div id="aboutBody" class="aboutrows">
-      <div class="kv"><span>版本</span><span id="abVersion">—</span></div>
-      <div class="kv"><span>运行环境</span><span id="abEnv">—</span></div>
-      <div class="kv"><span>数据来源</span><span>车来了（公交实时）· OpenStreetMap（地铁/有轨站点）</span></div>
-      <div class="kv"><span>签名</span><span>b5c11b4d…（自签名，仅供个人使用）</span></div>
-      <div class="kv" style="border:none"><span>说明</span><span>到站时间为预测，仅供参考；地铁/有轨为静态站点，不含实时到站。</span></div>
+  <!-- 主页：分类入口（仿系统设置） -->
+  <div id="setHome">
+    <div class="sethead">
+      <button id="dClose" class="setback">‹</button>
+      <div class="settitle">设置</div>
+    </div>
+    <div class="setlist">
+      <div class="setitem" id="setVoice">
+        <div class="seticon">🔊</div>
+        <div class="setinfo"><div class="setname">语音与播报</div>
+          <div class="setsub">测试音量、扬声器、语音合成</div></div>
+        <div class="setarrow">›</div>
+      </div>
+      <div class="setitem" id="setDiag">
+        <div class="seticon">🛠</div>
+        <div class="setinfo"><div class="setname">后台诊断</div>
+          <div class="setsub">心跳测试 · 盯站诊断 · 电池白名单</div></div>
+        <div class="setarrow">›</div>
+      </div>
+      <div class="setitem" id="setAbout">
+        <div class="seticon">ℹ️</div>
+        <div class="setinfo"><div class="setname">关于</div>
+          <div class="setsub" id="setVersionSub">版本 v—</div></div>
+        <div class="setarrow">›</div>
+      </div>
     </div>
   </div>
 
-  <div class="btns">
-    <button id="dClose" style="background:#1b2436">关闭</button>
+  <!-- 二级：语音与播报 -->
+  <div id="setPageVoice" class="setpage hidden">
+    <div class="sethead">
+      <button id="voiceBack" class="setback">‹</button>
+      <div class="settitle">语音与播报</div>
+    </div>
+    <div class="setbody">
+      <div class="setcard">
+        <div class="kv" style="border:none">
+          <span>网页播放</span>
+          <span><label class="switch" style="display:inline-flex"><input type="checkbox" id="webMode"><span class="knob"></span>语音走 WebView</label></span>
+        </div>
+        <div class="kv" style="border:none">
+          <span>播报开关</span>
+          <span><label class="switch" style="display:inline-flex"><input type="checkbox" id="voice"><span class="knob"></span>自动播报</label></span>
+        </div>
+      </div>
+      <div class="setcard">
+        <div id="diagRows"></div>
+      </div>
+      <div class="setcard">
+        <div class="setcardtitle">播放测试</div>
+        <div class="btns">
+          <button id="dTone">测试音·播放器</button>
+          <button id="dSys">测试·系统音效</button>
+        </div>
+        <div class="btns">
+          <button id="dSpeak">试播一句话</button>
+          <button id="dSample">示例播报</button>
+        </div>
+        <div class="dhead">测试音不联网：能听到「嘀——」说明音量/扬声器正常；听不到就按音量键或检查静音。</div>
+      </div>
+      <div class="setcard">
+        <div class="setcardtitle">音量</div>
+        <div class="btns"><button id="dVolume">调大媒体音量</button></div>
+      </div>
+    </div>
   </div>
-  <div class="dhead">测试音不联网：能听到「嘀——」说明音量/扬声器正常，问题在语音链路；听不到就要去按音量键或检查是否静音。</div>
+
+  <!-- 二级：后台诊断 -->
+  <div id="setPageDiag" class="setpage hidden">
+    <div class="sethead">
+      <button id="diagBack" class="setback">‹</button>
+      <div class="settitle">后台诊断</div>
+    </div>
+    <div class="setbody">
+      <div class="setcard">
+        <div class="setcardtitle">后台心跳</div>
+        <div class="btns"><button id="dHeartbeat">开始后台心跳（每 30 秒报一次）</button></div>
+        <div id="heartbeatInfo" class="dhead"></div>
+      </div>
+      <div class="setcard">
+        <div class="setcardtitle">盯站诊断</div>
+        <div class="btns"><button id="dWatchDiag">盯站诊断模式（每轮都出声）</button></div>
+        <div class="dhead">盯站不播报时用它确认服务是否在跑。</div>
+      </div>
+      <div class="setcard">
+        <div class="setcardtitle">电池优化</div>
+        <div class="btns"><button id="dBattery">加入电池优化白名单</button></div>
+        <div class="dhead">息屏不播报，多半是系统清了后台。加入白名单后锁屏再试。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 二级：关于 -->
+  <div id="setPageAbout" class="setpage hidden">
+    <div class="sethead">
+      <button id="aboutBack" class="setback">‹</button>
+      <div class="settitle">关于</div>
+    </div>
+    <div class="setbody">
+      <div class="setcard">
+        <div id="aboutBody" class="aboutrows">
+          <div class="kv"><span>版本</span><span id="abVersion">—</span></div>
+          <div class="kv"><span>运行环境</span><span id="abEnv">—</span></div>
+          <div class="kv"><span>数据来源</span><span>车来了（公交实时）· OpenStreetMap</span></div>
+          <div class="kv"><span>签名</span><span>b5c11b4d…（自签名，仅供个人使用）</span></div>
+          <div class="kv" style="border:none"><span>说明</span><span>到站时间为预测，仅供参考。</span></div>
+        </div>
+      </div>
+      <div class="setcard">
+        <div class="setcardtitle">高级测试</div>
+        <div class="btns"><button id="dPcm">测试·PCM 直出</button><button id="dMp3">测试·MP3 网页</button></div>
+        <div class="btns"><button id="dSysWeb">测试·网页播放</button></div>
+      </div>
+    </div>
+  </div>
+</div>
 </div>
 
 <div id="metro" class="hidden">
@@ -4149,7 +4240,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.40";
+  var APP_FALLBACK_VERSION = "9.41";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -4174,7 +4265,19 @@
   window.cdBusSetFix = function (fix) { state.fix = fix || null; };
   window.cdBusNavToStation = navToStation;
 
+  /* 设置页导航：主页 ↔ 分类面板。用一个简单栈管理返回。 */
+  var setStack = [];
+  function showSetPage(id) {
+    var ids = ["setHome", "setPageVoice", "setPageDiag", "setPageAbout"];
+    ids.forEach(function (x) {
+      var el = $(x);
+      if (el) el.classList.toggle("hidden", x !== id);
+    });
+  }
+
   function openDiag() {
+    setStack = ["setHome"];
+    showSetPage("setHome");
     showView("diag");
     fillAbout();
     renderDiag();
@@ -4184,6 +4287,16 @@
       renderDiag();
       renderHeartbeatInfo();
     }, 900);
+  }
+
+  /* 从设置页返回：有子页先回主页，再返回则关闭设置 */
+  function backFromDiag() {
+    if (setStack.length > 1) {
+      setStack.pop();
+      showSetPage(setStack[setStack.length - 1]);
+      return true;
+    }
+    return false;
   }
 
   function closeDiag() {
@@ -4350,7 +4463,23 @@
   };
   $("line").onkeydown = function (e) { if (e.key === "Enter") $("go").click(); };
   $("settingsBtn").onclick = openDiag;
-  $("dClose").onclick = closeDiag;
+  $("dClose").onclick = function () { closeDiag(); };
+
+
+  /* 设置页导航 */
+  function enterSet(id) {
+    setStack.push(id);
+    showSetPage(id);
+    if (id === "setPageAbout") fillAbout();
+    if (id === "setPageVoice") renderDiag();
+    if (id === "setPageDiag") renderHeartbeatInfo();
+  }
+  $("setVoice").onclick = function () { enterSet("setPageVoice"); };
+  $("setDiag").onclick = function () { enterSet("setPageDiag"); };
+  $("setAbout").onclick = function () { enterSet("setPageAbout"); };
+  $("voiceBack").onclick = function () { backFromDiag(); };
+  $("diagBack").onclick = function () { backFromDiag(); };
+  $("aboutBack").onclick = function () { backFromDiag(); };
   $("dVolume").onclick = function () { if (bridge && bridge.setVolume) bridge.setVolume(80); };
   $("dTone").onclick = function () { if (bridge && bridge.testTone) bridge.testTone(); };
   $("dPcm").onclick = function () { if (bridge && bridge.testPcm) bridge.testPcm(); };

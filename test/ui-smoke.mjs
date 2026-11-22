@@ -514,7 +514,7 @@ if (!/^\d+$/.test(String(document.getElementById('refreshNote').textContent || '
 // 顶部设置按钮 → 打开设置（含语音自检）；底部不再有 🔧 和状态文字
 const settingsBtn = document.getElementById('settingsBtn');
 if (!settingsBtn) failures.push('顶部没有设置按钮');
-if (!String(html).includes('aboutbox')) failures.push('设置里没有「关于」区块');
+if (!String(html).includes('setPageAbout')) failures.push('设置里没有「关于」区块');
 if (/实时到站/.test(html.split('</header>')[0])) failures.push('顶部仍有「实时到站」标签');
 if (html.indexOf('id="loctext"') > html.indexOf('<div class="row">')) {
   failures.push('定位信息没有移到标题后面');
