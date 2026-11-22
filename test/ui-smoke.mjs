@@ -206,6 +206,7 @@ const navLog = [];
 const batteryLog = [];
 /* 让 arrivals 桩返回「已到站」的车（盯站到站播报测试用） */
 let arrivalsArrived = false;
+let arrivalsEta = null;
 const heartbeatLog = [];
 let heartbeatRunning = false;
 let watchDiagOn = false;
@@ -300,6 +301,14 @@ const bridge = {
     if (method === 'arrivals') {
       if (String(args.lineId || '').includes('p49')) {
         return JSON.stringify({ state: 'ok', data: [] });
+      }
+      /* 指定 ETA 的场景（验证播报用实际时间，不写死「10 分钟」） */
+      if (arrivalsEta !== null) {
+        return JSON.stringify({ state: 'ok', data: [
+          { busId: 'b7', plate: '42520', order: 20, stationsAway: 5,
+            distanceMeters: 3000, etaSeconds: arrivalsEta,
+            arrivalAt: Date.now() + arrivalsEta * 1000, arrived: false },
+        ] });
       }
       /* 盯站「已到站」测试：把首辆车设成已到站（stationsAway/eta 都为 0） */
       if (arrivalsArrived) {
@@ -886,6 +895,28 @@ else {
       stage4.push('前台播报内容不对：' + pageSpoke.join('|'));
     }
     arrivalsArrived = false;
+  }
+
+  /* 播报文案必须用实际 ETA，不能写死「10 分钟」。
+     构造一辆 390 秒（6 分 30 秒）的车，断言播报里出现「6 分 30 秒」而不是「10 分钟」。 */
+  {
+    arrivalsArrived = false;
+    arrivalsEta = 390;
+    const before = speakLog.length;
+    window.cdBusWatchTick && window.cdBusWatchTick();
+    await new Promise((r) => setTimeout(r, 300));
+    const said = speakLog.slice(before).join('|');
+    if (!said) {
+      stage4.push('ETA=390 秒时没有播报');
+    } else {
+      if (!/6 分 30 秒/.test(said)) {
+        stage4.push('播报没有用实际 ETA（应为「6 分 30 秒」）：' + said);
+      }
+      if (/10 分钟/.test(said)) {
+        stage4.push('播报写死了「10 分钟」，与实际 ETA 不符：' + said);
+      }
+    }
+    arrivalsEta = null;
   }
 }
 

@@ -287,13 +287,15 @@ public final class WatchService extends Service {
             updateNotification(detail.isEmpty() ? "等待车辆" : detail);
 
             // 四个节点各播一次（已到站单独一次，比「马上进站」更明确）
+            /* 阈值只决定「什么时候播」，文案必须用**实际 ETA**：
+               6 分 30 秒的车被念成「大约 10 分钟」会误导。 */
             if (eta > 0 && eta <= 600 && !spoke10m) {
                 spoke10m = true;
-                announce("大约 10 分钟到站");
+                announce(etaWords(eta));
             }
             if (eta > 0 && eta <= 300 && !spoke5m) {
                 spoke5m = true;
-                announce("大约 5 分钟到站");
+                announce(etaWords(eta));
             }
             if (away >= 0 && away <= 2 && !spoke2s) {
                 spoke2s = true;
@@ -312,6 +314,16 @@ public final class WatchService extends Service {
             updateNotification("⚠ 查询失败：" + (e.getMessage() == null ? e.toString() : e.getMessage()));
             LAST_SPEAK = "查询失败：" + (e.getMessage() == null ? e.toString() : e.getMessage());
         }
+    }
+
+    /** 把秒数说成中文：「大约 6 分 30 秒」/「大约 10 分钟」/「30 秒内」。 */
+    private static String etaWords(int seconds) {
+        if (seconds <= 0) return "即将到站";
+        int half = Math.round(seconds / 30f);
+        if (half <= 1) return "30 秒内到站";
+        int m = half / 2;
+        int r = half % 2;
+        return "大约 " + (r == 1 ? m + " 分 30 秒" : m + " 分钟") + "到站";
     }
 
     private void announce(String what) {

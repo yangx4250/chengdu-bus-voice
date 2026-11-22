@@ -3609,13 +3609,15 @@
       var etaF = Number(first.etaSeconds);
       var awayF = Number(first.stationsAway);
       var headF = t.lineName + "路，" + stationLabel(t.stationName) + "，";
+      /* 阈值只决定「什么时候播」，文案用**实际 ETA**，不能写死「10 分钟」
+         —— 6 分 30 秒的车也被念成「大约 10 分钟」会误导。 */
       if (etaF > 0 && etaF <= 600 && !watchMarks.ten) {
         watchMarks.ten = true;
-        speak(headF + "大约 10 分钟到站。", true);
+        speak(headF + etaWords(etaF) + "到站。", true);
       }
       if (etaF > 0 && etaF <= 300 && !watchMarks.five) {
         watchMarks.five = true;
-        speak(headF + "大约 5 分钟到站。", true);
+        speak(headF + etaWords(etaF) + "到站。", true);
       }
       if (awayF >= 0 && awayF <= 2 && !watchMarks.two) {
         watchMarks.two = true;
@@ -4108,7 +4110,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.24";
+  var APP_FALLBACK_VERSION = "9.25";
 
   function fillAbout() {
     var verEl = $("abVersion");
