@@ -1401,9 +1401,9 @@
       return na.localeCompare(nb, "zh");
     });
 
-    /* 数字短号（1、2 这种）能匹配上百条，全列出来反而找不到。
-       截到 40 条：完全一致的永远排最前面，不会被截掉。 */
-    if (matches.length > 40) matches = matches.slice(0, 40);
+    /* 不做条数截断：能匹配上的全部返回，由搜索结果页完整列出。
+       （短号如「1」可能匹配上百条，但用户要看的是完整清单，
+        截断会让真正想找的线路直接消失。） */
     return matches;
   }
   window.cdBusSearchLines = searchLinesFuzzy;   /* 测试/调试用 */
@@ -4412,7 +4412,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.48";
+  var APP_FALLBACK_VERSION = "9.49";
 
   function fillAbout() {
     var verEl = $("abVersion");
