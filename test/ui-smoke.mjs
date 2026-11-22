@@ -1685,13 +1685,38 @@ if (pickerCards.length < 2) stage6.push('候选线路列表过少：' + pickerCa
 /* 同一条线（名字相同）只显示一条：上下行两个 direction 必须被去重，
    否则搜「2」会出现 20路/20路、20快/20快 这样的重复项 */
 {
+  /* 卡片上显示的是 lineLabel() 处理过的「2路」，而排序用的是原始 name「2」，
+     比较时统一去掉「路」后缀，否则拿显示名去比会误判。 */
   const names = pickerCards.map((c) => {
     const m = String(c.__rawHtml || '').match(/class="line-name">([^<]*)</);
-    return m ? m[1] : '';
+    return m ? String(m[1]).replace(/路$/, '') : '';
   });
   const dup = names.filter((n, i) => n && names.indexOf(n) !== i);
   if (dup.length) stage6.push('搜索结果有重复方向：' + dup.join(','));
-  if (!names.includes('20路')) stage6.push('去重后丢了「20路」：' + names.join(','));
+  if (!names.includes('20')) stage6.push('去重后丢了「20路」：' + names.join(','));
+
+  /* 搜索结果要按线路名自然顺序（字母 + 数字按数值）排列：
+     不能出现 361 排在 36 前面、或 1060 排在 106 前面这种。
+     用页面自己暴露的比较器，保证测的就是线上那份逻辑。 */
+  const cmp = window.cdBusNaturalCompare;
+  if (typeof cmp !== 'function') {
+    stage6.push('没有暴露 cdBusNaturalCompare');
+  } else {
+    const sorted = names.slice().sort(cmp);
+    if (names.join('|') !== sorted.join('|')) {
+      stage6.push('搜索结果没有按字母顺序：' + names.join(','));
+    }
+    /* 比较器本身的回归用例：数字按数值、字母前缀排数字后面 */
+    const cases = [
+      [['2', '10', '1'], ['1', '2', '10']],
+      [['361', '36', '360'], ['36', '360', '361']],
+      [['P36', '136', 'T36'], ['136', 'P36', 'T36']],
+    ];
+    cases.forEach(([input, want]) => {
+      const got = input.slice().sort(cmp).join(',');
+      if (got !== want.join(',')) stage6.push('自然排序错误：' + input.join(',') + ' → ' + got);
+    });
+  }
 }
 
 if (pickerCards.length) {

@@ -1324,6 +1324,31 @@
 
   /* 模糊搜索：接口一次只回 8 条，短数字前缀就并行展开（输入 2 → 查 20…29）
      缓存里只存「原始合并池」，过滤和排序在读取时现算，方便以后改匹配规则 */
+  /* 线路名的「自然顺序」比较：字母按字典序，数字按数值大小。
+     这样 2 < 10、36 < 361、136 < P36 < T36，符合人扫列表的直觉。 */
+  function naturalCompare(x, y) {
+    var a = String(x).toUpperCase(), b = String(y).toUpperCase();
+    var ia = 0, ib = 0;
+    while (ia < a.length && ib < b.length) {
+      var ca = a.charAt(ia), cb = b.charAt(ib);
+      var da = /\d/.test(ca), db = /\d/.test(cb);
+      if (da && db) {
+        /* 两边都是数字：取完整数字串按数值比较 */
+        var sa = "", sb = "";
+        while (ia < a.length && /\d/.test(a.charAt(ia))) sa += a.charAt(ia++);
+        while (ib < b.length && /\d/.test(b.charAt(ib))) sb += b.charAt(ib++);
+        var na = parseInt(sa, 10), nb = parseInt(sb, 10);
+        if (na !== nb) return na - nb;
+        /* 数值相同但位数不同（036 vs 36）：短的排前面 */
+        if (sa.length !== sb.length) return sa.length - sb.length;
+        continue;
+      }
+      if (ca !== cb) return ca < cb ? -1 : 1;
+      ia++; ib++;
+    }
+    return (a.length - ia) - (b.length - ib);
+  }
+
   async function searchLinesFuzzy(key) {
     /* v3：v2 缓存是「只查前缀」时代的产物（缺尾缀/区县线路），
        换 key 让老缓存自动失效，否则用户升级后仍然看到旧结果。 */
@@ -1376,31 +1401,15 @@
       return String(line.name).toUpperCase().includes(upperKey);
     });
 
-    /* 排序：用户多半想找「就是这条线」的那一条。
-       0 = 完全一致（36 → 36）
-       1 = 以关键词开头（36 → 361 / 36A）
-       2 = 字母前缀 + 关键词（36 → P36 / T36 / T36快）——「36路的变体」，最相关
-       3 = 地名前缀 + 关键词（36 → 都江堰36）——同一线路号但不同片区
-       4 = 数字前缀 + 关键词（36 → 136 / 236）——其实是另一条线路，排后面
-       5 = 其它（兜底） */
-    function rank(line) {
-      var name = String(line.name).toUpperCase();
-      if (name === upperKey) return 0;
-      if (name.indexOf(upperKey) === 0) return 1;
-      var at = name.indexOf(upperKey);
-      if (at <= 0) return 5;
-      var prefix = name.slice(0, at);
-      if (/^[A-Z]{1,3}$/.test(prefix)) return 2;     // P36 / T36 / TG36
-      if (/^\d+$/.test(prefix)) return 4;            // 136 / 236
-      return 3;                                      // 都江堰36 / 简阳36
-    }
+    /* 排序：按线路名「自然顺序」排列（字母顺序 + 数字按大小）。
+       数字串按数值比，避免 36 排在 361 后面：
+         136 → 236 → 336 → P36 → S36 → T36 → T136 → T361 → 都江堰36
+       同一线路的变体（36 / 36A / 36区间）会挨在一起，方便扫读。 */
     matches.sort(function (a, b) {
-      var ra = rank(a), rb = rank(b);
-      if (ra !== rb) return ra - rb;
-      /* 同档内：名字越短越接近用户意图（36 优先于 36区间） */
-      var na = String(a.name), nb = String(b.name);
-      if (na.length !== nb.length) return na.length - nb.length;
-      return na.localeCompare(nb, "zh");
+      var r = naturalCompare(a.name, b.name);
+      if (r !== 0) return r;
+      /* 同名（上下行）：去程在前 */
+      return Number(a.direction || 0) - Number(b.direction || 0);
     });
 
     /* 不做条数截断：能匹配上的全部返回，由搜索结果页完整列出。
@@ -1409,6 +1418,7 @@
     return matches;
   }
   window.cdBusSearchLines = searchLinesFuzzy;   /* 测试/调试用 */
+  window.cdBusNaturalCompare = naturalCompare;
 
   /* 多条匹配时进「搜索结果」二级页：列出候选线路，点一条再进站名选择
      （数量提示在顶栏 #psub 里，列表里不再放重复标题） */
@@ -4429,7 +4439,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.51";
+  var APP_FALLBACK_VERSION = "9.52";
 
   function fillAbout() {
     var verEl = $("abVersion");
