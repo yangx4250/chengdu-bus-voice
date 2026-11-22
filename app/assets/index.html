@@ -255,6 +255,14 @@
   .detail-head .titles div:last-child { font-size: var(--fs-sm); color: var(--muted);
     margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+  /* 站点行双排布局：第一排 站名+时间；第二排 📌/🔔 靠右。
+     图标放大后单排放不下（站名会被挤成省略号），改成两排。 */
+  .srow { flex-wrap: wrap; }
+  .srow .sname { flex: 1; }
+  .srow .actions { flex: 0 0 100%; display: flex; justify-content: flex-end;
+    gap: 12px; padding: 6px 2px 0; }
+  .srow .actions:empty { display: none; }
+
   .dhead { color: var(--muted); font-size: 13px; margin: 6px 2px 10px; }
   .srow { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--card);
     border: 1px solid var(--line); border-radius: 12px; margin-bottom: 8px; }
@@ -2801,12 +2809,12 @@
         '<span class="idx">' + station.order + "</span>" +
         '<span class="sname">' + station.name + "</span>" +
         '<span class="swhen">' + when + clock + "</span>" +
-        '<span class="spk stpin' +
+        '<span class="actions"><span class="spk stpin' +
           (watch.on && watch.target && watch.target.order === station.order &&
            String(watch.target.lineId) === String(view.lineId) ? " off" : "") +
           '" data-pin="' + station.order + '">📌</span>' +
         '<span class="spk bell' + (alightRunning && alightDest && Number(alightDest.order) === Number(station.order) ? " on" : "") +
-          '" data-bell="' + station.order + '">🔔</span></div>';
+          '" data-bell="' + station.order + '">🔔</span></span></div>';
     });
     html += '<div class="dhead" style="margin-top:4px">点任一站名看该站其它线路；时间为预测，仅供参考</div>';
     list.innerHTML = html;
@@ -3725,13 +3733,12 @@
         '<span class="idx">' + station.order + "</span>" +
         '<span class="sname">' + station.name + "</span>" +
         '<span class="swhen">' + when + clock + "</span>" +
-        (isNearest ? '<span class="spk nb">离我最近</span>' : "") +
-        '<span class="spk stpin' +
+        '<span class="actions"><span class="spk stpin' +
           (watch.on && watch.target && watch.target.order === station.order &&
            String(watch.target.lineId) === String(view.lineId) ? " off" : "") +
           '" data-pin="' + station.order + '">📌</span>' +
         '<span class="spk bell' + (alightRunning && alightDest && Number(alightDest.order) === Number(station.order) ? " on" : "") +
-          '" data-bell="' + station.order + '">🔔</span></div>';
+          '" data-bell="' + station.order + '">🔔</span></span></div>';
     });
     html += '<div class="dhead" style="margin-top:4px">点 📌 盯站、点 🔔 设下车提醒；时间仅供参考</div>';
     box.innerHTML = html;
@@ -4111,7 +4118,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.36";
+  var APP_FALLBACK_VERSION = "9.37";
 
   function fillAbout() {
     var verEl = $("abVersion");
