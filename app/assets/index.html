@@ -307,6 +307,41 @@
   .navrow .navbtn:active { background: #1b2b46; }
   /* 已收藏的站点按钮：高亮 */
   .navrow .navbtn.stationfav.on { border-color: #ffce4a; color: #ffce4a; background: #2a2413; }
+
+  /* ------------------------------------------------------------ 使用说明 */
+  /* 首次打开弹窗 */
+  .guidemodal { position: fixed; inset: 0; background: rgba(4,8,16,.78); z-index: 80;
+    display: flex; align-items: center; justify-content: center; padding: 18px; }
+  .guidemodal.hidden { display: none; }
+  .guidemodal .gmbox { width: 100%; max-width: 460px; max-height: 86vh; overflow-y: auto;
+    background: var(--card); border: 1px solid var(--line); border-radius: 18px;
+    padding: 18px; }
+  .guidemodal .gmhead { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .guidemodal .gmicon { flex: 0 0 auto; font-size: 30px; }
+  .guidemodal .gmtext { min-width: 0; }
+  .guidemodal .gmtitle { font-size: var(--fs-lg); font-weight: 700; }
+  .guidemodal .gmsub { font-size: var(--fs-sm); color: var(--muted); margin-top: 3px; }
+  .guidemodal .gmbtns { display: flex; gap: 10px; margin-top: 16px; }
+  .guidemodal .gmbtns button { flex: 1; padding: 12px; font-size: var(--fs); }
+  .guidemodal .gmprimary { background: var(--accent); color: #fff; border-color: var(--accent);
+    font-weight: 600; }
+  .guidemodal .gmghost { background: transparent; color: var(--muted); border-color: var(--line); }
+
+  /* 说明条目：图标 + 标题 + 说明文字 */
+  .gitem { display: flex; align-items: flex-start; gap: 12px; padding: 11px 0;
+    border-bottom: 1px solid #1d273b; }
+  .gitem:last-child { border-bottom: none; }
+  .gitem .gico { flex: 0 0 auto; width: 34px; height: 34px; display: flex;
+    align-items: center; justify-content: center; font-size: 18px;
+    background: #1a2436; border: 1px solid var(--line); border-radius: 10px; }
+  .gitem .ginfo { flex: 1; min-width: 0; }
+  .gitem .gname { font-size: var(--fs); font-weight: 600; line-height: 1.35; }
+  .gitem .gdesc { font-size: var(--fs-sm); color: var(--muted); margin-top: 3px;
+    line-height: 1.45; word-break: break-all; }
+  /* 图解：模拟界面的小示意 */
+  .gdemo { margin-top: 8px; background: #0d1524; border: 1px dashed #2c3a55;
+    border-radius: 10px; padding: 9px 11px; font-size: var(--fs-sm); color: #9fb0cc;
+    line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
   .navrow .navbtn .navico { font-size: 13px; }
 
   /* 设置页：分类入口 + 二级面板（仿系统设置） */
@@ -430,6 +465,24 @@
 </head>
 <body>
 
+<!-- 首次打开：使用说明弹窗（只弹一次，点过「知道了」就不再弹） -->
+<div id="guideModal" class="guidemodal hidden">
+  <div class="gmbox">
+    <div class="gmhead">
+      <div class="gmicon">👋</div>
+      <div class="gmtext">
+        <div class="gmtitle">欢迎使用成都公交播报</div>
+        <div class="gmsub">花一分钟认识这几个按钮</div>
+      </div>
+    </div>
+    <div class="gmlist" id="guideModalList"></div>
+    <div class="gmbtns">
+      <button id="guideLater" class="gmghost">稍后再说</button>
+      <button id="guideOk" class="gmprimary">知道了</button>
+    </div>
+  </div>
+</div>
+
 <div id="fabSpeak" class="hidden">🔊</div>
 
 <div id="home">
@@ -491,6 +544,12 @@
       <div class="settitle">设置</div>
     </div>
     <div class="setlist">
+      <div class="setitem" id="setGuide">
+        <div class="seticon">📖</div>
+        <div class="setinfo"><div class="setname">使用说明</div>
+          <div class="setsub">各按钮作用 · 图解</div></div>
+        <div class="setarrow">›</div>
+      </div>
       <div class="setitem" id="setVoice">
         <div class="seticon">🔊</div>
         <div class="setinfo"><div class="setname">语音与播报</div>
@@ -509,6 +568,17 @@
           <div class="setsub" id="setVersionSub">版本 v—</div></div>
         <div class="setarrow">›</div>
       </div>
+    </div>
+  </div>
+
+  <!-- 二级：使用说明（图解） -->
+  <div id="setPageGuide" class="setpage hidden">
+    <div class="sethead">
+      <button id="guideBack" class="setback">‹</button>
+      <div class="settitle">使用说明</div>
+    </div>
+    <div class="setbody" id="guideBody">
+      <!-- 由 renderGuide() 填充 -->
     </div>
   </div>
 
@@ -4306,7 +4376,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.44";
+  var APP_FALLBACK_VERSION = "9.45";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -4331,10 +4401,152 @@
   window.cdBusSetFix = function (fix) { state.fix = fix || null; };
   window.cdBusNavToStation = navToStation;
 
+  /* ------------------------------------------------------------ 使用说明 */
+
+  /* 首次打开时弹窗里只放最关键的几条，避免一上来就信息过载 */
+  var GUIDE_QUICK = [
+    { icon: "🔍", name: "搜索线路",
+      desc: "在上面的输入框填线路号（如 16），点「查询并播报」。也可以写「16 天府广场南」直接定位到站。",
+      demo: "┌─────────────────────────┐\n│ [16            ]        │\n│ [查询并播报] [当前位置] [↻] │\n└─────────────────────────┘" },
+    { icon: "🔊", name: "自动播报",
+      desc: "打开后，车辆到站前会自动念出站名和时间。不想要声音就关掉。",
+      demo: "🔊 自动播报  ●─── 开" },
+    { icon: "📌", name: "盯站",
+      desc: "点站点行右侧的 📌，这一站的车快到时会在四个节点各播报一次。再点一次取消。",
+      demo: "花园永泉      还有 3 站    📌 🔔" },
+    { icon: "🔔", name: "下车提醒",
+      desc: "点 🔔 把某站设为目的地，快到站时会提醒你下车。再点一次取消。",
+      demo: "花园永泉      12 分 30 秒   📌 🔔" },
+    { icon: "⚙️", name: "设置",
+      desc: "右上角齿轮里可以调语音、看诊断、查看完整说明。",
+      demo: "成都公交播报                    ⚙" }
+  ];
+
+  /* 设置里「使用说明」页：完整版，分章节 */
+  var GUIDE_FULL = [
+    { title: "首页 · 查线路", items: [
+      { icon: "🔍", name: "线路输入框",
+        desc: "填线路号，如 16、2、P36。只填数字会列出所有匹配的线路让你选。",
+        demo: "[16            ]" },
+      { icon: "▶️", name: "查询并播报",
+        desc: "查到线路后进入线路页，显示方向和全部站点。",
+        demo: "[查询并播报]" },
+      { icon: "📍", name: "当前位置",
+        desc: "重新定位并刷新附近站点。定位失败时会用天府广场兜底。",
+        demo: "[当前位置]" },
+      { icon: "↻", name: "刷新",
+        desc: "手动刷新首页的附近站点和到站信息。",
+        demo: "[↻]" },
+      { icon: "🚇", name: "地铁 / 有轨电车",
+        desc: "查看地铁站和线路（静态数据，不含实时到站）。",
+        demo: "🚇 地铁 / 有轨电车 · 站点查询    [查看]" }
+    ]},
+    { title: "首页 · 站点列表", items: [
+      { icon: "1", name: "第一排：线路 → 方向",
+        desc: "告诉你这路车开往哪里，避免坐反。",
+        demo: "716路 → 高新西区公交站" },
+      { icon: "2", name: "第二排：到站状态",
+        desc: "「还有 3 站」「12 分 30 秒」或「不在运营时段（首班 06:00 · 末班 21:50）」。",
+        demo: "还有 3 站 · 11 分 30 秒" },
+      { icon: "🔊", name: "单独播报",
+        desc: "点行尾的 🔊 只念这一条，不影响其它。",
+        demo: "716路 → 高新西区   还有 3 站   🔊 ›" }
+    ]},
+    { title: "线路页 / 详情页", items: [
+      { icon: "⇄", name: "方向切换",
+        desc: "顶部芯片切换上行/下行，站序和到站都会跟着变。",
+        demo: "[往 龙溪村村委会] [往 李冰广场]" },
+      { icon: "🚏", name: "站名芯片",
+        desc: "点任意站名，查看这一站的实时到站。",
+        demo: "[李冰广场] [花园场口] [龙溪村]" },
+      { icon: "🚗", name: "车辆芯片",
+        desc: "点车辆切换看这一辆车到各站的时间。带「最近」徽标的是离你最近的那辆。",
+        demo: "[10001 最近] [10002] [10003]" },
+      { icon: "☆", name: "收藏站点",
+        desc: "在站名下方，收藏后首页收藏区会多一张卡，点进去看这一站所有线路。",
+        demo: "☆ 收藏站点   →   ★ 已收藏站点" },
+      { icon: "🧭", name: "导航",
+        desc: "一键唤起高德/百度/腾讯等地图，500 米内直接步行导航。",
+        demo: "导航到  [🧭 高德地图] [🗺 百度地图] …" }
+    ]},
+    { title: "提醒按钮", items: [
+      { icon: "📌", name: "盯站",
+        desc: "这一站的车快到时自动播报四次：约 10 分钟、约 5 分钟、还有 2 站、已到站。到站后自动取消。",
+        demo: "花园永泉   还有 3 站   📌(灰) 🔔" },
+      { icon: "🔔", name: "下车提醒",
+        desc: "设为目标站，每 5 秒看一次定位，快到站时提醒你下车。",
+        demo: "花园永泉   12 分 30 秒   📌 🔔(亮)" },
+      { icon: "🔇", name: "如何取消",
+        desc: "再点一次同一个图标即可取消，图标会从高亮变回灰色。",
+        demo: "📌(亮) 点一下 → 📌(灰)" }
+    ]},
+    { title: "设置", items: [
+      { icon: "🔊", name: "语音与播报",
+        desc: "测试音量、扬声器、语音合成，调节是否自动播报。",
+        demo: "语音与播报  ›" },
+      { icon: "🛠", name: "后台诊断",
+        desc: "息屏不播报时用这里排查：心跳测试、电池白名单。",
+        demo: "后台诊断  ›" },
+      { icon: "ℹ️", name: "关于",
+        desc: "版本号、数据来源、签名信息。",
+        demo: "关于  ›" }
+    ]}
+  ];
+
+  var GUIDE_SEEN_KEY = "cdbus.guide.seen";
+
+  function guideSeen() {
+    try { return localStorage.getItem(GUIDE_SEEN_KEY) === "1"; } catch (e) { return false; }
+  }
+  function markGuideSeen() {
+    try { localStorage.setItem(GUIDE_SEEN_KEY, "1"); } catch (e) {}
+  }
+
+  /* 渲染一条说明（图标 + 标题 + 说明 + 可选图解） */
+  function guideItemHtml(item) {
+    var html = '<div class="gitem">' +
+      '<div class="gico">' + item.icon + '</div>' +
+      '<div class="ginfo">' +
+        '<div class="gname">' + item.name + '</div>' +
+        '<div class="gdesc">' + item.desc + '</div>';
+    if (item.demo) html += '<div class="gdemo">' + item.demo + '</div>';
+    return html + '</div></div>';
+  }
+
+  /* 首次弹窗：只放关键几条 */
+  window.cdBusOpenGuideModal = function () { openGuideModal(); };
+  window.cdBusGuideSeen = function () { return guideSeen(); };
+  function openGuideModal() {
+    var box = $("guideModalList");
+    if (!box) return;
+    box.innerHTML = GUIDE_QUICK.map(guideItemHtml).join("");
+    $("guideModal").classList.remove("hidden");
+  }
+
+  function closeGuideModal(seen) {
+    var el = $("guideModal");
+    if (el) el.classList.add("hidden");
+    if (seen) markGuideSeen();
+  }
+
+  /* 设置里的完整说明页 */
+  function renderGuide() {
+    var box = $("guideBody");
+    if (!box) return;
+    var html = "";
+    GUIDE_FULL.forEach(function (section) {
+      html += '<div class="setcard"><div class="setcardtitle">' + section.title + '</div>';
+      html += section.items.map(guideItemHtml).join("");
+      html += '</div>';
+    });
+    html += '<div class="dhead">说明可以随时在「设置 → 使用说明」里再看。</div>';
+    box.innerHTML = html;
+  }
+
   /* 设置页导航：主页 ↔ 分类面板。用一个简单栈管理返回。 */
   var setStack = [];
   function showSetPage(id) {
-    var ids = ["setHome", "setPageVoice", "setPageDiag", "setPageAbout"];
+    var ids = ["setHome", "setPageGuide", "setPageVoice", "setPageDiag", "setPageAbout"];
     ids.forEach(function (x) {
       var el = $(x);
       if (el) el.classList.toggle("hidden", x !== id);
@@ -4537,9 +4749,24 @@
     setStack.push(id);
     showSetPage(id);
     if (id === "setPageAbout") fillAbout();
+    if (id === "setPageGuide") renderGuide();
     if (id === "setPageVoice") renderDiag();
     if (id === "setPageDiag") renderHeartbeatInfo();
   }
+  /* 首次打开：进入首页后弹一次使用说明 */
+  $("guideOk").onclick = function () { closeGuideModal(true); };
+  $("guideLater").onclick = function () { closeGuideModal(false); };
+  $("guideModal").onclick = function (ev) {
+    if (ev && ev.target === this) closeGuideModal(false);
+  };
+  if (!guideSeen()) {
+    setTimeout(function () {
+      if (view.name === "home") openGuideModal();
+    }, 1200);
+  }
+
+  $("setGuide").onclick = function () { enterSet("setPageGuide"); };
+  $("guideBack").onclick = function () { backFromDiag(); };
   $("setVoice").onclick = function () { enterSet("setPageVoice"); };
   $("setDiag").onclick = function () { enterSet("setPageDiag"); };
   $("setAbout").onclick = function () { enterSet("setPageAbout"); };

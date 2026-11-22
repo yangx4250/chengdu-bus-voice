@@ -551,6 +551,52 @@ else {
     }
   }
 
+  /* 使用说明：设置里能进二级页，且内容不为空 */
+  {
+    document.getElementById('setGuide').onclick();
+    await new Promise((r) => setTimeout(r, 100));
+    if (String(document.getElementById('setPageGuide').className).includes('hidden')) {
+      failures.push('点「使用说明」没有进入二级页');
+    }
+    const gbody = textOf(document.getElementById('guideBody'));
+    if (gbody.length < 100) failures.push('使用说明内容太少：' + gbody.length);
+    if (!gbody.includes('盯站')) failures.push('使用说明缺少「盯站」条目');
+    if (!gbody.includes('下车提醒')) failures.push('使用说明缺少「下车提醒」条目');
+    if (!gbody.includes('收藏站点')) failures.push('使用说明缺少「收藏站点」条目');
+    // 图解：每条说明都带示意（内容由 innerHTML 生成，直接数类名出现次数）
+    const demoCount = (String(document.getElementById('guideBody').__rawHtml || '').match(/class="gdemo"/g) || []).length;
+    if (demoCount < 8) failures.push('使用说明图解太少：' + demoCount);
+    // 返回设置主页
+    window.cdBusBackView && window.cdBusBackView();
+    await new Promise((r) => setTimeout(r, 100));
+    if (String(document.getElementById('setHome').className).includes('hidden')) {
+      failures.push('使用说明返回没有回到设置主页');
+    }
+  }
+
+  /* 首次弹窗：未看过时能弹出，点「知道了」后记录已读 */
+  {
+    const modal = document.getElementById('guideModal');
+    storage.delete('cdbus.guide.seen');
+    window.cdBusOpenGuideModal && window.cdBusOpenGuideModal();
+    await new Promise((r) => setTimeout(r, 50));
+    if (String(modal.className).includes('hidden')) {
+      failures.push('首次使用说明弹窗没有弹出');
+    }
+    const mlist = textOf(document.getElementById('guideModalList'));
+    if (!mlist.includes('盯站') || !mlist.includes('下车提醒')) {
+      failures.push('首次弹窗内容不完整：' + mlist.slice(0, 80));
+    }
+    document.getElementById('guideOk').onclick();
+    await new Promise((r) => setTimeout(r, 50));
+    if (!String(modal.className).includes('hidden')) {
+      failures.push('点「知道了」后弹窗没有关闭');
+    }
+    if (storage.get('cdbus.guide.seen') !== '1') {
+      failures.push('点「知道了」后没有记录已读标记');
+    }
+  }
+
   // 后台心跳按钮：用来测锁屏/后台播报（走原生前台服务，不是页面定时器）
   const hbBtn = document.getElementById('dHeartbeat');
   if (!hbBtn) {
