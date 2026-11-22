@@ -313,16 +313,27 @@
   .srow:active { background: #1a2336; }
 
   /* ------------------------------------------------------------ 自适应排版
-     用 clamp(最小, 视口比例, 最大) 让字号/间距随屏幕宽度伸缩；
-     同时放开换行，系统字体调到很大时也不会挤出屏幕。 */
+
+     两个维度同时适配：
+       ① 屏幕宽度 → clamp() 里的 vw 项
+       ② 系统字体大小 → clamp() 里的 rem 项
+          （WebView 的 rem 基准跟随系统「字体大小/显示大小」设置，
+           所以系统字体调大时界面会跟着放大，而不是固定 px）
+
+     写法是 clamp(最小值rem, 视口比例vw, 最大值rem)：
+       最小值用 rem 保证系统字体大时不至于小到看不清；
+       中间用 vw 让窄屏自动收缩；
+       最大值也用 rem，系统字体超大时仍能继续放大。
+     上限用 2 倍左右，避免极端设置下把布局撑破。 */
   :root {
-    --fs-sm: clamp(11px, 3vw, 13px);
-    --fs: clamp(13px, 3.6vw, 16px);
-    --fs-lg: clamp(16px, 4.4vw, 20px);
-    --fs-xl: clamp(20px, 5.6vw, 26px);
+    --fs-sm: clamp(0.75rem, 3vw, 1rem);
+    --fs: clamp(0.9rem, 3.6vw, 1.25rem);
+    --fs-lg: clamp(1.05rem, 4.4vw, 1.6rem);
+    --fs-xl: clamp(1.25rem, 5.6vw, 2rem);
     --pad: clamp(10px, 3.2vw, 18px);
     --radius: clamp(10px, 3vw, 16px);
   }
+
 
   body { font-size: var(--fs); padding: var(--pad) var(--pad) 96px; }
   header h1 { font-size: var(--fs-xl); }
@@ -342,6 +353,19 @@
   .chip { font-size: var(--fs-sm); padding: 8px 12px; }
   .srow { padding: 10px var(--pad); gap: 8px; }
   .srow .sname, .srow .swhen { font-size: var(--fs); }
+  /* 系统字体放大时的防挤压：时间不换行、站名可换行、行内元素不重叠 */
+  .srow .swhen { flex: 0 0 auto; white-space: nowrap; }
+  .srow .idx { flex: 0 0 auto; }
+  .srow .sname { flex: 1 1 auto; min-width: 0; word-break: break-all; }
+  /* 顶部标题/副标题在字体大时允许换行，不截断成省略号 */
+  .detail-head .titles div:first-child,
+  .detail-head .titles div:last-child { white-space: normal; overflow: visible;
+    text-overflow: clip; line-height: 1.35; }
+  /* 芯片：横排的允许换行，竖排站名条保持横向滚动（不能换行） */
+  .chip { white-space: normal; word-break: break-word; }
+  .chips.vertical { flex-wrap: nowrap; }
+  .chips.vertical .chip { white-space: nowrap; word-break: normal;
+    height: auto; min-height: 8rem; max-height: none; }
 
   .fav { min-width: clamp(150px, 44vw, 200px); padding: 12px 44px 12px var(--pad); }
   .fav .fl { font-size: var(--fs); }
@@ -4125,7 +4149,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.39";
+  var APP_FALLBACK_VERSION = "9.40";
 
   function fillAbout() {
     var verEl = $("abVersion");
