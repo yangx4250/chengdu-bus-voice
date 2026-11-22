@@ -1001,6 +1001,33 @@ else {
   }
 }
 
+/* 📌 点击后图标要立刻变灰（不等 30 秒轮询） */
+{
+  // 先确保处于未盯站状态
+  if (/盯站中/.test(textOf(document.getElementById('watchcard')))) {
+    window.cdBusWatchStation && window.cdBusWatchStation(9);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  // 进入详情页渲染站点行
+  const favCards = findByClass(document.getElementById('favs'), 'fav')
+    .filter((c) => !textOf(c).includes('站点收藏'));
+  if (favCards.length) {
+    favCards[0].onclick();
+    await new Promise((r) => setTimeout(r, 900));
+    // 点 📌
+    const pins = findByClass(document.getElementById('dlist'), 'stpin');
+    if (pins.length) {
+      pins[0].onclick({ stopPropagation() {} });
+      // 不等待：立刻检查是否已变灰
+      const pinsNow = findByClass(document.getElementById('dlist'), 'stpin');
+      const greyed = pinsNow.filter((p) => String(p.className).includes('off'));
+      if (!greyed.length) {
+        stage4.push('点 📌 后图标没有立刻变灰（有延迟）');
+      }
+    }
+  }
+}
+
 /* 📌 切换：再点同一个站应取消盯站（与 🔔 一致） */
 {
   if (typeof window.cdBusWatchStation === 'function') {

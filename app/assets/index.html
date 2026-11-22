@@ -3542,10 +3542,18 @@
       if (document.hidden) return;
       watchTick().catch(function () {});
     }, 30000);
-    startBackgroundWatch();   // 交给前台服务，后台也能播
-    setStatus("盯站中 · " + watchLabel(target) + " · 每 30 秒（服务已启动）");
+    /* 先刷 UI 再调原生服务：startWatchService 是跨 JNI 的同步调用，
+       放在前面会让图标「点了过一会儿才变灰」。 */
+    setStatus("盯站中 · " + watchLabel(target) + " · 每 30 秒");
     updateWatchUI();
+    repaintStationRows();     // 📌 立刻变灰，不等下一次轮询
+    startBackgroundWatch();   // 交给前台服务，后台也能播
+  }
+
+  /* 立即重画当前页面的站点行（详情页/车辆页），用于图标状态即时反馈 */
+  function repaintStationRows() {
     if (view.name === "detail" && view.data) renderTimes({ scroll: false });
+    else if (view.name === "veh" && view.data) renderVehicleTimes();
   }
 
   function stopWatch() {
@@ -3557,8 +3565,7 @@
     setStatus("已停止盯站");
     stopBackgroundWatch();
     updateWatchUI();
-    if (view.name === "detail" && view.data) renderTimes({ scroll: false });
-    if (view.name === "veh") renderVehicleTimes();   // 车辆页的 📌 也要恢复
+    repaintStationRows();   // 立刻恢复 📌 状态
   }
 
   /* 30 秒一刷；同一辆车只在 10 分钟 / 5 分钟 / 2 站 各播一次 */
@@ -3637,8 +3644,7 @@
     watch.liveText = "已到站，盯站结束";
     setStatus("已到站，盯站自动结束", false);
     updateWatchUI();
-    if (view.name === "detail" && view.data) renderTimes({ scroll: false });
-    if (view.name === "veh") renderVehicleTimes();
+    repaintStationRows();
   }
 
   function clockTime() {
@@ -4118,7 +4124,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.37";
+  var APP_FALLBACK_VERSION = "9.38";
 
   function fillAbout() {
     var verEl = $("abVersion");
