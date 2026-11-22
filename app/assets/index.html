@@ -3712,10 +3712,14 @@
         '<span class="sname">' + station.name + "</span>" +
         '<span class="swhen">' + when + clock + "</span>" +
         (isNearest ? '<span class="spk nb">离我最近</span>' : "") +
+        '<span class="spk stpin' +
+          (watch.on && watch.target && watch.target.order === station.order &&
+           String(watch.target.lineId) === String(view.lineId) ? " off" : "") +
+          '" data-pin="' + station.order + '">📌</span>' +
         '<span class="spk bell' + (alightRunning && alightDest && Number(alightDest.order) === Number(station.order) ? " on" : "") +
           '" data-bell="' + station.order + '">🔔</span></div>';
     });
-    html += '<div class="dhead" style="margin-top:4px">点 🔔 把这站设为下车提醒；时间仅供参考</div>';
+    html += '<div class="dhead" style="margin-top:4px">点 📌 盯站、点 🔔 设下车提醒；时间仅供参考</div>';
     box.innerHTML = html;
 
     var rows = box.children;
@@ -3724,6 +3728,13 @@
       (function (rowEl) {
         var order = parseInt(rowEl.getAttribute ? rowEl.getAttribute("data-order") : rowEl.dataset.order, 10);
         if (Number(order) === Number(nearestOrder)) nearestRow = rowEl;
+        var pinEl = rowEl.querySelector ? rowEl.querySelector(".stpin") : null;
+        if (pinEl) {
+          pinEl.onclick = function (ev) {
+            if (ev && ev.stopPropagation) ev.stopPropagation();
+            watchStationByOrder(order);
+          };
+        }
         var bellEl = rowEl.querySelector ? rowEl.querySelector(".bell") : null;
         if (bellEl) {
           bellEl.onclick = function (ev) {
@@ -3732,7 +3743,9 @@
           };
         }
         rowEl.onclick = function (ev) {
-          if (ev && ev.target && ev.target.getAttribute && ev.target.getAttribute("data-bell")) return;
+          if (ev && ev.target && ev.target.getAttribute) {
+            if (ev.target.getAttribute("data-bell") || ev.target.getAttribute("data-pin")) return;
+          }
           startAlight(order);
         };
       })(rows[i]);
