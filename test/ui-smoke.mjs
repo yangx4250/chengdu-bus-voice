@@ -554,9 +554,10 @@ else {
 }
 if (html.includes('id="diagBtn"')) failures.push('底部还残留 🔧 按钮');
 if (html.includes('id="speakBtn"')) failures.push('底部还残留大播报按钮');
-// 底部只剩两个开关
-const footerSwitches = (document.getElementById('voice') && document.getElementById('watch')) ? 2 : 0;
-if (footerSwitches !== 2) failures.push('底部开关数量不对');
+// 底部只剩「自动播报」一个开关（盯站开关已移除，改用 📌 图标）
+const footerSwitches = document.getElementById('voice') ? 1 : 0;
+if (footerSwitches !== 1) failures.push('底部开关数量不对（应只剩自动播报）');
+if (html.includes('id="watch"')) failures.push('底部还残留盯站开关');
 if (String(document.getElementById('status').className).indexOf('hidden') < 0) {
   failures.push('右下角状态文字没有隐藏');
 }
@@ -915,7 +916,10 @@ else {
   await new Promise((r) => setTimeout(r, 200));
   const statusText = String(document.getElementById('status').textContent || '');
   if (!/盯站中/.test(statusText)) stage4.push('点 📌 后没有进入盯站：' + statusText);
-  if (!document.getElementById('watch').checked) stage4.push('底部盯站开关没有同步');
+  // 底部盯站开关已移除，改为确认首页出现了盯站卡片
+  if (!/盯站中/.test(textOf(document.getElementById('watchcard')))) {
+    stage4.push('盯站后首页没有出现盯站卡片');
+  }
 
   /* 盯站播报：服务在跑时由服务播（页面不播，避免重复）；
      服务没跑时页面兜底播，保证前台一定有声音。 */
@@ -981,8 +985,8 @@ else {
     /* ⑤ 到站后自动取消盯站（不等下一辆车）：
        等页面那个 4 秒定时器跑完，盯站开关应复位、服务应被停掉。 */
     await new Promise((r) => setTimeout(r, 4500));
-    if (document.getElementById('watch').checked) {
-      stage4.push('到站后盯站开关没有自动关闭');
+    if (/盯站中/.test(textOf(document.getElementById('watchcard')))) {
+      stage4.push('到站后盯站没有自动结束（卡片仍在）');
     }
     if (!watchServiceLog.some((x) => x[0] === 'stop')) {
       stage4.push('到站后没有停止后台盯站服务');
@@ -1004,8 +1008,8 @@ else {
     const stopBefore = watchServiceLog.filter((x) => x[0] === 'stop').length;
     window.cdBusWatchStation(9);   // 同一个站
     await new Promise((r) => setTimeout(r, 200));
-    if (document.getElementById('watch').checked) {
-      stage4.push('再点同一个站 📌 没有取消盯站（开关仍开着）');
+    if (/盯站中/.test(textOf(document.getElementById('watchcard')))) {
+      stage4.push('再点同一个站 📌 没有取消盯站（卡片仍在）');
     }
     if (watchServiceLog.filter((x) => x[0] === 'stop').length <= stopBefore) {
       stage4.push('再点 📌 没有停止后台服务');

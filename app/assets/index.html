@@ -188,13 +188,14 @@
   .dwatchstop { font-size: 12px; color: #6b7c99; padding: 4px 8px; border-radius: 8px;
     border: 1px solid var(--line); white-space: nowrap; }
   .dwatchstop:active { background: #22304a; color: #fff; }
-  .srow .stpin { padding: 2px 3px; border-radius: 6px; cursor: pointer; }
+  .srow .stpin { padding: 4px 6px; border-radius: 8px; font-size: 19px;
+    line-height: 1; cursor: pointer; }
   .stpin.off { opacity: .28; }
 
   /* 下车提醒：站点行 🔔、详情页状态条、首页卡片 */
-  /* 🔔 只让图标本身可点：去掉横向 padding，收紧到字形大小 */
-  .srow .bell { flex: 0 0 auto; padding: 2px 3px; border: 1px solid var(--line);
-    border-radius: 6px; font-size: 13px; line-height: 1; color: #b9c6dd;
+  /* 🔔 / 📌 只让图标本身可点，但字号放大到易点（原来 13px 偏小） */
+  .srow .bell { flex: 0 0 auto; padding: 4px 6px; border: 1px solid var(--line);
+    border-radius: 8px; font-size: 19px; line-height: 1; color: #b9c6dd;
     cursor: pointer; }
   .srow .bell:active { background: #22304a; }
   .srow .bell.on { border-color: var(--hot); color: #ffd9d4; background: #3a1f22; }
@@ -411,7 +412,6 @@
 
   <footer>
     <label class="switch"><input type="checkbox" id="voice"><span class="knob"></span><span class="lbl">自动播报</span></label>
-    <label class="switch"><input type="checkbox" id="watch"><span class="knob"></span><span class="lbl">盯站</span></label>
     <span id="status" class="hidden">就绪</span>
   </footer>
 
@@ -3477,8 +3477,6 @@
   }
 
   function updateWatchUI() {
-    var checkbox = $("watch");
-    if (checkbox) checkbox.checked = watch.on;
     var bar = $("dwatchbar");
     if (!bar) return;
     if (watch.on && watch.target) {
@@ -3629,9 +3627,6 @@
     watch.on = false;
     watch.target = null;
     watch.liveText = "已到站，盯站结束";
-
-    var checkbox = $("watch");
-    if (checkbox) checkbox.checked = false;
     setStatus("已到站，盯站自动结束", false);
     updateWatchUI();
     if (view.name === "detail" && view.data) renderTimes({ scroll: false });
@@ -4116,7 +4111,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.35";
+  var APP_FALLBACK_VERSION = "9.36";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -4525,27 +4520,6 @@
       firstTime: view.firstTime || "",
       lastTime: view.lastTime || "",
       addedAt: Date.now()
-    });
-  };
-
-  $("watch").onchange = function () {
-    if (!this.checked) { stopWatch(); return; }
-    if (!state.detail || !state.station) {
-      this.checked = false;
-      setStatus("先选一个站点再盯站", true);
-      return;
-    }
-    startWatch({
-      lineId: state.detail.lineId,
-      lineName: state.detail.name,
-      stationId: state.station.stationId,
-      stationName: state.station.name,
-      order: state.station.order,
-      lat: state.station.lat || 0,
-      lng: state.station.lng || 0,
-      toward: state.detail.endSn || "",
-      firstTime: state.detail.firstTime || "",
-      lastTime: state.detail.lastTime || ""
     });
   };
 
