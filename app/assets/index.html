@@ -2708,6 +2708,27 @@
 
   /* 按站序切盯站（详情页行内 📌 用） */
   function watchStationByOrder(order) {
+    /* 先判断「是否点在已盯的站上」—— 这一步不依赖 view.data，
+       这样即使当前不在详情/车辆页（比如刚返回首页），也能正常取消盯站。 */
+    /* 判断「当前是否在盯这一站」：watch.on 可能和 UI/服务不同步
+       （比如服务被系统重启、或页面状态刚恢复），所以再看一眼服务是否在跑。 */
+    var watching = watch.on && watch.target &&
+        Number(watch.target.order) === Number(order);
+    if (!watching) {
+      try {
+        var st0 = bridge && bridge.watchStatus ? JSON.parse(bridge.watchStatus()) : null;
+        if (st0 && st0.running && !watch.target) {
+          // 服务在跑但页面没记住目标：直接按「取消」处理
+          watching = true;
+        }
+      } catch (e) {}
+    }
+    if (watching) {
+      stopWatch();
+      setStatus("已取消盯站");
+      return;
+    }
+
     if (!view.data) return;
     var list = view.data.stations || [];
     var st = null;
@@ -2715,12 +2736,6 @@
       if (Number(list[i].order) === Number(order)) { st = list[i]; break; }
     }
     if (!st) return;
-    if (watch.on && watch.target &&
-        Number(watch.target.order) === Number(order) &&
-        String(watch.target.lineId) === String(view.lineId)) {
-      setStatus("已经在盯这一站", true);
-      return;
-    }
     startWatch({
       lineId: view.lineId,
       lineName: view.lineName,
@@ -3537,6 +3552,7 @@
     stopBackgroundWatch();
     updateWatchUI();
     if (view.name === "detail" && view.data) renderTimes({ scroll: false });
+    if (view.name === "veh") renderVehicleTimes();   // 车辆页的 📌 也要恢复
   }
 
   /* 30 秒一刷；同一辆车只在 10 分钟 / 5 分钟 / 2 站 各播一次 */
@@ -4100,7 +4116,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.34";
+  var APP_FALLBACK_VERSION = "9.35";
 
   function fillAbout() {
     var verEl = $("abVersion");

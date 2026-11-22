@@ -205,6 +205,7 @@ const alightServiceLog = [];
 const exitLog = [];
 const navLog = [];
 const batteryLog = [];
+const notes = [];
 /* 让 arrivals 桩返回「已到站」的车（盯站到站播报测试用） */
 let arrivalsArrived = false;
 let arrivalsEta = null;
@@ -388,7 +389,7 @@ const bridge = {
     return JSON.stringify({ ttsReady: true, backend: '系统语音', engines: 'com.xiaomi.tts', mediaVolume: 10, mediaMax: 29, ringerMode: 2, outputs: '扬声器', lastResult: '已交给系统 TTS' });
   },
   setView() {},
-  note() {},
+  note(t) { notes.push(String(t)); },
   backend() { return '系统语音'; },
   /* 导航桩：假装装了高德和百度 */
   navApps() {
@@ -993,6 +994,25 @@ else {
 
     arrivalsEta = null;
     arrivalsArrived = false;
+  }
+}
+
+/* 📌 切换：再点同一个站应取消盯站（与 🔔 一致） */
+{
+  if (typeof window.cdBusWatchStation === 'function') {
+    // 此时处于盯站中（前面的用例开启了）
+    const stopBefore = watchServiceLog.filter((x) => x[0] === 'stop').length;
+    window.cdBusWatchStation(9);   // 同一个站
+    await new Promise((r) => setTimeout(r, 200));
+    if (document.getElementById('watch').checked) {
+      stage4.push('再点同一个站 📌 没有取消盯站（开关仍开着）');
+    }
+    if (watchServiceLog.filter((x) => x[0] === 'stop').length <= stopBefore) {
+      stage4.push('再点 📌 没有停止后台服务');
+    }
+    // 重新开启，避免影响后续用例
+    window.cdBusWatchStation(9);
+    await new Promise((r) => setTimeout(r, 200));
   }
 }
 
