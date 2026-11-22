@@ -32,6 +32,9 @@ public final class WatchService extends Service {
     public static final String ACTION_STOP = "com.chengdu.bus.WATCH_STOP";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
+    /** 网络请求必须离开主线程（Android 会抛 NetworkOnMainThreadException）。 */
+    private final java.util.concurrent.ExecutorService netPool =
+            java.util.concurrent.Executors.newSingleThreadExecutor();
     private final ChelaileClient client = new ChelaileClient();
     private WakeKeeper wake;
     private Speech speech;
@@ -91,11 +94,18 @@ public final class WatchService extends Service {
             /* 每轮续一次唤醒锁，保证下一轮 tick 之前 CPU 不会睡 */
             if (wake != null) { wake.acquire(); WAKE_HELD = wake.held(); }
             LAST_TICK_AT = System.currentTimeMillis();
-            try {
-                poll();
-            } catch (Throwable e) {
-                Log.w(TAG, "tick 异常（继续跑）", e);
-            }
+            /* poll() 里有 HTTP 请求，必须放到后台线程；
+               之前直接在主线程跑 → NetworkOnMainThreadException，盯站永远查不到数据。 */
+            netPool.execute(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        poll();
+                    } catch (Throwable e) {
+                        Log.w(TAG, "tick 异常（继续跑）", e);
+                    }
+                }
+            });
             /* 诊断模式：每轮都念一句，用来区分「服务没跑」和「服务跑了但没触发播报」 */
             if (DIAG_SPEAK && speech != null) {
                 speech.speak("盯站服务第 " + (++diagCount) + " 次轮询", new Speech.Callback() {
@@ -163,6 +173,7 @@ public final class WatchService extends Service {
     @Override
     public void onDestroy() {
         handler.removeCallbacks(ticker);
+        try { netPool.shutdownNow(); } catch (Throwable ignored) {}
         RUNNING = false;
         WAKE_HELD = false;
         if (wake != null) wake.release();
