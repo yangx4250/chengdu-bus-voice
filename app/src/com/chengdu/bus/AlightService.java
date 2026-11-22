@@ -328,10 +328,12 @@ public final class AlightService extends Service implements LocationListener {
     }
 
     private void announce(String what) {
-        /* 和盯站一样：播报一律由服务自己念。
-           之前这里判断 frontAndScreenOn() 就把播报让给页面，但息屏时
-           Activity 仍是 resumed（VISIBLE=true）→ 服务跳过；而页面的轮询
-           在息屏时也不跑 → 两边都不念。心跳服务没这层判断，所以它一直正常。 */
+        /* 分工同盯站：亮屏前台由页面播（页面轮询在跑），后台/息屏由服务播。
+           两者条件互斥，不会重复也不会都没声。 */
+        if (MainActivity.frontAndScreenOn(this)) {
+            Log.i(TAG, "亮屏前台，由页面播报（服务跳过避免重复）");
+            return;
+        }
         String text = what + "。" + destName + "站。";
         if (!lineName.isEmpty()) text = lineName + "路，" + text;
         Log.i(TAG, "下车提醒播报：" + text + "（界面可见=" + MainActivity.VISIBLE + "）");

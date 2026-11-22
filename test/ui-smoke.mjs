@@ -150,14 +150,24 @@ const nearbyPayload = {
       lineNameList: ['P02路', '716路', '720路', '45路'],
       arrivals: [
         { stationId: '028-1', stationName: '花园永泉', stationOrder: 5, lineId: '028-p02-0',
-          lineName: 'P02', toward: '花园公交站', stationsAway: 2, etaSeconds: 300,
+          lineName: 'P02', toward: '郫都区客运中心', stationsAway: 2, etaSeconds: 300,
           firstTime: '00:00', lastTime: '23:59', arrived: false },
         { stationId: '028-1', stationName: '花园永泉', stationOrder: 1, lineId: '028-720-0',
-          lineName: '720', toward: '花园公交站', stationsAway: 0, etaSeconds: null,
+          lineName: '720', toward: '郫都区客运中心', stationsAway: 0, etaSeconds: null,
           firstTime: '00:00', lastTime: '23:59', preStartTime: '09:24', arrived: false },
         { stationId: '028-1', stationName: '花园永泉', stationOrder: 5, lineId: '028-716-0',
-          lineName: '716', toward: '花园公交站', stationsAway: 43, etaSeconds: null,
+          lineName: '716', toward: '郫都区客运中心', stationsAway: 43, etaSeconds: null,
           firstTime: ENDED_FROM, lastTime: ENDED_TO, arrived: false },
+      ],
+    },
+    {
+      /* 对面站台：名字接近、不同 stationId、方向相反 —— 不该混进「同站其它」 */
+      stationId: '028-1b', name: '花园永泉东', distanceMeters: 25,
+      lineNames: '801路', lineNameList: ['801路'],
+      arrivals: [
+        { stationId: '028-1b', stationName: '花园永泉东', stationOrder: 2,
+          lineId: '028-801-0', lineName: '801', toward: '花园公交站',
+          stationsAway: 4, etaSeconds: 900, firstTime: '00:00', lastTime: '23:59', arrived: false },
       ],
     },
     {
@@ -864,27 +874,17 @@ else {
      服务没跑时页面兜底播，保证前台一定有声音。 */
   {
     arrivalsArrived = true;   // 让 arrivals 桩返回已到站的车
-    // ① 服务在跑（桩默认 running=true）→ 页面不该自己播
-    watchSvcRunning = true;
+    /* v9.21 起分工明确：页面负责前台播报（页面定时器只在可见时跑），
+       服务负责后台/息屏播报。前台必须能听到声音。 */
     const before1 = speakLog.length;
     window.cdBusWatchTick && window.cdBusWatchTick();
     await new Promise((r) => setTimeout(r, 300));
-    if (speakLog.length > before1) {
-      stage4.push('服务在跑时页面仍自己播（会重复）：' + speakLog.slice(before1).join('|'));
+    const pageSpoke = speakLog.slice(before1);
+    if (!pageSpoke.length) {
+      stage4.push('前台盯站没有播报（页面必须负责前台播报）');
+    } else if (!/到站|分钟|进站/.test(pageSpoke.join('|'))) {
+      stage4.push('前台播报内容不对：' + pageSpoke.join('|'));
     }
-
-    // ② 服务没跑 → 页面兜底播（否则前台彻底没声）
-    watchSvcRunning = false;
-    const before2 = speakLog.length;
-    window.cdBusWatchTick && window.cdBusWatchTick();
-    await new Promise((r) => setTimeout(r, 300));
-    const fallback = speakLog.slice(before2);
-    if (!fallback.length) {
-      stage4.push('服务没跑时页面没有兜底播报（前台会完全没声）');
-    } else if (!/到站/.test(fallback.join('|'))) {
-      stage4.push('兜底播报内容不对：' + fallback.join('|'));
-    }
-    watchSvcRunning = true;
     arrivalsArrived = false;
   }
 }
@@ -1032,6 +1032,10 @@ else {
     if (!/同站其它/.test(othersNow)) stage5.push('「同站其它」标签丢失');
     if (!/716路/.test(othersNow)) stage5.push('点站名后没有列出该站的其它线路：' + othersNow.slice(0, 120));
   if (!/45路/.test(othersNow)) stage5.push('没有实时数据的线路没有列出（应全量展示）：' + othersNow.slice(0, 160));
+    /* 反方向过滤：详情页当前方向是 P02 的终点站；对面站台（801路 往另一方向）不该出现 */
+    if (/801路/.test(othersNow)) {
+      stage5.push('反方向的线路混进了「同站其它」：' + othersNow.slice(0, 160));
+    }
     if (speakLog.length !== beforeSpeak) stage5.push('点站名仍在播报（应只更新列表）');
     if (!wasDetail) stage5.push('前置条件不对：本来就不在详情页');
   }
@@ -1194,10 +1198,9 @@ console.log('✓ 收藏进详情通过：芯片显示「已过收藏站 · 距�
       await new Promise((r) => setTimeout(r, 100));
       const barText = String(document.getElementById('alighttext').textContent || '');
       if (!/还有 2 站/.test(barText)) stage5c.push('提醒条没有同步剩余站数：' + barText);
-      /* v9.18 起播报统一由 AlightService 负责（不看 document.hidden，锁屏也念），
-         页面只同步界面。所以这里断言「页面不再自己播」，而不是要求页面播。 */
-      if (speakLog.length > speakBefore) {
-        stage5c.push('页面仍在自己播下车提醒（会和服务重复念）：' + speakLog.slice(speakBefore).join('|'));
+      /* 前台由页面播（服务在亮屏时跳过），这里要求页面确实播了 */
+      if (speakLog.length <= speakBefore) {
+        stage5c.push('前台下车提醒没有播报（页面应负责前台播报）');
       }
 
       // 到站事件：v9.15 起到站播报完立刻收尾（不再等 12 秒）
@@ -1208,9 +1211,9 @@ console.log('✓ 收藏进详情通过：芯片显示「已过收藏站 · 距�
       window.cdBusAlightPoll();
       await new Promise((r) => setTimeout(r, 100));
 
-      // ① 到站时页面也不该自己播（交给服务），但仍要完成收尾
-      if (speakLog.length && /到站了/.test(speakLog[speakLog.length - 1] || '')) {
-        stage5c.push('页面仍在自己播到站播报（会和服务重复念）');
+      // ① 到站必须播报（前台由页面负责）
+      if (!/到站了/.test(speakLog[speakLog.length - 1] || '')) {
+        stage5c.push('到站没有播报：' + speakLog[speakLog.length - 1]);
       }
       // ② 播报之后立刻取消横幅
       if (!String(document.getElementById('alightbar').className).includes('hidden')) {
@@ -1245,10 +1248,7 @@ console.log('✓ 收藏进详情通过：芯片显示「已过收藏站 · 距�
       const speakBeforeRestart = speakLog.length;
       window.cdBusAlightPoll();
       await new Promise((r) => setTimeout(r, 100));
-      /* 播报由服务负责，页面只记进度：这里确认页面不会自己补播一条过时消息 */
-      if (speakLog.length > speakBeforeRestart) {
-        stage5c.push('页面在服务重启后自己补播了（应由服务负责）');
-      }
+      if (speakLog.length <= speakBeforeRestart) stage5c.push('服务重启后的事件没有重新播报');
 
       // 取消：停服务、清卡片
       const stopBefore = alightServiceLog.length;

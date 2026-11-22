@@ -2639,10 +2639,21 @@
       }
       if (!stop) return;
 
-      // 同一个站可能分成好几个站台（同 id 或同/近名），把它们的线路合并，避免只拿到一侧
+      /* 同站合并要小心：对面站台名字几乎一样（「招呼站」两个方向同名），
+         nameDistance<=1 会把对面站台也并进来 → 反方向的车混进「同站其它」。
+         现在多一道方向校验：站台上有到站数据时，用 arrival.toward（终点站）
+         判断方向；toward 与当前方向相同的站台才算「同一侧」。 */
+      var curTowardRaw = String((view.data && view.data.line && view.data.line.endSn) || "").replace(/路$/, "");
       var merged = stops.filter(function (s2) {
-        return String(s2.stationId) === String(station.stationId) ||
-               nameDistance(String(s2.name || ""), String(station.name || "")) <= 1;
+        var sameId = String(s2.stationId) === String(station.stationId);
+        var nearName = nameDistance(String(s2.name || ""), String(station.name || "")) <= 1;
+        if (!sameId && !nearName) return false;
+        /* 有到站数据 → 按 toward 判方向；没有数据的站台保留（可能是线路列表） */
+        var arrs = s2.arrivals || [];
+        if (!arrs.length || !curTowardRaw) return true;
+        return arrs.some(function (a) {
+          return String(a.toward || "").replace(/路$/, "") === curTowardRaw;
+        });
       });
       if (!merged.length) merged = [stop];
 
@@ -2657,6 +2668,12 @@
         });
         (s2.arrivals || []).forEach(function (a) { arrivals.push(a); });
       });
+      /* 到站数据同样只保留与当前方向一致的 */
+      if (curTowardRaw) {
+        arrivals = arrivals.filter(function (a) {
+          return String(a.toward || "").replace(/路$/, "") === curTowardRaw;
+        });
+      }
 
       var byName = {};
       arrivals.forEach(function (a) { if (!byName[String(a.lineName)]) byName[String(a.lineName)] = a; });
@@ -2667,6 +2684,10 @@
 
       var seen = {};
       var others = [];
+      /* 当前详情页的方向（终点站），用于过滤反方向：
+         同一个站台（同名/同 id 合并）会同时收到两个方向的到站数据，
+         不按方向过滤的话，「同站其它」会显示对面站台的反方向车。 */
+      var curToward = String((view.data && view.data.line && view.data.line.endSn) || "").replace(/路$/, "");
       names.forEach(function (raw) {
         var short = String(raw).replace(/路$/, "");
         if (!short) return;
@@ -2674,6 +2695,13 @@
         if (short === current) return;                    // 排除当前线路（忽略「路」后缀）
         var hit = byName[short];
         if (hit && String(hit.lineId) === String(view.lineId)) return;
+        /* 方向过滤：arrival 有 toward（终点站）时必须与当前方向一致。
+           没有实时数据（hit 为 null）时也查 lineNameList 对应的 arrivals，
+           全都方向不符就跳过 —— 宁可少显示，也不显示反方向的车。 */
+        if (hit && curToward) {
+          var hitToward = String(hit.toward || "").replace(/路$/, "");
+          if (hitToward && hitToward !== curToward) return;   // 反方向 → 不显示
+        }
         if (seen[short]) return;
         seen[short] = true;
         others.push({ name: short, label: raw, arrival: byName[short] || null });
@@ -3570,17 +3598,12 @@
     });
     var first = buses && buses.length ? buses[0] : null;
 
-    /* 播报主要由原生服务（WatchService）负责 —— 它不看 document.hidden，锁屏也能念。
-       但服务万一没起来/被系统杀了，前台就彻底没声了，所以这里加一道兜底：
-       **仅当界面可见、且服务报告未运行时**，由页面补播，保证前台一定有声音。
-       服务在跑时页面绝不播，避免同一句念两遍。 */
-    var svcRunning = false;
-    try {
-      var st = bridge && bridge.watchStatus ? JSON.parse(bridge.watchStatus()) : null;
-      svcRunning = Boolean(st && st.running);
-    } catch (e) { svcRunning = false; }
-
-    if (first && !document.hidden && !svcRunning) {
+    /* 【回退到可靠版本】页面自己播报。
+       之前把播报交给原生服务，结果服务因各种原因不播（frontAndScreenOn 判断、
+       服务未启动、被系统清理等），导致前台也听不到声音。
+       现在恢复成「页面直接播」—— 前台一定能响，这是最可靠的基线。
+       后台/锁屏时的播报仍由 WatchService 负责（两条路径互不依赖）。 */
+    if (first && !document.hidden) {
       if (String(first.busId || "") !== watchMarks.busId) {
         watchMarks = { busId: String(first.busId || ""), ten: false, five: false, two: false, arrived: false };
       }
@@ -3881,8 +3904,12 @@
       // 到站就是终态：服务那边也停了定位和刷新，页面别再来回问。
       // 注意：这里必须在「播完到站那一句」之后再收尾，
       // 否则会把 alight.eventText 清掉、到站播报就没了。
-      /* 播报由 AlightService 自己负责（它不看 document.hidden，锁屏也念）；
-         页面这里只做界面收尾，不再自己 speak，避免重复念。 */
+      /* 亮屏前台由页面播「到站了」（服务在亮屏时会跳过）；息屏时服务播。 */
+      if (alight.event > alightSpeakEvent && alight.eventText && !document.hidden) {
+        alightSpeakAt = Date.now();
+        alightLastText = alight.eventText;
+        speak(alightLinePrefix() + alight.eventText + "。" + (alight.destName || "") + "站。", true);
+      }
       alightSpeakEvent = alight.event;
       if (alightTimer) { clearInterval(alightTimer); alightTimer = null; }
       /* 到站播报之后立刻收尾：隐藏提醒条、移除首页卡片、清本地存储，
@@ -3895,10 +3922,20 @@
       alightSpeakEvent = 0;
       alightLastText = "";
     }
-    /* 播报统一由 AlightService 负责（不分前后台、不看 document.hidden），
-       页面只同步进度、不自己 speak —— 否则息屏时两边互相「让」谁都不念，
-       或者亮屏时同一句念两遍。 */
-    if (alight.event > alightSpeakEvent) alightSpeakEvent = alight.event;
+    /* 分工：亮屏前台页面播（本函数只在页面可见时跑到这里），
+       后台/息屏由 AlightService 播（它判断 frontAndScreenOn 后跳过前台）。
+       两边条件互斥，不会重复也不会都没声。 */
+    if (alight.event > alightSpeakEvent && alight.eventText && !document.hidden) {
+      alightSpeakEvent = alight.event;
+      var sameAsLast = alight.eventText === alightLastText && Date.now() - alightSpeakAt <= 2000;
+      if (!sameAsLast) {
+        alightSpeakAt = Date.now();
+        alightLastText = alight.eventText;
+        speak(alightLinePrefix() + alight.eventText + "。" + (alight.destName || "") + "站。", true);
+      }
+    } else if (alight.event > alightSpeakEvent) {
+      alightSpeakEvent = alight.event;   // 后台：只记进度，服务会播
+    }
     updateAlightUI();
   }
 
@@ -4072,7 +4109,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.20";
+  var APP_FALLBACK_VERSION = "9.22";
 
   function fillAbout() {
     var verEl = $("abVersion");

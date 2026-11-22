@@ -315,13 +315,20 @@ public final class WatchService extends Service {
     }
 
     private void announce(String what) {
-        /* 盯站的播报一律由服务自己念，不再「交给页面」。
-           之前这里用 frontAndScreenOn() 判断，把播报让给页面，结果是个死结：
-             页面定时器有 `if (document.hidden) return;` —— 息屏就不跑；
-             而息屏时 Activity 仍是 resumed、VISIBLE=true，服务以为页面会播就跳过；
-           两边都跳过 → 谁都不念。心跳服务没有这层判断，所以它一直正常。 */
+        /* 分工：**页面负责前台播报**（页面定时器只在亮屏前台跑），
+           服务负责**后台/息屏**播报。用 isInteractive() 判断屏幕，
+           而不是只看 VISIBLE —— 息屏时 Activity 仍 resumed，VISIBLE 恒为 true。
+           之前用 frontAndScreenOn（要求亮屏）导致息屏时服务也不播，
+           而页面又因 document.hidden 不播 → 死结。现在：
+             亮屏前台 → 页面播（服务跳过，避免重复）
+             息屏/后台 → 服务播（页面定时器不跑）
+           两者条件互斥，任何时刻只有一方播。 */
+        if (MainActivity.frontAndScreenOn(this)) {
+            Log.i(TAG, "亮屏前台，由页面播报（服务跳过避免重复）");
+            return;
+        }
         String text = lineName + "路，" + stationName + "站，" + what + "。";
-        Log.i(TAG, "盯站播报：" + text + "（界面可见=" + MainActivity.VISIBLE + "）");
+        Log.i(TAG, "后台/息屏播报：" + text);
         LAST_SPEAK = text;
         LAST_SPEAK_AT = System.currentTimeMillis();
         if (speech != null) {
