@@ -90,11 +90,11 @@
   .chips.vertical { align-items: stretch; padding-top: 2px; }
   .chips.vertical .chip { writing-mode: vertical-rl; text-orientation: upright;
     display: inline-flex; align-items: center; justify-content: flex-start;
-    padding: 10px 7px; height: 132px; overflow: hidden;
+    padding: 10px 7px; height: 150px; overflow: hidden;
     line-height: 1.15; letter-spacing: 1px; font-size: 13px;
     position: relative; }
   /* 竖排时徽标不能横在字中间：挪到顶部，独立一行小字 */
-  .chips.vertical .chip.nearest { padding-top: 20px; }
+  .chips.vertical .chip.nearest { padding-top: 18px; }
   .chips.vertical .chip .nbadge { writing-mode: horizontal-tb; position: absolute;
     top: 4px; left: 50%; transform: translateX(-50%); margin: 0;
     font-size: 9px; line-height: 1.6; padding: 0 4px; letter-spacing: 0; }
@@ -106,6 +106,12 @@
   .bus .line-name { font-size: 19px; font-weight: 700; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .bus .toward { color: var(--muted); font-size: 13px; }
+  /* 搜索结果页的卡：线路名一行、起终点另起一行，长站名不再挤压线路名 */
+  .bus .pickhead { display: block; }
+  .bus .pickhead .line-name { display: block; overflow: visible;
+    text-overflow: clip; margin-bottom: 4px; }
+  .bus .pickhead .toward { display: block; white-space: normal;
+    overflow: hidden; text-overflow: ellipsis; line-height: 1.4; }
   .bus .eta { font-size: 26px; font-weight: 700; margin-top: 8px; color: var(--accent); }
   .bus .eta.hot { color: var(--hot); }
   .bus .meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
@@ -272,6 +278,20 @@
   .srow .spk.nb { font-style: normal; font-size: 10px; color: #06130e; background: var(--ok);
     border-radius: 999px; padding: 2px 7px; line-height: 1.5; white-space: nowrap; }
 
+  /* 导航按钮条：调起手机里已装的地图 App 导航到选中站点 */
+  .navrow { display: flex; align-items: center; gap: 8px; margin: 2px 0 10px; }
+  .navrow .navlabel { flex: 0 0 auto; font-size: var(--fs-sm); color: var(--muted);
+    white-space: nowrap; }
+  .navrow .navbtns { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+  .navrow .navbtns::-webkit-scrollbar { display: none; }
+  .navrow .navbtn { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px;
+    background: #16233a; border: 1px solid var(--accent); color: #d6e2f7;
+    border-radius: 999px; padding: 7px 13px; font-size: var(--fs-sm); line-height: 1.2;
+    white-space: nowrap; }
+  .navrow .navbtn:active { background: #1b2b46; }
+  .navrow .navbtn .navico { font-size: 13px; }
+
   /* 自检面板 */
   #diag { position: fixed; inset: 0; background: rgba(6,10,20,.96); z-index: 50;
     padding: 16px 14px 20px; overflow-y: auto; }
@@ -419,6 +439,17 @@
     <button id="dSample">示例播报（3 种场景）</button>
     <button id="dMp3">测试·MP3 网页</button>
   </div>
+  <div class="btns">
+    <button id="dBattery">加入电池优化白名单</button>
+  </div>
+  <div class="btns">
+    <button id="dHeartbeat">开始后台心跳（每 30 秒报一次）</button>
+  </div>
+  <div class="btns">
+    <button id="dWatchDiag">盯站诊断模式（每轮都出声）</button>
+  </div>
+  <div id="heartbeatInfo" class="dhead"></div>
+  <div class="dhead">息屏后不播报，多半是系统把后台清掉了。点上面的按钮把本应用加入白名单，再锁屏试试。</div>
   <div class="kv" style="border:none">
     <span>网页播放</span>
     <span><label class="switch" style="display:inline-flex"><input type="checkbox" id="webMode"><span class="knob"></span>语音走 WebView</label></span>
@@ -507,6 +538,7 @@
     </div>
     <div id="ldirs" class="chips"></div>
     <div id="lchips" class="chips vertical"></div>
+    <div id="lnav" class="navrow hidden"></div>
   </div>
   <div id="llist"></div>
 </div>
@@ -1158,23 +1190,21 @@
     return matches;
   }
 
-  /* 多条匹配时进「搜索结果」二级页：列出候选线路，点一条再进站名选择 */
+  /* 多条匹配时进「搜索结果」二级页：列出候选线路，点一条再进站名选择
+     （数量提示在顶栏 #psub 里，列表里不再放重复标题） */
   function renderLinePicker(lines, stopName) {
     searching = true;
     var list = $("plist");
     list.innerHTML = "";
-    var title = document.createElement("div");
-    title.className = "stop-title";
-    title.textContent = "匹配到 " + lines.length + " 条线路，点一条查看";
-    list.appendChild(title);
 
     var timeCells = [];
 
     lines.forEach(function (line) {
       var card = document.createElement("div");
       card.className = "bus tap";
-      card.innerHTML = '<div class="head"><span class="line-name">' + lineLabel(line) + "</span>" +
-        '<span class="toward">' + (line.startSn || "?") + " → " + (line.endSn || "?") + "</span></div>" +
+      /* 线路名和起终点分两行：同一行时长站名会把「340路」挤成「3...」 */
+      card.innerHTML = '<div class="head pickhead"><span class="line-name">' + lineLabel(line) + "</span>" +
+        '<div class="toward">' + (line.startSn || "?") + " → " + (line.endSn || "?") + "</div></div>" +
         '<div class="meta timesline">' + (line.firstTime && line.lastTime
           ? "首班 " + line.firstTime + " · 末班 " + line.lastTime
           : "首末班加载中…") + "</div>";
@@ -1951,6 +1981,134 @@
     }
     renderLineDirections();
     renderLineStations();
+    renderLineNav();
+  }
+
+  /* ------------------------------------------------------------ 导航 */
+
+  var navCache = null;   // { apps:[{id,label,pkg}], fallback:bool }
+
+  /* 问一次原生：装了哪些地图 App（结果缓存，避免每次重绘都跨桥调用） */
+  function loadNavApps() {
+    if (navCache) return Promise.resolve(navCache);
+    if (!bridge || !bridge.navApps) return Promise.resolve({ apps: [], fallback: true });
+    return new Promise(function (resolve) {
+      var res = null;
+      try { res = JSON.parse(bridge.navApps()); } catch (e) { res = null; }
+      navCache = res && Array.isArray(res.apps) ? res : { apps: [], fallback: true };
+      resolve(navCache);
+    });
+  }
+
+  function navIcon(id) {
+    var map = { amap: "🧭", baidu: "🗺", tencent: "🧭", google: "🌐", here: "🧭", petal: "🌸" };
+    return map[id] || "🧭";
+  }
+
+  /* 导航到当前选中的站（没选站时导航到「离我最近」的那站） */
+  function navToStation(appId) {
+    var lv = state.lineView;
+    if (!lv) return;
+    var target = state.station;
+    if (!target) {
+      var nearSt = nearestStation(lv.stations);
+      if (nearSt) target = nearSt;
+    }
+    if (!target) { setStatus("先选一个站再导航", true); return; }
+    var lat = Number(target.lat), lng = Number(target.lng);
+    if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) {
+      setStatus("这一站没有坐标，无法导航", true);
+      return;
+    }
+    if (!bridge || !bridge.navigate) { setStatus("导航需要在 App 里用", true); return; }
+    var res = null;
+    try {
+      /* 带上我的位置：原生侧据此决定 500 米内走步行导航、更远走驾车 */
+      var fromLat = NaN, fromLng = NaN;
+      if (state.fix && typeof state.fix.lat === "number" && typeof state.fix.lng === "number") {
+        fromLat = state.fix.lat;
+        fromLng = state.fix.lng;
+      }
+      res = JSON.parse(bridge.navigate(appId || "", lat, lng, target.name, fromLat, fromLng));
+    } catch (e) { res = null; }
+    if (!res) { setStatus("导航失败", true); return; }
+    if (res.ok) {
+      var modeText = res.mode === "walk" ? "步行" : "驾车";
+      var distText = res.distance >= 0 ? "（约 " + res.distance + " 米）" : "";
+      setStatus("正在用" + (res.label || "地图") + modeText + "导航到 " + target.name + distText);
+    } else {
+      setStatus(res.error || "导航失败", true);
+    }
+  }
+
+  /* 当前该用步行还是驾车：500 米内步行（与原生侧规则一致，用于按钮提示） */
+  function navModeFor(station) {
+    if (!station || !state.fix) return "drive";
+    var lat = Number(station.lat), lng = Number(station.lng);
+    if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) return "drive";
+    var d = geoDistanceMeters(state.fix.lat, state.fix.lng, lat, lng);
+    return d <= 500 ? "walk" : "drive";
+  }
+
+  /* 线路页的导航按钮条：每个已装的地图 App 一个按钮 */
+  function renderLineNav() {
+    var box = $("lnav");
+    if (!box) return;
+    var lv = state.lineView;
+    if (!lv) { box.className = "navrow hidden"; box.innerHTML = ""; return; }
+
+    var target = state.station;
+    if (!target) {
+      var nearSt = nearestStation(lv.stations);
+      if (nearSt) target = nearSt;
+    }
+    if (!target) { box.className = "navrow hidden"; box.innerHTML = ""; return; }
+
+    box.className = "navrow";
+    box.innerHTML = "";
+
+    var label = document.createElement("span");
+    label.className = "navlabel";
+    /* 500 米内直接说「步行去」，让用户知道会进步行导航 */
+    var mode = navModeFor(target);
+    label.textContent = mode === "walk" ? "步行去" : "导航到";
+    box.appendChild(label);
+
+    var btns = document.createElement("div");
+    btns.className = "navbtns";
+    box.appendChild(btns);
+
+    loadNavApps().then(function (info) {
+      btns.innerHTML = "";
+      var apps = info.apps || [];
+      if (!apps.length) {
+        /* 一个地图 App 都没装：给一个走系统 geo: 的按钮 */
+        btns.appendChild(makeNavBtn("geo", "系统地图", target.name));
+        return;
+      }
+      apps.forEach(function (app) {
+        btns.appendChild(makeNavBtn(app.id, app.label, target.name));
+      });
+    });
+
+    function makeNavBtn(id, text, stationName) {
+      var btn = document.createElement("span");
+      btn.className = "navbtn";
+      btn.setAttribute("data-nav", id);
+      var ico = document.createElement("span");
+      ico.className = "navico";
+      ico.textContent = navIcon(id);
+      btn.appendChild(ico);
+      var txt = document.createElement("span");
+      txt.textContent = text;
+      btn.appendChild(txt);
+      btn.title = "用" + text + "导航到 " + stationName;
+      btn.onclick = function (ev) {
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        navToStation(id === "geo" ? "" : id);
+      };
+      return btn;
+    }
   }
 
   function renderLineDirections() {
@@ -1996,8 +2154,7 @@
       if (isNearest) {
         var nb = document.createElement("i");
         nb.className = "nbadge";
-        nb.textContent = nearSt.distanceMeters >= 0 ? nearSt.distanceMeters + "m" : "最近";
-        nb.title = "离我最近";
+        nb.textContent = "最近";
         chip.appendChild(nb);
       }
       chip.onclick = function () {
@@ -3363,6 +3520,7 @@
   }
 
   window.cdBusStartBackgroundWatch = startBackgroundWatch;
+  window.cdBusWatchTick = watchTick;   // 测试钩子：直接跑一次盯站刷新
 
   /* 回到前台也不停服务：播报统一由服务负责，避免前后台两套逻辑抢占，
      也避免 WebView 在退后台时来不及时机（之前后台不播就是这个问题）。 */
@@ -3400,7 +3558,7 @@
   }
 
   /* 30 秒一刷；同一辆车只在 10 分钟 / 5 分钟 / 2 站 各播一次 */
-  var watchMarks = { busId: "", ten: false, five: false, two: false };
+  var watchMarks = { busId: "", ten: false, five: false, two: false, arrived: false };
 
   async function watchTick() {
     var t = watch.target;
@@ -3412,28 +3570,39 @@
     });
     var first = buses && buses.length ? buses[0] : null;
 
-    // 前台由页面自己播（服务在界面可见时会跳过），后台由服务播
-    if (first && !document.hidden) {
+    /* 播报主要由原生服务（WatchService）负责 —— 它不看 document.hidden，锁屏也能念。
+       但服务万一没起来/被系统杀了，前台就彻底没声了，所以这里加一道兜底：
+       **仅当界面可见、且服务报告未运行时**，由页面补播，保证前台一定有声音。
+       服务在跑时页面绝不播，避免同一句念两遍。 */
+    var svcRunning = false;
+    try {
+      var st = bridge && bridge.watchStatus ? JSON.parse(bridge.watchStatus()) : null;
+      svcRunning = Boolean(st && st.running);
+    } catch (e) { svcRunning = false; }
+
+    if (first && !document.hidden && !svcRunning) {
       if (String(first.busId || "") !== watchMarks.busId) {
-        watchMarks = { busId: String(first.busId || ""), ten: false, five: false, two: false };
+        watchMarks = { busId: String(first.busId || ""), ten: false, five: false, two: false, arrived: false };
       }
-      var etaFront = Number(first.etaSeconds);
-      var awayFront = Number(first.stationsAway);
-      var headFront = t.lineName + "路，" + stationLabel(t.stationName) + "，";
-      if (etaFront > 0 && etaFront <= 600 && !watchMarks.ten) {
+      var etaF = Number(first.etaSeconds);
+      var awayF = Number(first.stationsAway);
+      var headF = t.lineName + "路，" + stationLabel(t.stationName) + "，";
+      if (etaF > 0 && etaF <= 600 && !watchMarks.ten) {
         watchMarks.ten = true;
-        speak(headFront + "大约 10 分钟到站。", true);
+        speak(headF + "大约 10 分钟到站。", true);
       }
-      if (etaFront > 0 && etaFront <= 300 && !watchMarks.five) {
+      if (etaF > 0 && etaF <= 300 && !watchMarks.five) {
         watchMarks.five = true;
-        speak(headFront + "大约 5 分钟到站。", true);
+        speak(headF + "大约 5 分钟到站。", true);
       }
-      if (awayFront >= 0 && awayFront <= 2 && !watchMarks.two) {
+      if (awayF >= 0 && awayF <= 2 && !watchMarks.two) {
         watchMarks.two = true;
-        speak(headFront + (awayFront <= 0 ? "马上就要进站。" : "还有 2 站到站。"), true);
+        speak(headF + (awayF <= 0 ? "马上就要进站。" : "还有 2 站到站。"), true);
       }
-    } else if (!first) {
-      watchMarks = { busId: "", ten: false, five: false, two: false };
+      if (((awayF === 0) || (etaF === 0)) && !watchMarks.arrived) {
+        watchMarks.arrived = true;
+        speak(headF + "已到站，请准备上车。", true);
+      }
     }
 
     watch.liveText = first ? describe(first) : "暂无车辆";
@@ -3523,7 +3692,6 @@
     var queriedFrom = data.queriedFrom || 1;
     var nearSt = nearestStation(stations);
     var nearestOrder = nearSt ? nearSt.order : view.fromOrder;
-    var nearDist = nearSt && nearSt.distanceMeters >= 0 ? nearSt.distanceMeters : null;
 
     var html = "";
     stations.forEach(function (station) {
@@ -3548,8 +3716,7 @@
         '<span class="idx">' + station.order + "</span>" +
         '<span class="sname">' + station.name + "</span>" +
         '<span class="swhen">' + when + clock + "</span>" +
-        (isNearest ? '<span class="spk nb">离我最近' +
-          (nearDist !== null ? " · " + nearDist + " 米" : "") + '</span>' : "") +
+        (isNearest ? '<span class="spk nb">离我最近</span>' : "") +
         '<span class="spk bell' + (alightRunning && alightDest && Number(alightDest.order) === Number(station.order) ? " on" : "") +
           '" data-bell="' + station.order + '">🔔</span></div>';
     });
@@ -3667,6 +3834,8 @@
     if (bridge && bridge.stopAlightService) {
       try { bridge.stopAlightService(); } catch (e) {}
     }
+    // 本地存储一起清：服务侧和页面侧都别忘了这条提醒
+    try { localStorage.removeItem(ALIGHT_KEY); } catch (e) {}
     setStatus(alightDest ? "已取消下车提醒（" + alightDest.name + "）" : "已取消下车提醒");
     updateAlightUI();
     if (view.name === "detail" && view.data) renderTimes({ scroll: false });
@@ -3692,6 +3861,9 @@
       alightRunning = false;
       alight.remaining = -1;
       alight.message = "";
+      // 服务停了说明这条提醒已经结束（到站自动结束或手动取消）：
+      // 本地存储一起清掉，下次打开 App 不会又弹出来
+      try { localStorage.removeItem(ALIGHT_KEY); } catch (e) {}
       updateAlightUI();
       return;
     }
@@ -3705,35 +3877,57 @@
     alight.eventText = info.eventText || "";
     alight.message = info.message || "";
     alight.fresh = Boolean(info.fresh);
-    if (alight.arrived && alightTimer) {
-      // 到站就是终态：服务那边也停了定位和刷新，页面别再来回问
-      clearInterval(alightTimer);
-      alightTimer = null;
+    if (alight.arrived) {
+      // 到站就是终态：服务那边也停了定位和刷新，页面别再来回问。
+      // 注意：这里必须在「播完到站那一句」之后再收尾，
+      // 否则会把 alight.eventText 清掉、到站播报就没了。
+      /* 播报由 AlightService 自己负责（它不看 document.hidden，锁屏也念）；
+         页面这里只做界面收尾，不再自己 speak，避免重复念。 */
+      alightSpeakEvent = alight.event;
+      if (alightTimer) { clearInterval(alightTimer); alightTimer = null; }
+      /* 到站播报之后立刻收尾：隐藏提醒条、移除首页卡片、清本地存储，
+         并把「下车提醒」按钮恢复成可再次点开的状态。 */
+      alightArrivedCleanup();
+      return;
     }
     // 服务被系统重启后事件号会从头开始，旧进度必须一起归零，否则新提醒会被当成旧的吞掉
     if (alight.event < alightSpeakEvent) {
       alightSpeakEvent = 0;
       alightLastText = "";
     }
-    // 界面可见时服务不播，由页面补一次（同一条只播一次）；
-    // 后台时服务自己会播，这里只记进度，免得回到前台补念一条过时的消息
-    if (alight.event > alightSpeakEvent && alight.eventText) {
-      alightSpeakEvent = alight.event;
-      if (!document.hidden) {
-        // 同一条提醒 2 秒内不重复；不同提醒（两站 → 到站）必须都念
-        var sameAsLast = alight.eventText === alightLastText && Date.now() - alightSpeakAt <= 2000;
-        if (!sameAsLast) {
-          alightSpeakAt = Date.now();
-          alightLastText = alight.eventText;
-          speak(alightLinePrefix() + alight.eventText + "。" + (alight.destName || "") + "站。", true);
-        }
-      }
-    }
+    /* 播报统一由 AlightService 负责（不分前后台、不看 document.hidden），
+       页面只同步进度、不自己 speak —— 否则息屏时两边互相「让」谁都不念，
+       或者亮屏时同一句念两遍。 */
+    if (alight.event > alightSpeakEvent) alightSpeakEvent = alight.event;
     updateAlightUI();
   }
 
   function alightLinePrefix() {
     return alight.lineName ? alight.lineName + "路，" : "";
+  }
+
+  /* 到站后的自动收尾：效果等同用户点了「取消」，但提示语不同 */
+  function alightArrivedCleanup() {
+    alightRunning = false;
+    alight.remaining = -1;
+    alight.distance = null;
+    alight.arrived = false;
+    alight.eventText = "";
+    alight.message = "";
+    if (alightTimer) { clearInterval(alightTimer); alightTimer = null; }
+    try { localStorage.removeItem(ALIGHT_KEY); } catch (e) {}
+    /* 页面已经在到站后立刻收尾了，原生服务那边也停掉，别等它的 12 秒定时器 */
+    if (bridge && bridge.stopAlightService) {
+      try { bridge.stopAlightService(); } catch (e) {}
+    }
+    alightDest = null;
+    alightLine = null;
+    setStatus("已到站，下车提醒自动结束");
+    updateAlightUI();
+    /* 站点行的 🔔 恢复成「可再次点开」——它依赖 alightRunning/alightDest 渲染，
+       两个都已经清空，重画一次列表让按钮立刻变回来 */
+    if (view.name === "detail" && view.data) renderTimes({ scroll: false });
+    if (view.name === "veh") renderVehicleTimes();
   }
 
   function alightStateText() {
@@ -3852,13 +4046,33 @@
       ["输出设备", info.outputs || "-"],
       ["最近结果", info.lastResult || "-"]
     ];
+
+    /* 后台播报自检：盯站服务是否在跑、唤醒锁是否持有、上次轮询/播报时间 */
+    var ws = null;
+    try { ws = bridge.watchStatus ? JSON.parse(bridge.watchStatus()) : null; } catch (e) { ws = null; }
+    if (ws) {
+      function ago(ms) {
+        if (!ms) return "从未";
+        var s = Math.round((Date.now() - ms) / 1000);
+        if (s < 60) return s + " 秒前";
+        if (s < 3600) return Math.round(s / 60) + " 分钟前";
+        return Math.round(s / 3600) + " 小时前";
+      }
+      rows.push(["盯站服务", ws.running ? "运行中" : "未运行"]);
+      if (ws.running) {
+        rows.push(["唤醒锁", ws.wakeHeld ? "已持有（息屏可播）" : "⚠ 未持有，息屏可能不播"]);
+        rows.push(["上次轮询", ago(ws.lastTickAt)]);
+        rows.push(["上次播报", ago(ws.lastSpeakAt) + (ws.lastMessage ? " · " + ws.lastMessage : "")]);
+      }
+    }
+
     $("diagRows").innerHTML = rows.map(function (row) {
       return '<div class="kv"><span>' + row[0] + "</span><span>" + String(row[1]) + "</span></div>";
     }).join("");
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.8";
+  var APP_FALLBACK_VERSION = "9.20";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -3883,13 +4097,20 @@
     return openLineView({ lineId: lineId, lineName: lineName, stationName: stationName });
   };
   window.cdBusViewName = function () { return view.name; };
+  /* 测试钩子：注入定位、直接触发导航（ui-smoke 用来验证 500 米步行/驾车分界） */
+  window.cdBusSetFix = function (fix) { state.fix = fix || null; };
+  window.cdBusNavToStation = navToStation;
 
   function openDiag() {
     showView("diag");
     fillAbout();
     renderDiag();
+    renderHeartbeatInfo();
     if (diagTimer) clearInterval(diagTimer);
-    diagTimer = setInterval(renderDiag, 900);
+    diagTimer = setInterval(function () {
+      renderDiag();
+      renderHeartbeatInfo();
+    }, 900);
   }
 
   function closeDiag() {
@@ -4081,6 +4302,74 @@
     setStatus("示例 " + sampleIndex + "/" + SAMPLE_TEXTS.length);
     speak(text, true);
   };
+  $("dBattery").onclick = function () {
+    if (!bridge || !bridge.requestIgnoreBatteryOptimization) {
+      setStatus("要在 App 里才能设置", true);
+      return;
+    }
+    try { bridge.requestIgnoreBatteryOptimization(); } catch (e) {}
+    setStatus("已打开系统设置，请允许「忽略电池优化」");
+  };
+
+  /* ------------------------------------------------------------ 后台心跳测试
+     每 30 秒报一次「第 N 次」，用来验证锁屏/后台时到底还响不响。
+     关键：走的是**原生前台服务**（和真实盯站播报同一条路径），
+     不是页面自己的定时器 —— 页面的定时器息屏就会被冻结，测不出真问题。 */
+  $("dHeartbeat").onclick = function () {
+    if (!bridge || !bridge.startHeartbeat) {
+      setStatus("要在 App 里才能测", true);
+      return;
+    }
+    var res = null;
+    try { res = JSON.parse(bridge.startHeartbeat()); } catch (e) { res = null; }
+    if (res && res.running) {
+      $("dHeartbeat").textContent = "停止后台心跳";
+      setStatus("心跳已开始：每 30 秒报一次，现在锁屏测试");
+    } else {
+      $("dHeartbeat").textContent = "开始后台心跳（每 30 秒报一次）";
+      setStatus("心跳已停止", false);
+    }
+    renderHeartbeatInfo();
+  };
+
+  $("dWatchDiag").onclick = function () {
+    if (!bridge || !bridge.toggleWatchDiag) {
+      setStatus("要在 App 里才能用", true);
+      return;
+    }
+    var on = false;
+    try { on = bridge.toggleWatchDiag(); } catch (e) { on = false; }
+    $("dWatchDiag").textContent = on
+      ? "关闭盯站诊断（当前：每轮都出声）"
+      : "盯站诊断模式（每轮都出声）";
+    setStatus(on
+      ? "诊断已开：盯站每 30 秒会念「第 N 次轮询」，能听到说明服务在跑"
+      : "诊断已关", false);
+  };
+
+  function renderHeartbeatInfo() {
+    var el = $("heartbeatInfo");
+    if (!el) return;
+    var info = null;
+    try { info = bridge && bridge.heartbeatStatus ? JSON.parse(bridge.heartbeatStatus()) : null; } catch (e) { info = null; }
+    if (!info || !info.running) {
+      el.textContent = info && info.lastText
+        ? "上次心跳：" + info.lastText + (info.lastAt ? "（" + agoText(info.lastAt) + "）" : "")
+        : "心跳未启动。启动后锁屏，每 30 秒应该听到一次播报。";
+      return;
+    }
+    var parts = ["心跳中 · 已播 " + (info.count || 0) + " 次"];
+    if (info.lastAt) parts.push("上次 " + agoText(info.lastAt));
+    if (info.lastResult) parts.push(info.lastResult);
+    el.textContent = parts.join(" · ");
+  }
+
+  function agoText(ms) {
+    var s = Math.round((Date.now() - ms) / 1000);
+    if (s < 60) return s + " 秒前";
+    if (s < 3600) return Math.round(s / 60) + " 分钟前";
+    return Math.round(s / 3600) + " 小时前";
+  }
 
   $("webMode").checked = (function () {
     try { return localStorage.getItem(WEB_MODE_KEY) === "1"; } catch (e) { return false; }

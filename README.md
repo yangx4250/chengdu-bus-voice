@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v9.8）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v9.20）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -178,10 +178,168 @@ chengdu-bus/build/成都公交播报.apk    (约 92 KB)
 
 - 站名单独放进 `span.cname`，徽标改成**绝对定位的小角标**贴在胶囊顶部，
   不再参与竖排文字流（`writing-mode: horizontal-tb` 单独还原成横排）；
-- 所有站名胶囊**统一 132px 高**（原来是 96–172px 随内容浮动），一行看起来齐平；
-- 最近站的徽标直接显示**实际距离**（如 `302m`），鼠标悬停提示「离我最近」；
+- 所有站名胶囊**统一 150px 高**，一行看起来齐平（长站名如「棠湖东路地铁东升站」也不会被切）；
+- 最近站的徽标只写**「最近」**——之前显示米数，55 公里外的站标个 `55407m` 既难读也没意义；
 - 最近站胶囊加**深绿底**（`#12302a`）而不只是描边，在暗色主题里一眼能认出；
-- 顶部留 20px 给角标，站名从角标下方开始，不再互相压。
+- 顶部留 18px 给角标，站名从角标下方开始，不再互相压。
+
+### 后台心跳测试（v9.17）
+
+设置 → 语音自检里多了一个按钮：**「开始后台心跳（每 30 秒报一次）」**。
+点开后每 30 秒念一句「后台心跳第 N 次」，用来**直接验证**锁屏/后台时播报还活不活。
+
+**为什么单独做一个服务，而不是页面定时器**：页面（WebView）的 `setInterval`
+在息屏后会被系统冻结，用它测等于「测了个假问题」——它必然停。
+心跳服务 `HeartbeatService` 走的是**和真实盯站播报完全相同的路径**：
+
+```
+前台服务 + PARTIAL_WAKE_LOCK（每轮续期）+ Speech（系统 TTS / 在线合成）
+```
+
+**怎么用这张诊断表**：
+
+| 锁屏后的现象 | 结论 | 对策 |
+|---|---|---|
+| 每 30 秒都能听到「第 N 次」 | 保活链路没问题 | 那问题在盯站逻辑，不是后台 |
+| 响几次后彻底停 | 系统把服务清了 | 点「加入电池优化白名单」 |
+| 一次都没响 | 服务没起来或音频被掐 | 看面板的 `✅/❌` 结果 |
+
+面板上会实时显示：`心跳中 · 已播 N 次 · 上次 X 秒前 · ✅ 系统 TTS`。
+按钮文案在「开始 / 停止」之间切换，随时可以关掉。
+
+### 盯站新增「已到站」播报（v9.16）
+
+原来的播报节点是 **10 分钟 → 5 分钟 → 还有 2 站**，最后一句是「马上就要进站」。
+问题在于 `stationsAway <= 2` 把 **0 站（车已到站）** 也算进去了，播的还是「快到了」——
+车明明停在面前，却听不到一句「到了」。
+
+现在拆成独立节点：
+
+| 节点 | 条件 | 播报 |
+|---|---|---|
+| 10 分钟 | `0 < eta ≤ 600` | 大约 10 分钟到站 |
+| 5 分钟 | `0 < eta ≤ 300` | 大约 5 分钟到站 |
+| 还有 2 站 | `0 < away ≤ 2` | 还有 2 站 / 下一站就下车 |
+| **已到站** | `away == 0` 或 `eta == 0` | **已到站**（通知同步变成「站名 · 已到站」） |
+
+前后台两套逻辑同步改（页面 `watchTick` 播「已到站，请准备上车」，
+服务 `WatchService` 播「已到站」），各用一个 `spokeArrived` 标志保证**只播一次**；
+换车（`busId` 变了）或重新开始盯站时标志复位。
+
+### 到站后自动结束下车提醒（v9.14 / v9.15）
+
+原来到站只是「停 GPS + 停轮询」，**服务还在前台跑、通知常驻、提醒条一直挂着**，
+`localStorage` 里的提醒也没清 —— 下次打开 App 又会弹出来，得手动点「取消」。
+
+**v9.14 的第一版没生效**，原因是个死结：到站时页面把轮询自己停掉了
+
+```js
+if (alight.arrived && alightTimer) { clearInterval(alightTimer); }   // 停了
+if (alight.arrived && !info.running) { alightArrivedCleanup(); }     // 永远到不了
+```
+
+轮询都停了，还怎么等下一次读到 `running=false`？清理逻辑成了死代码。
+
+**v9.15 改成「到站播报完立刻收尾」**，不再依赖后续轮询：
+
+1. 到站那一轮先播「到站了，请下车」（播报放在清理**之前**，否则 `eventText` 被清掉就不念了）；
+2. 紧接着 `alightArrivedCleanup()`：**隐藏提醒横幅、移除首页卡片、清 `localStorage`、
+   停掉原生服务**，状态栏提示「已到站，下车提醒自动结束」；
+3. `alightDest` / `alightLine` 置空后，站点行的 🔔 自动恢复成可再次点开的状态。
+
+原生侧同步调整：`finishAndAutoCancel(3 * 1000)` —— 只留 3 秒让语音播完就停服务，
+不再等 12 秒（页面那边已经立刻收尾了，服务早点停更干净）。
+
+> 关键教训：**「到站即终态」的清理逻辑不能挂在「后续轮询」上** ——
+> 到站的同时把轮询关掉，那条清理分支永远不会执行。
+
+### 后台与息屏播报修复（v9.13）
+
+「锁屏后就不播报了」不是一个原因，是**四个问题叠在一起**：
+
+**1. 息屏后 CPU 休眠，Handler 定时器被冻结**
+
+`Handler.postDelayed` 在 Doze 下会停摆，等亮屏才一次性补跑——表现就是「锁屏全程没声，一解锁连着响」。
+现在两个服务（`WatchService` / `AlightService`）都持一把 `PARTIAL_WAKE_LOCK`
+（[`WakeKeeper.java`](app/src/com/chengdu/bus/WakeKeeper.java)），每轮 tick 续期 2 分钟，
+只保 CPU 不亮屏，耗电很低。服务销毁时立即释放，不会漏一把锁把电池耗干。
+
+**2. 息屏时把播报错误地「交给页面」→ 谁都没念**
+
+原来的判断是 `if (MainActivity.VISIBLE) return;`。但**息屏时 Activity 仍是 resumed**，
+`onPause` 不触发，`VISIBLE` 一直是 `true` —— 于是服务以为页面会播，而页面的 JS 定时器
+早已被冻结。结果两边都没声音。
+新增 `MainActivity.frontAndScreenOn()`，**同时**要求「界面可见 + 屏幕亮着」
+（`PowerManager.isInteractive()`）才让页面播，否则服务自己念。
+
+**3. 没有音频焦点，息屏时被降权/静音**
+
+原来直接用 `USAGE_MEDIA` 播，若后台有音乐在放会被压低甚至静音。
+现在统一用 `USAGE_ASSISTANCE_ACCESSIBILITY + CONTENT_TYPE_SPEECH`，
+播报前 `requestAudioFocus(AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)`，播完释放。
+TTS 和在线合成（MediaPlayer）两条路径都走这套属性。
+
+**4. 系统把后台服务清掉**
+
+- 服务加 `android:stopWithTask="false"`（划掉任务卡片也不停）；
+- `WatchService` 前台服务类型从 `dataSync` 改为 `dataSync|location`（Android 14+ 对 `dataSync` 有息屏限制）；
+- 补 `FOREGROUND_SERVICE_LOCATION` 权限；
+- 设置面板新增**「加入电池优化白名单」**按钮，调系统标准弹窗（国产 ROM 默认清后台，这步最关键）。
+
+**怎么确认修好了**：设置面板新增「后台播报自检」——
+
+```
+盯站服务    运行中
+唤醒锁      已持有（息屏可播）
+上次轮询    12 秒前
+上次播报    1 分钟前 · ✅ 系统 TTS
+```
+
+锁屏等几分钟再打开看这几行：**上次轮询**如果一直不动，说明服务被系统杀了
+（去点「加入电池优化白名单」）；如果轮询在动但没声音，看「上次播报」的结果。
+
+### 一键导航到选中站点（v9.10）
+
+线路页站名条下面多了一排**导航按钮**：把选中的站（没选就导航到「离我最近」那站）
+交给手机里已装的地图 App。
+
+支持的地图 App（按优先级排列，只显示**真正装了**的）：
+
+| 按钮 | 包名 | 坐标系 | URI scheme |
+|---|---|---|---|
+| 🧭 高德地图 | `com.autonavi.minimap` | GCJ-02 | `androidamap://navi` |
+| 🗺 百度地图 | `com.baidu.BaiduMap` | **BD-09** | `baidumap://map/navi` |
+| 🧭 腾讯地图 | `com.tencent.map` | GCJ-02 | `qqmap://map/routeplan` |
+| 🌐 谷歌地图 | `com.google.android.apps.maps` | WGS84 | `google.navigation:` |
+| 🧭 Here 地图 | `com.here.app.maps` | WGS84 | `here-destination:` |
+| 🌸 花瓣地图 | `com.huawei.maps.app` | GCJ-02 | `androidamap://navi` |
+| 系统地图 | —（兜底） | WGS84 | `geo:` |
+
+**关键点：坐标系必须转换。** 车来了给的是 WGS84（`wgsLat`/`wgsLng`），国内地图用 GCJ-02，
+百度还要在 GCJ-02 上再加一层变成 BD-09。实测天府广场 WGS84 → GCJ-02 偏移 **361 米**，
+不转换就会把你导到隔壁街。转换实现在 [`Geo.java`](app/src/com/chengdu/bus/Geo.java)，
+境外坐标（`outOfChina`）原样返回不偏移。
+
+**Android 11+ 包可见性**：不声明 `<queries>` 就 `getPackageInfo` 一律抛 `NameNotFoundException`，
+一个地图 App 都检测不到。Manifest 里已把这 6 个包名和 `geo:` 协议都声明了。
+
+一个地图 App 都没装时，退回到系统 `geo:`（多数 ROM 会弹选择器）；
+某个 App 的 scheme 调不起来（版本差异）也会自动回退到 `geo:`，不会卡死。
+
+**500 米内自动走步行导航**（v9.11）：页面把当前定位一起传给原生，
+`Navigator.distanceMeters()` 算我到站点的实际距离，**≤500 米就给地图 App 传步行模式**，
+更远才是驾车。各家参数不同，已分别处理：
+
+| App | 步行 | 驾车 |
+|---|---|---|
+| 高德 / 花瓣 | `t=2` | `t=0` |
+| 百度 | `mode=walking` | `mode=driving` |
+| 腾讯 | `type=walk` | `type=drive` |
+| 谷歌 | `mode=w` | `mode=d` |
+| Here | `mode=pedestrian` | `mode=car` |
+
+没有定位（或坐标是 `0,0`）时算不出距离，按驾车处理，不会瞎猜。
+按钮文字也会跟着变：近距离显示「步行去」，远距离显示「导航到」。
 
 > 版本号规矩：**每改一次就升一版**——`AndroidManifest.xml` 的
 > `versionCode`/`versionName` 与页面里的 `APP_FALLBACK_VERSION` 三处一起改，

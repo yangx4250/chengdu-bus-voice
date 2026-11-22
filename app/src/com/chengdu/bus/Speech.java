@@ -61,6 +61,42 @@ public final class Speech {
     private volatile String lastResult = "还没播过";
     private MediaPlayer player;
 
+    /** 播报音频属性：语音内容 + 无障碍用途，息屏/后台时比普通媒体优先级高。 */
+    private static final AudioAttributes SPEECH_ATTRS = new AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+            .build();
+
+    private AudioManager audioManager() {
+        return (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+    }
+
+    /**
+     * 申请短暂音频焦点。
+     *
+     * 不申请的话，息屏时若有后台音乐/播客在放，TTS 会被按「媒体」降权甚至静音；
+     * 申请后能正常抢到输出，播完释放。
+     */
+    private boolean requestFocus() {
+        try {
+            AudioManager am = audioManager();
+            if (am == null) return false;
+            int r = am.requestAudioFocus(null, AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
+            return r == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+        } catch (Throwable e) {
+            return false;
+        }
+    }
+
+    private void abandonFocus() {
+        try {
+            AudioManager am = audioManager();
+            if (am != null) am.abandonAudioFocus(null);
+        } catch (Throwable ignored) {
+        }
+    }
+
     public Speech(Context context) {
         this.context = context.getApplicationContext();
         initTts();
@@ -411,15 +447,31 @@ public final class Speech {
         }
         if (ttsReady) {
             try {
+                /* 先抢音频焦点：息屏时有别的媒体在放，不抢焦点会被降权/静音 */
+                boolean focused = requestFocus();
+                try {
+                    tts.setAudioAttributes(SPEECH_ATTRS);
+                } catch (Throwable ignored) {
+                    // 老版本 TTS 没有这个方法，忽略
+                }
                 int code = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "cdbus");
                 if (code == TextToSpeech.SUCCESS) {
-                    lastResult = "已交给系统 TTS";
+                    lastResult = "已交给系统 TTS" + (focused ? "" : "（未拿到音频焦点）");
                     callback.onResult(true, "系统 TTS");
+                    /* 播报大约几秒，给它留够时间再放焦点，避免中途被打断 */
+                    main.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            abandonFocus();
+                        }
+                    }, Math.min(30000, 3000 + text.length() * 220L));
                     return;
                 }
+                abandonFocus();
                 lastResult = "系统 TTS 调用失败（" + code + "），转在线合成";
                 ttsReady = false;
             } catch (Throwable e) {
+                abandonFocus();
                 lastResult = "系统 TTS 异常：" + e.getMessage() + "，转在线合成";
                 ttsReady = false;
             }
@@ -558,16 +610,16 @@ public final class Speech {
                 return;
             }
             player = new MediaPlayer();
-            player.setAudioAttributes(new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build());
+            /* 和 TTS 走同一套属性：息屏时不会被当成普通媒体降权 */
+            player.setAudioAttributes(SPEECH_ATTRS);
+            requestFocus();
             player.setDataSource(file.getAbsolutePath());
             player.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
                 @Override
                 public void onCompletion(MediaPlayer mp) {
                     mp.release();
                     if (player == mp) player = null;
+                    abandonFocus();
                 }
             });
             player.setOnErrorListener(new MediaPlayer.OnErrorListener() {

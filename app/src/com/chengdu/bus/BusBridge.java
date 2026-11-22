@@ -1,6 +1,7 @@
 package com.chengdu.bus;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationManager;
@@ -26,6 +27,7 @@ public final class BusBridge {
     private final MainActivity activity;
     private final Speech speech;
     private final ChelaileClient client = new ChelaileClient();
+    private final Navigator navigator;
     private final ExecutorService pool = Executors.newFixedThreadPool(4);
     private final ConcurrentHashMap<String, Task> tasks = new ConcurrentHashMap<>();
     private final AtomicLong sequence = new AtomicLong();
@@ -40,6 +42,7 @@ public final class BusBridge {
     BusBridge(MainActivity activity, Speech speech) {
         this.activity = activity;
         this.speech = speech;
+        this.navigator = new Navigator(activity);
     }
 
     @JavascriptInterface
@@ -180,6 +183,68 @@ public final class BusBridge {
         }
     }
 
+    /** 盯站服务的运行状态（自检面板用）。 */
+    @JavascriptInterface
+    public String watchStatus() {
+        return WatchService.statusJson();
+    }
+
+    /** 切换盯站诊断模式：开启后每次轮询都念一句，用来确认服务是否在跑。 */
+    @JavascriptInterface
+    public boolean toggleWatchDiag() {
+        return WatchService.toggleDiag();
+    }
+
+    /** 申请「忽略电池优化」，让息屏后后台服务不被系统清掉。 */
+    @JavascriptInterface
+    public void requestIgnoreBatteryOptimization() {
+        try {
+            activity.requestIgnoreBatteryOptimization();
+        } catch (Exception e) {
+            Log.w(TAG, "申请电池优化白名单失败", e);
+        }
+    }
+
+    /** 启动/停止后台心跳测试（每 30 秒播一次）。返回最新状态 JSON。 */
+    @JavascriptInterface
+    public String startHeartbeat() {
+        try {
+            boolean running = HeartbeatService.statusJson().contains("\"running\":true");
+            Intent intent = new Intent(activity, HeartbeatService.class);
+            if (running) {
+                intent.setAction(HeartbeatService.ACTION_STOP);
+                activity.startService(intent);
+                activity.stopService(new Intent(activity, HeartbeatService.class));
+            } else {
+                intent.setAction(HeartbeatService.ACTION_START);
+                if (android.os.Build.VERSION.SDK_INT >= 26) activity.startForegroundService(intent);
+                else activity.startService(intent);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "切换心跳服务失败", e);
+        }
+        return HeartbeatService.statusJson();
+    }
+
+    /** 心跳服务状态（自检面板显示用）。 */
+    @JavascriptInterface
+    public String heartbeatStatus() {
+        return HeartbeatService.statusJson();
+    }
+
+    /** 是否已在电池优化白名单里。 */
+    @JavascriptInterface
+    public boolean ignoringBatteryOptimizations() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT < 23) return true;
+            android.os.PowerManager pm = (android.os.PowerManager)
+                    activity.getSystemService(Context.POWER_SERVICE);
+            return pm != null && pm.isIgnoringBatteryOptimizations(activity.getPackageName());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     /** 启动下车提醒：目的地站名/站序/坐标 + 该线路全部站点（用来算还剩几站）。 */
     @JavascriptInterface
     public void startAlightService(String payload) {
@@ -283,6 +348,43 @@ public final class BusBridge {
     @JavascriptInterface
     public String backend() {
         return speech.backendName();
+    }
+
+    /** 已安装的导航 App 列表（页面用它决定显示哪个导航按钮）。 */
+    @JavascriptInterface
+    public String navApps() {
+        try {
+            return navigator.list().toString();
+        } catch (Exception e) {
+            Log.w(TAG, "读取导航 App 失败：" + e.getMessage());
+            return "{\"apps\":[],\"fallback\":true}";
+        }
+    }
+
+    /**
+     * 导航到某站。
+     *
+     * @param appId   目标 App（amap/baidu/tencent/google/…），空则自动挑一个
+     * @param lat     站点纬度（WGS84）
+     * @param lng     站点经度（WGS84）
+     * @param name    终点名称
+     * @param fromLat 我的位置纬度（WGS84，传 NaN 表示没有）
+     * @param fromLng 我的位置经度（WGS84）
+     */
+    @JavascriptInterface
+    public String navigate(String appId, double lat, double lng, String name,
+                           double fromLat, double fromLng) {
+        try {
+            return navigator.navigate(appId, lat, lng, name, fromLat, fromLng).toString();
+        } catch (Exception e) {
+            Log.w(TAG, "导航失败：" + e.getMessage());
+            try {
+                return new JSONObject().put("ok", false)
+                        .put("error", e.getMessage() == null ? "导航失败" : e.getMessage()).toString();
+            } catch (Exception ignored) {
+                return "{\"ok\":false,\"error\":\"导航失败\"}";
+            }
+        }
     }
 
     /** 同步拿「最后一次已知位置」，只用于界面先显示；要新定位请调 start("location")。 */

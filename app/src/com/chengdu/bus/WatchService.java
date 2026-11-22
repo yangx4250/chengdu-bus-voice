@@ -33,6 +33,7 @@ public final class WatchService extends Service {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ChelaileClient client = new ChelaileClient();
+    private WakeKeeper wake;
     private Speech speech;
 
     private String lineId = "";
@@ -48,12 +49,61 @@ public final class WatchService extends Service {
     private boolean spoke10m = false;
     private boolean spoke5m = false;
     private boolean spoke2s = false;
+    private boolean spokeArrived = false;
     private String lastMessage = "准备开始盯站…";
+
+    /* 给「后台播报自检」面板用的运行状态 */
+    private static volatile boolean RUNNING = false;
+    private static volatile String LAST_SPEAK = "还没播过";
+    private static volatile long LAST_TICK_AT = 0;
+    private static volatile long LAST_SPEAK_AT = 0;
+    private static volatile boolean WAKE_HELD = false;
+    /** 诊断模式：每次轮询都出声，用来确认服务到底有没有在跑。 */
+    private static volatile boolean DIAG_SPEAK = false;
+    private static volatile int diagCount = 0;
+
+    /** 切换诊断模式（每轮轮询都出声）。 */
+    static boolean toggleDiag() {
+        DIAG_SPEAK = !DIAG_SPEAK;
+        diagCount = 0;
+        return DIAG_SPEAK;
+    }
+
+    /** 服务运行状态 JSON，供页面自检面板显示。 */
+    static String statusJson() {
+        JSONObject out = new JSONObject();
+        try {
+            out.put("running", RUNNING);
+            out.put("lastMessage", LAST_SPEAK);
+            out.put("lastTickAt", LAST_TICK_AT);
+            out.put("lastSpeakAt", LAST_SPEAK_AT);
+            out.put("wakeHeld", WAKE_HELD);
+            out.put("diag", DIAG_SPEAK);
+        } catch (Exception ignored) {
+        }
+        return out.toString();
+    }
 
     private final Runnable ticker = new Runnable() {
         @Override
         public void run() {
-            poll();
+            /* 每轮续一次唤醒锁，保证下一轮 tick 之前 CPU 不会睡 */
+            if (wake != null) { wake.acquire(); WAKE_HELD = wake.held(); }
+            LAST_TICK_AT = System.currentTimeMillis();
+            try {
+                poll();
+            } catch (Throwable e) {
+                Log.w(TAG, "tick 异常（继续跑）", e);
+            }
+            /* 诊断模式：每轮都念一句，用来区分「服务没跑」和「服务跑了但没触发播报」 */
+            if (DIAG_SPEAK && speech != null) {
+                speech.speak("盯站服务第 " + (++diagCount) + " 次轮询", new Speech.Callback() {
+                    @Override
+                    public void onResult(boolean spoken, String detail) {
+                        LAST_SPEAK = (spoken ? "✅ " : "❌ ") + detail;
+                    }
+                });
+            }
             handler.postDelayed(this, INTERVAL_MS);
         }
     };
@@ -62,6 +112,7 @@ public final class WatchService extends Service {
     public void onCreate() {
         super.onCreate();
         speech = new Speech(this);
+        wake = new WakeKeeper(this);
         createChannel();
     }
 
@@ -95,9 +146,13 @@ public final class WatchService extends Service {
         spoke10m = false;
         spoke5m = false;
         spoke2s = false;
+        spokeArrived = false;
         lastMessage = lineName + "路 · " + stationName + " · 盯站中";
 
         startForeground(NOTIFICATION_ID, buildNotification(lastMessage));
+        /* 息屏后 CPU 休眠会冻结 Handler 定时器 → 拿唤醒锁保活 */
+        if (wake != null) { wake.acquire(); WAKE_HELD = wake.held(); }
+        RUNNING = true;
         handler.removeCallbacks(ticker);
         handler.post(ticker);
         return START_STICKY;
@@ -106,6 +161,9 @@ public final class WatchService extends Service {
     @Override
     public void onDestroy() {
         handler.removeCallbacks(ticker);
+        RUNNING = false;
+        WAKE_HELD = false;
+        if (wake != null) wake.release();
         if (speech != null) speech.shutdown();
         super.onDestroy();
     }
@@ -183,7 +241,15 @@ public final class WatchService extends Service {
     }
 
     private void poll() {
-        if (lineId.isEmpty() || stationId.isEmpty()) return;
+        LAST_TICK_AT = System.currentTimeMillis();
+        /* 参数不全时把原因写进通知，而不是静默 return —— 否则界面看起来「在盯站」，
+           实际上一次都没查过，用户完全无从判断。 */
+        if (lineId.isEmpty() || stationId.isEmpty()) {
+            updateNotification("⚠ 盯站参数缺失（线路=" + (lineId.isEmpty() ? "空" : "有")
+                    + " 站点=" + (stationId.isEmpty() ? "空" : "有") + "），请重新点 📌");
+            Log.w(TAG, "poll 参数缺失：lineId=" + lineId + " stationId=" + stationId);
+            return;
+        }
         JSONObject station = new JSONObject();
         try {
             station.put("stationId", stationId);
@@ -192,6 +258,7 @@ public final class WatchService extends Service {
             station.put("lat", lat);
             station.put("lng", lng);
         } catch (Exception e) {
+            updateNotification("⚠ 构造查询参数失败：" + e.getMessage());
             return;
         }
 
@@ -208,6 +275,7 @@ public final class WatchService extends Service {
                 spoke10m = false;
                 spoke5m = false;
                 spoke2s = false;
+                spokeArrived = false;
             }
 
             int away = bus.optInt("stationsAway", -1);
@@ -218,7 +286,7 @@ public final class WatchService extends Service {
             }
             updateNotification(detail.isEmpty() ? "等待车辆" : detail);
 
-            // 三个节点各播一次
+            // 四个节点各播一次（已到站单独一次，比「马上进站」更明确）
             if (eta > 0 && eta <= 600 && !spoke10m) {
                 spoke10m = true;
                 announce("大约 10 分钟到站");
@@ -231,24 +299,37 @@ public final class WatchService extends Service {
                 spoke2s = true;
                 announce(away <= 0 ? "马上就要进站" : "还有 2 站到站");
             }
+            /* 车已经到站（stationsAway == 0）或 ETA 归零：单独播一次「已到站」，
+               和上面「马上就要进站」是两件事，用户要听到「到了」而不是「快到了」 */
+            boolean arrivedNow = (away == 0) || (eta == 0);
+            if (arrivedNow && !spokeArrived) {
+                spokeArrived = true;
+                updateNotification(stationName + " · 已到站");
+                announce("已到站");
+            }
         } catch (Exception e) {
             Log.w(TAG, "盯站刷新失败", e);
+            updateNotification("⚠ 查询失败：" + (e.getMessage() == null ? e.toString() : e.getMessage()));
+            LAST_SPEAK = "查询失败：" + (e.getMessage() == null ? e.toString() : e.getMessage());
         }
     }
 
     private void announce(String what) {
-        if (MainActivity.VISIBLE) {
-            // 界面在前台：由页面自己播，避免同一句念两遍
-            Log.i(TAG, "界面可见，交给页面播报");
-            return;
-        }
+        /* 盯站的播报一律由服务自己念，不再「交给页面」。
+           之前这里用 frontAndScreenOn() 判断，把播报让给页面，结果是个死结：
+             页面定时器有 `if (document.hidden) return;` —— 息屏就不跑；
+             而息屏时 Activity 仍是 resumed、VISIBLE=true，服务以为页面会播就跳过；
+           两边都跳过 → 谁都不念。心跳服务没有这层判断，所以它一直正常。 */
         String text = lineName + "路，" + stationName + "站，" + what + "。";
-        Log.i(TAG, "播报：" + text);
+        Log.i(TAG, "盯站播报：" + text + "（界面可见=" + MainActivity.VISIBLE + "）");
+        LAST_SPEAK = text;
+        LAST_SPEAK_AT = System.currentTimeMillis();
         if (speech != null) {
             speech.speak(text, new Speech.Callback() {
                 @Override
                 public void onResult(boolean spoken, String detail) {
                     Log.i(TAG, "播报结果：" + spoken + " " + detail);
+                    LAST_SPEAK = (spoken ? "✅ " : "❌ ") + detail;
                 }
             });
         }

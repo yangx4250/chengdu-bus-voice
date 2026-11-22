@@ -46,6 +46,7 @@ public final class AlightService extends Service implements LocationListener {
     private static volatile String STATUS = "{\"running\":false}";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
+    private WakeKeeper wake;
     private Speech speech;
     private LocationManager locator;
 
@@ -59,6 +60,7 @@ public final class AlightService extends Service implements LocationListener {
 
     private boolean spokeTwo = false;
     private boolean spokeArrive = false;
+    private boolean autoCancelScheduled = false;
     private int event = 0;
     private String eventText = "";
     private double lastDistance = -1;
@@ -70,6 +72,7 @@ public final class AlightService extends Service implements LocationListener {
     private final Runnable ticker = new Runnable() {
         @Override
         public void run() {
+            if (wake != null) wake.acquire();   // 息屏保活：每轮续期
             if (!spokeArrive && lastFixAt > 0
                     && System.currentTimeMillis() - lastFixAt > 120000) {
                 lastMessage = "定位信号弱，正在重试…";
@@ -89,12 +92,15 @@ public final class AlightService extends Service implements LocationListener {
     public void onCreate() {
         super.onCreate();
         speech = new Speech(this);
+        wake = new WakeKeeper(this);
         createChannel();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
+            // 手动取消：持久化数据一并清掉，页面别再恢复出一条旧提醒
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().clear().apply();
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -113,6 +119,7 @@ public final class AlightService extends Service implements LocationListener {
 
         spokeTwo = false;
         spokeArrive = false;
+        autoCancelScheduled = false;   // 新一轮提醒：取消之前调度过的自动收尾
         event = 0;
         eventText = "";
         lastDistance = -1;
@@ -121,6 +128,7 @@ public final class AlightService extends Service implements LocationListener {
         lastMessage = "前往 " + destName + "，正在获取定位…";
 
         startForeground(NOTIFICATION_ID, buildNotification(lastMessage));
+        if (wake != null) wake.acquire();   // 息屏后定位回调与 tick 都靠它保活
         startListening();
         handler.removeCallbacks(ticker);
         handler.post(ticker);
@@ -135,6 +143,7 @@ public final class AlightService extends Service implements LocationListener {
         stopListening();
         RUNNING = false;
         STATUS = "{\"running\":false}";
+        if (wake != null) wake.release();
         if (speech != null) speech.shutdown();
         super.onDestroy();
     }
@@ -272,14 +281,44 @@ public final class AlightService extends Service implements LocationListener {
             fire("到站了，请下车");
         }
         if (spokeArrive) {
-            // 已经到站：不用再吃 GPS、也不用再定时刷新了，通知定格成结果，页面还能看到
+            // 已经到站：播完「到站了，请下车」就收尾。
+            // 保留一个很短的宽限期（3 秒）让这句语音完整播出去，
+            // 之后清存储、停服务、通知消失 —— 页面那边到站时也会立刻自己收尾。
             if (listening) stopListening();
             handler.removeCallbacks(ticker);
             lastMessage = "已到 " + destName + "，提醒结束";
+            updateNotification(lastMessage);
+            publishStatus();
+            finishAndAutoCancel(3 * 1000);
+            return;
         }
 
         updateNotification(lastMessage);
         publishStatus();
+    }
+
+    /**
+     * 到站后的自动收尾：延迟几秒（让「已到站」的语音和通知被看到），
+     * 然后清掉本地存储、停掉前台服务 —— 页面下次 alightPoll 会拿到
+     * running=false，提醒条和首页卡片随之消失，不用用户手动点取消。
+     */
+    private void finishAndAutoCancel(long delayMs) {
+        if (autoCancelScheduled) return;   // 防止重复调度
+        autoCancelScheduled = true;
+        Log.i(TAG, "到站收尾：" + delayMs + "ms 后自动取消提醒");
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                // 1) 清掉持久化数据，页面下次恢复时不会再弹旧提醒
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit().clear().apply();
+                // 2) 停前台服务（通知随之消失）
+                RUNNING = false;
+                STATUS = "{\"running\":false}";
+                stopForeground(true);
+                stopSelf();
+                Log.i(TAG, "下车提醒已自动结束");
+            }
+        }, delayMs);
     }
 
     private void fire(String what) {
@@ -289,13 +328,13 @@ public final class AlightService extends Service implements LocationListener {
     }
 
     private void announce(String what) {
-        if (MainActivity.VISIBLE) {
-            Log.i(TAG, "界面可见，交给页面播报");
-            return;
-        }
+        /* 和盯站一样：播报一律由服务自己念。
+           之前这里判断 frontAndScreenOn() 就把播报让给页面，但息屏时
+           Activity 仍是 resumed（VISIBLE=true）→ 服务跳过；而页面的轮询
+           在息屏时也不跑 → 两边都不念。心跳服务没这层判断，所以它一直正常。 */
         String text = what + "。" + destName + "站。";
         if (!lineName.isEmpty()) text = lineName + "路，" + text;
-        Log.i(TAG, "播报：" + text);
+        Log.i(TAG, "下车提醒播报：" + text + "（界面可见=" + MainActivity.VISIBLE + "）");
         if (speech != null) {
             speech.speak(text, new Speech.Callback() {
                 @Override

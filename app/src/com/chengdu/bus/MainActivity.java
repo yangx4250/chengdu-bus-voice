@@ -2,8 +2,13 @@ package com.chengdu.bus;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
 import android.graphics.Color;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -15,6 +20,25 @@ public final class MainActivity extends Activity {
 
     /** 供前台服务判断：界面当前是否可见（可见时由页面自己播，服务不抢）。 */
     public static volatile boolean VISIBLE = false;
+
+    /**
+     * 界面在前台 **并且屏幕亮着** 时，才交给页面自己播。
+     *
+     * 息屏时 Activity 仍然是 resumed（onPause 不触发），VISIBLE 还是 true，
+     * 但 WebView 的 JS 定时器已经被系统冻结 —— 此时如果把播报交给页面，
+     * 结果是「谁都没念」。所以要额外看屏幕状态。
+     */
+    public static boolean frontAndScreenOn(Context context) {
+        if (!VISIBLE) return false;
+        try {
+            PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+            if (pm == null) return true;
+            if (Build.VERSION.SDK_INT >= 20) return pm.isInteractive();
+            return pm.isScreenOn();
+        } catch (Throwable e) {
+            return true;   // 判断不了就当亮屏，避免漏播
+        }
+    }
 
     private WebView web;
     private Speech speech;
@@ -68,6 +92,42 @@ public final class MainActivity extends Activity {
         if (android.os.Build.VERSION.SDK_INT >= 33 && !hasNotificationPermission()) {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1002);
         }
+    }
+
+    /**
+     * 引导用户把本应用加入「电池优化白名单」。
+     *
+     * 国产 ROM（HyperOS/EMUI/ColorOS…）默认会在息屏后清理后台，
+     * 前台服务也拦不住 —— 这是「锁屏就不播报」最常见的根因。
+     * 用系统标准弹窗申请（用户点一次即可），不做静默申请。
+     */
+    void requestIgnoreBatteryOptimization() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT < 23) return;
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm != null && pm.isIgnoringBatteryOptimizations(getPackageName())) {
+                toastOnUi("已经在电池优化白名单里");
+                return;
+            }
+            Intent intent = new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+            intent.setData(android.net.Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        } catch (Exception e) {
+            // 有些 ROM 不支持这个 Action，退回打开电池优化列表
+            try {
+                startActivity(new Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    private void toastOnUi(final String text) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                android.widget.Toast.makeText(MainActivity.this, text, android.widget.Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
     private boolean hasNotificationPermission() {

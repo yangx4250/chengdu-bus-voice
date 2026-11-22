@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.chengdu.bus"
-    android:versionCode="89"
-    android:versionName="9.8">
+    android:versionCode="101"
+    android:versionName="9.20">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="33" />
 
@@ -11,12 +11,33 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 息屏后 CPU 会休眠，Handler.postDelayed 的定时器被冻结 → 后台播报失灵。
+         靠 PARTIAL_WAKE_LOCK 把 CPU 留住（只保 CPU、不亮屏，耗电很小）。 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- 长时间后台时别让系统把进程当成「可随时回收」 -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Android 11+ 包可见性：不声明就看不到系统的 TTS 引擎（getEngines 为空、init status=-1） -->
     <queries>
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+
+        <!-- 导航：要能查到这些地图 App 是否已安装（否则 getPackageInfo 一律抛 NameNotFound） -->
+        <package android:name="com.autonavi.minimap" />        <!-- 高德地图 -->
+        <package android:name="com.baidu.BaiduMap" />           <!-- 百度地图 -->
+        <package android:name="com.tencent.map" />              <!-- 腾讯地图 -->
+        <package android:name="com.google.android.apps.maps" /> <!-- 谷歌地图 -->
+        <package android:name="com.here.app.maps" />            <!-- Here 地图 -->
+        <package android:name="com.huawei.maps.app" />          <!-- 花瓣地图 -->
+
+        <!-- 系统通用 geo: 协议 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
         </intent>
     </queries>
 
@@ -41,11 +62,20 @@
         <service
             android:name=".WatchService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:stopWithTask="false"
+            android:foregroundServiceType="dataSync|location" />
 
         <service
             android:name=".AlightService"
             android:exported="false"
+            android:stopWithTask="false"
             android:foregroundServiceType="location" />
+
+        <!-- 诊断用：每 30 秒播报一次，验证后台/锁屏播报是否还活着 -->
+        <service
+            android:name=".HeartbeatService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>

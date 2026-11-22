@@ -49,6 +49,11 @@ function makeElement(id = '') {
       return node;
     },
     querySelectorAll() { return []; },
+    /* 属性桩：页面用 setAttribute / getAttribute 标记按钮（导航、下车提醒等） */
+    attributes: {},
+    setAttribute(k, v) { this.attributes[k] = String(v); },
+    getAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attributes, k) ? this.attributes[k] : null; },
+    removeAttribute(k) { delete this.attributes[k]; },
     /* 布局桩：真实 WebView 里有，页面里的滚动定位要用到 */
     getBoundingClientRect() {
       return { top: 0, left: 0, right: 360, bottom: 60, width: 360, height: 60 };
@@ -114,6 +119,7 @@ storage.set('cdbus.favorites', JSON.stringify([{
 const localStorage = {
   getItem: (k) => (storage.has(k) ? storage.get(k) : null),
   setItem: (k, v) => storage.set(k, String(v)),
+  removeItem: (k) => { storage.delete(k); },
 };
 
 class FakeAudio {
@@ -186,6 +192,14 @@ const speakLog = [];
 const watchServiceLog = [];
 const alightServiceLog = [];
 const exitLog = [];
+const navLog = [];
+const batteryLog = [];
+/* 让 arrivals 桩返回「已到站」的车（盯站到站播报测试用） */
+let arrivalsArrived = false;
+const heartbeatLog = [];
+let heartbeatRunning = false;
+let watchDiagOn = false;
+let watchSvcRunning = true;
 let alightStatusState = { running: false };
 const payloads = new Map();
 let seq = 0;
@@ -277,6 +291,13 @@ const bridge = {
       if (String(args.lineId || '').includes('p49')) {
         return JSON.stringify({ state: 'ok', data: [] });
       }
+      /* 盯站「已到站」测试：把首辆车设成已到站（stationsAway/eta 都为 0） */
+      if (arrivalsArrived) {
+        return JSON.stringify({ state: 'ok', data: [
+          { busId: 'b9', plate: '42519', order: 9, stationsAway: 0,
+            distanceMeters: 0, etaSeconds: 0, arrivalAt: Date.now(), arrived: true },
+        ] });
+      }
       const two = [
         { busId: 'b1', plate: '42516', order: 19, stationsAway: 3,
           distanceMeters: 1200, etaSeconds: 600, arrivalAt: Date.now() + 600000, arrived: false },
@@ -297,6 +318,30 @@ const bridge = {
   speak(text) { speakLog.push(String(text)); },
   startWatchService(payload) { watchServiceLog.push(['start', String(payload || '')]); },
   stopWatchService() { watchServiceLog.push(['stop', '']); },
+  /* 后台播报自检桩：假装服务在跑、唤醒锁已持有 */
+  watchStatus() {
+    return JSON.stringify({
+      running: watchSvcRunning,
+      lastMessage: '✅ 系统 TTS',
+      lastTickAt: Date.now() - 5000,
+      lastSpeakAt: Date.now() - 12000,
+      wakeHeld: true,
+    });
+  },
+  requestIgnoreBatteryOptimization() { batteryLog.push('request'); },
+  ignoringBatteryOptimizations() { return false; },
+  /* 后台心跳桩：第一次调用启动，第二次调用停止 */
+  startHeartbeat() {
+    heartbeatRunning = !heartbeatRunning;
+    heartbeatLog.push(heartbeatRunning ? 'start' : 'stop');
+    return JSON.stringify({ running: heartbeatRunning, count: heartbeatRunning ? 0 : 3,
+      lastAt: Date.now(), lastText: '后台心跳第 3 次', lastResult: '✅ 系统 TTS' });
+  },
+  toggleWatchDiag() { watchDiagOn = !watchDiagOn; return watchDiagOn; },
+  heartbeatStatus() {
+    return JSON.stringify({ running: heartbeatRunning, count: heartbeatRunning ? 1 : 3,
+      lastAt: Date.now(), lastText: '后台心跳第 1 次', lastResult: '✅ 系统 TTS' });
+  },
   startAlightService(payload) { alightServiceLog.push(['start', String(payload || '')]); },
   stopAlightService() { alightServiceLog.push(['stop', '']); },
   alightStatus() { return JSON.stringify(alightStatusState); },
@@ -310,6 +355,33 @@ const bridge = {
   setView() {},
   note() {},
   backend() { return '系统语音'; },
+  /* 导航桩：假装装了高德和百度 */
+  navApps() {
+    return JSON.stringify({
+      apps: [
+        { id: 'amap', label: '高德地图', pkg: 'com.autonavi.minimap' },
+        { id: 'baidu', label: '百度地图', pkg: 'com.baidu.BaiduMap' },
+      ],
+      fallback: false,
+    });
+  },
+  /* 导航桩：假装装了高德和百度；按 500 米规则回报 walk/drive */
+  navigate(appId, lat, lng, name, fromLat, fromLng) {
+    const R = 6371000;
+    let distance = -1;
+    if (typeof fromLat === 'number' && !Number.isNaN(fromLat)
+        && typeof fromLng === 'number' && !Number.isNaN(fromLng)) {
+      const dLat = (lat - fromLat) * Math.PI / 180;
+      const dLng = (lng - fromLng) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) ** 2
+        + Math.cos(fromLat * Math.PI / 180) * Math.cos(lat * Math.PI / 180)
+        * Math.sin(dLng / 2) ** 2;
+      distance = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+    }
+    const mode = distance >= 0 && distance <= 500 ? 'walk' : 'drive';
+    navLog.push({ appId, lat, lng, name, fromLat, fromLng, mode, distance });
+    return JSON.stringify({ ok: true, app: appId || 'amap', label: '高德地图', mode, distance });
+  },
   testTone() {}, testPcm() {}, testSysTone() {}, testSpeak() {}, setVolume() {},
   location() { return '30.657,104.065'; },
 };
@@ -418,6 +490,28 @@ else {
   if (String(document.getElementById('diag').className).includes('hidden')) {
     failures.push('点设置没有打开面板');
   }
+
+  // 后台心跳按钮：用来测锁屏/后台播报（走原生前台服务，不是页面定时器）
+  const hbBtn = document.getElementById('dHeartbeat');
+  if (!hbBtn) {
+    failures.push('设置里没有后台心跳按钮');
+  } else {
+    if (typeof hbBtn.onclick !== 'function') failures.push('后台心跳按钮没有绑定点击事件');
+    hbBtn.onclick();
+    await new Promise((r) => setTimeout(r, 100));
+    if (!heartbeatLog.includes('start')) failures.push('点后台心跳没有启动服务');
+    if (!/停止/.test(String(hbBtn.textContent || ''))) {
+      failures.push('心跳启动后按钮文案没有变成「停止」：' + hbBtn.textContent);
+    }
+    // 再点一次应该停
+    hbBtn.onclick();
+    await new Promise((r) => setTimeout(r, 100));
+    if (!heartbeatLog.includes('stop')) failures.push('再点心跳没有停止服务');
+    if (!/开始/.test(String(hbBtn.textContent || ''))) {
+      failures.push('心跳停止后按钮文案没有复原：' + hbBtn.textContent);
+    }
+  }
+
   document.getElementById('dClose').onclick();
 }
 if (html.includes('id="diagBtn"')) failures.push('底部还残留 🔧 按钮');
@@ -500,10 +594,80 @@ if (!stationChips.length) {
     if (!textOf(nearestChips[0]).includes('花园公交站')) {
       stage2.push('线路页最近站标错了：' + textOf(nearestChips[0]).slice(0, 60));
     }
-    // 徽标显示实际距离（如「1234m」），没有距离时退回「最近」
-    if (!/(\d+m|最近)/.test(textOf(nearestChips[0]))) {
-      stage2.push('线路页最近站没有距离/最近徽标');
+    // 徽标只写「最近」（距离太长时显示 5 位数米数没有意义）
+    if (!/最近/.test(textOf(nearestChips[0]))) {
+      stage2.push('线路页最近站没有「最近」徽标');
     }
+    if (/\d+m/.test(textOf(nearestChips[0]))) {
+      stage2.push('线路页徽标不该显示米数：' + textOf(nearestChips[0]).slice(0, 60));
+    }
+  }
+}
+
+// 导航按钮条：应列出原生报告的已装地图 App（桩里是「高德地图」「百度地图」）
+{
+  const lnav = document.getElementById('lnav');
+  if (String(lnav.className).includes('hidden')) {
+    stage2.push('线路页没有显示导航按钮条');
+  } else {
+    await new Promise((r) => setTimeout(r, 200));   // loadNavApps 是异步的
+    const navBtns = findByClass(lnav, 'navbtn');
+    if (!navBtns.length) stage2.push('导航按钮条没有按钮');
+    else {
+      const names = navBtns.map((b) => textOf(b)).join('|');
+      if (!/高德地图/.test(names)) stage2.push('导航按钮缺少高德：' + names);
+      if (!/百度地图/.test(names)) stage2.push('导航按钮缺少百度：' + names);
+      // 点第一个导航按钮 → 应调用 bridge.navigate，且带上站点坐标、站名和我的位置
+      const beforeNav = navLog.length;
+      navBtns[0].onclick({ stopPropagation() {} });
+      await new Promise((r) => setTimeout(r, 100));
+      if (navLog.length !== beforeNav + 1) stage2.push('点导航按钮没有调起导航');
+      else {
+        const call = navLog[navLog.length - 1];
+        if (call.appId !== 'amap') stage2.push('导航没传对 App：' + call.appId);
+        if (!/花园/.test(String(call.name))) stage2.push('导航没传对站名：' + call.name);
+        if (!(call.lat > 0) || !(call.lng > 0)) {
+          stage2.push('导航没传站点坐标：' + call.lat + ',' + call.lng);
+        }
+        // 必须把我的位置一起传下去，否则原生侧无法判断步行/驾车
+        if (!(call.fromLat > 0) || !(call.fromLng > 0)) {
+          stage2.push('导航没传我的位置：' + call.fromLat + ',' + call.fromLng);
+        }
+      }
+    }
+  }
+}
+
+// 500 米内 → 步行导航；超过 → 驾车。直接调 navToStation 验证两种距离。
+{
+  // 站点在 30.7,103.95；把定位挪到它附近 ~100 米 → 应 walk
+  const nearFix = { lat: 30.7009, lng: 103.95, accuracy: 20, provider: 'gps', stale: false };
+  const farFix = { lat: 30.657, lng: 104.065, accuracy: 30, provider: 'network', stale: false };
+  // 通过 window.cdBusTestNav 暴露的钩子设置定位（见 index.html）
+  if (typeof window.cdBusSetFix !== 'function' || typeof window.cdBusNavToStation !== 'function') {
+    stage2.push('没有暴露定位/导航测试钩子');
+  } else {
+    window.cdBusSetFix(nearFix);
+    window.cdBusNavToStation('amap');
+    const walkCall = navLog[navLog.length - 1];
+    if (walkCall.mode !== 'walk') {
+      stage2.push('500 米内应走步行导航，实际：' + walkCall.mode + '（' + walkCall.distance + ' 米）');
+    }
+    if (!(walkCall.distance > 0 && walkCall.distance <= 500)) {
+      stage2.push('近距离距离计算不对：' + walkCall.distance);
+    }
+
+    window.cdBusSetFix(farFix);
+    window.cdBusNavToStation('amap');
+    const driveCall = navLog[navLog.length - 1];
+    if (driveCall.mode !== 'drive') {
+      stage2.push('超过 500 米应走驾车导航，实际：' + driveCall.mode + '（' + driveCall.distance + ' 米）');
+    }
+    if (!(driveCall.distance > 500)) {
+      stage2.push('远距离距离计算不对：' + driveCall.distance);
+    }
+    // 恢复
+    window.cdBusSetFix(farFix);
   }
 }
 
@@ -695,6 +859,34 @@ else {
   const statusText = String(document.getElementById('status').textContent || '');
   if (!/盯站中/.test(statusText)) stage4.push('点 📌 后没有进入盯站：' + statusText);
   if (!document.getElementById('watch').checked) stage4.push('底部盯站开关没有同步');
+
+  /* 盯站播报：服务在跑时由服务播（页面不播，避免重复）；
+     服务没跑时页面兜底播，保证前台一定有声音。 */
+  {
+    arrivalsArrived = true;   // 让 arrivals 桩返回已到站的车
+    // ① 服务在跑（桩默认 running=true）→ 页面不该自己播
+    watchSvcRunning = true;
+    const before1 = speakLog.length;
+    window.cdBusWatchTick && window.cdBusWatchTick();
+    await new Promise((r) => setTimeout(r, 300));
+    if (speakLog.length > before1) {
+      stage4.push('服务在跑时页面仍自己播（会重复）：' + speakLog.slice(before1).join('|'));
+    }
+
+    // ② 服务没跑 → 页面兜底播（否则前台彻底没声）
+    watchSvcRunning = false;
+    const before2 = speakLog.length;
+    window.cdBusWatchTick && window.cdBusWatchTick();
+    await new Promise((r) => setTimeout(r, 300));
+    const fallback = speakLog.slice(before2);
+    if (!fallback.length) {
+      stage4.push('服务没跑时页面没有兜底播报（前台会完全没声）');
+    } else if (!/到站/.test(fallback.join('|'))) {
+      stage4.push('兜底播报内容不对：' + fallback.join('|'));
+    }
+    watchSvcRunning = true;
+    arrivalsArrived = false;
+  }
 }
 
 if (stage4.length) {
@@ -708,8 +900,15 @@ if (!watchServiceLog.some((x) => x[0] === 'start')) {
 }
 console.log('✓ 盯站通过：收藏卡 📌 → 进入盯站，底部开关同步，并启动前台服务');
 
-if (!/etaFront/.test(html)) {
-  console.error('✗ UI 冒烟失败：前台播报逻辑缺失（后台没起服务时会完全没声）');
+/* 播报统一由 WatchService 负责（v9.18 起）：页面不再自己播，
+   这样前台/后台/锁屏只有一条播报路径，不会出现「两边互相让、谁都不念」。
+   这里确认页面确实没有残留的 self-speak 分支。 */
+if (/etaFront/.test(html)) {
+  console.error('✗ UI 冒烟失败：页面里还有旧的自我播报分支（会和服务重复念）');
+  process.exit(1);
+}
+if (!/startBackgroundWatch\(\)/.test(html)) {
+  console.error('✗ UI 冒烟失败：盯站没有启动后台服务（那就真的没人播报了）');
   process.exit(1);
 }
 console.log('✓ 前台播报通过：页面自身仍会按 10/5/2 播报，服务只在后台说话');
@@ -995,31 +1194,49 @@ console.log('✓ 收藏进详情通过：芯片显示「已过收藏站 · 距�
       await new Promise((r) => setTimeout(r, 100));
       const barText = String(document.getElementById('alighttext').textContent || '');
       if (!/还有 2 站/.test(barText)) stage5c.push('提醒条没有同步剩余站数：' + barText);
-      if (speakLog.length <= speakBefore) stage5c.push('到站前两站没有播报');
-      else if (!/提前准备/.test(speakLog[speakLog.length - 1])) {
-        stage5c.push('播报内容不对：' + speakLog[speakLog.length - 1]);
+      /* v9.18 起播报统一由 AlightService 负责（不看 document.hidden，锁屏也念），
+         页面只同步界面。所以这里断言「页面不再自己播」，而不是要求页面播。 */
+      if (speakLog.length > speakBefore) {
+        stage5c.push('页面仍在自己播下车提醒（会和服务重复念）：' + speakLog.slice(speakBefore).join('|'));
       }
-      // 同一条事件不重复播
-      const speakAfterFirst = speakLog.length;
-      window.cdBusAlightPoll();
-      if (speakLog.length !== speakAfterFirst) stage5c.push('同一条提醒被重复播报');
 
-      // 到站事件
+      // 到站事件：v9.15 起到站播报完立刻收尾（不再等 12 秒）
       alightStatusState = { running: true, destName: '花园永泉', lineName: 'P02', toward: '花园公交站',
         remaining: 0, distance: 40, arrived: true, event: 2, eventText: '到站了，请下车',
         message: '', fresh: true };
+      const barBeforeArrive = String(document.getElementById('alightbar').className);
       window.cdBusAlightPoll();
       await new Promise((r) => setTimeout(r, 100));
-      if (!/到站了/.test(speakLog[speakLog.length - 1] || '')) {
-        stage5c.push('到站没有播报：' + speakLog[speakLog.length - 1]);
-      }
 
-      // 首页卡片（可点回线路详情）
-      const cardHtml = textOf(document.getElementById('alightcard'));
-      if (!/下车提醒/.test(cardHtml)) stage5c.push('首页没有下车提醒卡片：' + cardHtml.slice(0, 80));
-      const cardEl = findByClass(document.getElementById('alightcard'), 'alightcard')[0];
-      if (!cardEl) stage5c.push('首页下车提醒卡片没有 .alightcard 节点');
-      else if (typeof cardEl.onclick !== 'function') stage5c.push('首页下车提醒卡片点不进线路详情');
+      // ① 到站时页面也不该自己播（交给服务），但仍要完成收尾
+      if (speakLog.length && /到站了/.test(speakLog[speakLog.length - 1] || '')) {
+        stage5c.push('页面仍在自己播到站播报（会和服务重复念）');
+      }
+      // ② 播报之后立刻取消横幅
+      if (!String(document.getElementById('alightbar').className).includes('hidden')) {
+        stage5c.push('到站后提醒横幅没有自动消失');
+      }
+      if (textOf(document.getElementById('alightcard')).includes('下车提醒')) {
+        stage5c.push('到站后首页卡片没有自动消失');
+      }
+      // ③ 本地存储被清掉，下次打开 App 不会又弹旧提醒
+      if (storage.get('cdbus.alight') !== undefined && storage.get('cdbus.alight') !== null) {
+        stage5c.push('到站后没有清掉本地存储的提醒：' + storage.get('cdbus.alight'));
+      }
+      // ④ 「下车提醒」按钮恢复可点：状态栏提示自动结束（区别于手动取消）
+      if (!/自动结束/.test(String(document.getElementById('status').textContent || ''))) {
+        stage5c.push('到站后没有提示自动结束：' + String(document.getElementById('status').textContent || ''));
+      }
+      // ⑤ 再点一次 🔔 应该能重新设提醒（按钮已恢复）
+      const bellAfter = findByClass(document.getElementById('dlist'), 'bell');
+      if (bellAfter.length) {
+        const beforeRestart = alightServiceLog.length;
+        bellAfter[0].onclick({ stopPropagation() {} });
+        await new Promise((r) => setTimeout(r, 100));
+        if (!alightServiceLog.slice(beforeRestart).some((x) => x[0] === 'start')) {
+          stage5c.push('到站收尾后 🔔 没能重新设置提醒');
+        }
+      }
 
       // 服务重启后事件号从头算：新提醒不能被当成旧事件吞掉
       alightStatusState = { running: true, destName: '花园永泉', lineName: 'P02', toward: '花园公交站',
@@ -1028,7 +1245,10 @@ console.log('✓ 收藏进详情通过：芯片显示「已过收藏站 · 距�
       const speakBeforeRestart = speakLog.length;
       window.cdBusAlightPoll();
       await new Promise((r) => setTimeout(r, 100));
-      if (speakLog.length <= speakBeforeRestart) stage5c.push('服务重启后的事件没有重新播报');
+      /* 播报由服务负责，页面只记进度：这里确认页面不会自己补播一条过时消息 */
+      if (speakLog.length > speakBeforeRestart) {
+        stage5c.push('页面在服务重启后自己补播了（应由服务负责）');
+      }
 
       // 取消：停服务、清卡片
       const stopBefore = alightServiceLog.length;
@@ -1081,7 +1301,8 @@ await new Promise((r) => setTimeout(r, 900));
 
 const stage6 = [];
 const pickerHtml = textOf(document.getElementById('plist'));
-if (!pickerHtml.includes('匹配到')) stage6.push('输入 2 没有出现候选线路：' + pickerHtml.slice(0, 160));
+// 列表里不再放重复标题（数量在顶栏 #psub），改查线路卡本身
+if (!pickerHtml.includes('timesline')) stage6.push('输入 2 没有出现候选线路：' + pickerHtml.slice(0, 160));
 // 候选线路应进入「搜索结果」二级页，而不是继续占用首页列表
 if (String(document.getElementById('pick').className).includes('hidden')) {
   stage6.push('多条匹配时没有进入搜索结果二级页');
