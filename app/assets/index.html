@@ -305,6 +305,8 @@
     border-radius: 999px; padding: 7px 13px; font-size: var(--fs-sm); line-height: 1.2;
     white-space: nowrap; }
   .navrow .navbtn:active { background: #1b2b46; }
+  /* 已收藏的站点按钮：高亮 */
+  .navrow .navbtn.stationfav.on { border-color: #ffce4a; color: #ffce4a; background: #2a2413; }
   .navrow .navbtn .navico { font-size: 13px; }
 
   /* 设置页：分类入口 + 二级面板（仿系统设置） */
@@ -668,6 +670,7 @@
     <div id="ldirs" class="chips"></div>
     <div id="lchips" class="chips vertical"></div>
     <div id="lnav" class="navrow hidden"></div>
+    <div id="lstationfav" class="navrow hidden"></div>
   </div>
   <div id="llist"></div>
 </div>
@@ -2107,6 +2110,7 @@
     renderLineDirections();
     renderLineStations();
     renderLineNav();
+    renderStationFavRow();
   }
 
   /* ------------------------------------------------------------ 导航 */
@@ -2177,6 +2181,37 @@
   }
 
   /* 线路页的导航按钮条：每个已装的地图 App 一个按钮 */
+  /* 详情页的「收藏站点」按钮行：与导航条并列，收藏当前选中的站 */
+  function renderStationFavRow() {
+    var box = $("lstationfav");
+    if (!box) return;
+    var lv = state.lineView;
+    var target = state.station;
+    if (!lv || !target) { box.className = "navrow hidden"; box.innerHTML = ""; return; }
+
+    /* 是否已收藏：按 stationId 查 */
+    var isFav = loadFavs().some(function (f) {
+      return favType(f) === "station" && String(f.stationId) === String(target.stationId);
+    });
+
+    box.className = "navrow";
+    box.innerHTML = "";
+    var btn = document.createElement("span");
+    btn.className = "navbtn stationfav" + (isFav ? " on" : "");
+    btn.textContent = isFav ? "★ 已收藏站点" : "☆ 收藏站点";
+    btn.onclick = function () {
+      toggleStationFav({
+        type: "station",
+        stationId: target.stationId,
+        stationName: target.name,
+        lat: target.lat || 0,
+        lng: target.lng || 0
+      });
+      renderStationFavRow();   // 重新渲染本行按钮状态
+    };
+    box.appendChild(btn);
+  }
+
   function renderLineNav() {
     var box = $("lnav");
     if (!box) return;
@@ -4271,7 +4306,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "9.43";
+  var APP_FALLBACK_VERSION = "9.44";
 
   function fillAbout() {
     var verEl = $("abVersion");

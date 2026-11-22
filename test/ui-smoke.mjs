@@ -1024,6 +1024,48 @@ else {
   }
 }
 
+/* 详情页「收藏站点」按钮：点击收藏 → 再点取消 */
+{
+  // 进入详情页（用已有收藏线路）
+  const favCards2 = findByClass(document.getElementById('favs'), 'fav')
+    .filter((c) => !textOf(c).includes('站点收藏'));
+  if (favCards2.length) {
+    favCards2[0].onclick();
+    await new Promise((r) => setTimeout(r, 900));
+    const sfavBtn = findByClass(document.getElementById('lstationfav'), 'stationfav');
+    if (!sfavBtn.length) {
+      stage4.push('详情页没有「收藏站点」按钮');
+    } else {
+      // 选中一个站才有按钮状态；先点站名芯片
+      const chips0 = findByClass(document.getElementById('lchips'), 'chip');
+      if (chips0.length) {
+        chips0[0].onclick();
+        await new Promise((r) => setTimeout(r, 400));
+        const sfavBtn2 = findByClass(document.getElementById('lstationfav'), 'stationfav');
+        if (sfavBtn2.length) {
+          const favsBefore = JSON.parse(storage.get('cdbus.favorites') || '[]').length;
+          sfavBtn2[0].onclick();
+          await new Promise((r) => setTimeout(r, 100));
+          const favsAfter = JSON.parse(storage.get('cdbus.favorites') || '[]').length;
+          if (favsAfter !== favsBefore + 1) {
+            stage4.push('点「收藏站点」没有写入收藏');
+          }
+          // 再点取消
+          const sfavBtn3 = findByClass(document.getElementById('lstationfav'), 'stationfav');
+          sfavBtn3[0].onclick();
+          await new Promise((r) => setTimeout(r, 100));
+          const favsFinal = JSON.parse(storage.get('cdbus.favorites') || '[]').length;
+          if (favsFinal !== favsAfter - 1) {
+            stage4.push('再点「收藏站点」没有取消收藏');
+          }
+        }
+      }
+    }
+    window.cdBusBackView && window.cdBusBackView();
+    await new Promise((r) => setTimeout(r, 300));
+  }
+}
+
 /* 📌 点击后图标要立刻变灰（不等 30 秒轮询） */
 {
   // 先确保处于未盯站状态
