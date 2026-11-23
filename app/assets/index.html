@@ -4224,6 +4224,7 @@
 
   window.cdBusStartBackgroundWatch = startBackgroundWatch;
   window.cdBusWatchTick = watchTick;   // 测试钩子：直接跑一次盯站刷新
+  window.cdBusStartWatch = startWatch;  // 测试钩子：直接开启盯站（跳过 UI 点击）
 
   /* 回到前台也不停服务：播报统一由服务负责，避免前后台两套逻辑抢占，
      也避免 WebView 在退后台时来不及时机（之前后台不播就是这个问题）。 */
@@ -4269,7 +4270,31 @@
   }
 
   /* 30 秒一刷；同一辆车只在 10 分钟 / 5 分钟 / 2 站 各播一次 */
-  var watchMarks = { busId: "", ten: false, five: false, two: false, arrived: false };
+  var watchMarks = { busId: "", ten: false, five: false, two: false, arrived: false, depart: false };
+
+  /* 查起点站的到站情况，判断是否刚发车。
+     返回 { departed: bool, away: number }；拿不到数据时返回 null（不播）。 */
+  async function checkDeparture(t) {
+    var detail = null;
+    try { detail = state.detail; } catch (e) {}
+    /* 拿不到站点表就从线路详情现查一次 */
+    if (!detail || !detail.stations || !detail.stations.length) {
+      try { detail = await getDetail(t.lineId); } catch (e) { return null; }
+    }
+    if (!detail || !detail.stations || !detail.stations.length) return null;
+    var first = detail.stations[0];
+    var list = await rpc("arrivals", {
+      lineId: t.lineId,
+      station: { stationId: first.stationId, order: first.order, name: first.name,
+                 lat: first.lat || 0, lng: first.lng || 0 }
+    });
+    if (!list || !list.length) return null;
+    /* 只看「离起点最近」的那辆车 */
+    var away = Number(list[0].stationsAway);
+    if (!isFinite(away)) return null;
+    /* 距起点 0 站（还在起点没发）不算发车；1~3 站内算刚发车 */
+    return { departed: away > 0 && away <= 3, away: away };
+  }
 
   async function watchTick() {
     var t = watch.target;
@@ -4288,7 +4313,7 @@
        后台/锁屏时的播报仍由 WatchService 负责（两条路径互不依赖）。 */
     if (first && !document.hidden) {
       if (String(first.busId || "") !== watchMarks.busId) {
-        watchMarks = { busId: String(first.busId || ""), ten: false, five: false, two: false, arrived: false };
+        watchMarks = { busId: String(first.busId || ""), ten: false, five: false, two: false, arrived: false, depart: false };
       }
       var etaF = Number(first.etaSeconds);
       var awayF = Number(first.stationsAway);
@@ -4300,6 +4325,21 @@
            ④ 已到站 ：away == 0 或 eta == 0
          阈值只决定「什么时候播」，文案用实际 ETA。 */
       var arrivedF = (awayF === 0) || (etaF === 0);
+
+      /* 起始站发车播报（v1.0.13）：盯的站离起点只有 1~3 站时，
+         终点站一有车发出就立刻提醒一次 —— 让用户知道「车刚发车了，可以准备」。
+         判定：查本线**起点站**（order 1）的到站，最新一辆的 stationsAway
+         从「超过 3 站」变成「≤ 3 站」即视为发车。 */
+      if (t.order > 0 && t.order <= 3 && !arrivedF) {
+        if (!watchMarks.depart) {
+          var dep = await checkDeparture(t);
+          if (dep && dep.departed) {
+            watchMarks.depart = true;
+            speak(headF + "起点站已发车，" + (dep.away > 0 ? "还有 " + dep.away + " 站到你这站。" : "马上到你这站。"), true);
+          }
+        }
+      }
+
       if (arrivedF) {
         if (!watchMarks.arrived) {
           watchMarks.arrived = true;
@@ -4824,7 +4864,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.12";
+  var APP_FALLBACK_VERSION = "1.0.13";
 
   function fillAbout() {
     var verEl = $("abVersion");

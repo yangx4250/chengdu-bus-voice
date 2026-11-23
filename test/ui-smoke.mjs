@@ -379,6 +379,13 @@ const bridge = {
             distanceMeters: 3200, etaSeconds: 900, arrivalAt: Date.now() + 900000, arrived: false },
         ] });
       }
+      /* 起点站发车提醒测试：查起点站（order 1）时返回一辆刚发出、已走 2 站的车 */
+      if (String((args.station && args.station.order) || '') === '1') {
+        return JSON.stringify({ state: 'ok', data: [
+          { busId: 'dep1', plate: '42600', order: 3, stationsAway: 2,
+            distanceMeters: 900, etaSeconds: 240, arrivalAt: Date.now() + 240000, arrived: false },
+        ] });
+      }
       /* 指定 ETA 的场景（验证播报用实际时间，不写死「10 分钟」） */
       if (arrivalsEta !== null) {
         return JSON.stringify({ state: 'ok', data: [
@@ -1358,6 +1365,35 @@ else {
       stage4.push('前台播报内容不对：' + pageSpoke.join('|'));
     }
     arrivalsArrived = false;
+  }
+
+  /* 起点站发车提醒（v1.0.13）：盯的站离起点 1~3 站时，
+     起点一有车发出就立刻播一次，且同一辆车不重复播。 */
+  {
+    arrivalsArrived = false;
+    arrivalsEta = null;
+    // 盯「龙溪村村委会」（order 3，离起点 3 站）
+    window.cdBusStartWatch && window.cdBusStartWatch({
+      lineId: '028-p36-0', lineName: 'P36', stationId: '028-2b',
+      stationName: '龙溪村村委会', toward: '花园公交站', order: 3,
+    });
+    await new Promise((r) => setTimeout(r, 100));
+
+    const before = speakLog.length;
+    window.cdBusWatchTick && window.cdBusWatchTick();
+    await new Promise((r) => setTimeout(r, 400));
+    const said = speakLog.slice(before).join('|');
+    if (!/起点站已发车/.test(said)) {
+      stage4.push('盯站离起点 3 站时，起点发车没有播报：' + JSON.stringify(said.slice(0, 120)));
+    }
+
+    // 同一辆车（busId 不变）不能再播一次
+    const before2 = speakLog.length;
+    window.cdBusWatchTick && window.cdBusWatchTick();
+    await new Promise((r) => setTimeout(r, 400));
+    if (/起点站已发车/.test(speakLog.slice(before2).join('|'))) {
+      stage4.push('起点发车播报重复了（同一辆车应只播一次）');
+    }
   }
 
   /* 播报规则（v9.26 重置）：只有四个节点，各播一次，绝不重复。

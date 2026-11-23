@@ -53,6 +53,8 @@ public final class WatchService extends Service {
     private boolean spoke5m = false;
     private boolean spoke2s = false;
     private boolean spokeArrived = false;
+    /** 起点站发车提醒：盯的站离起点 1~3 站时，起点一有车发出就播一次。 */
+    private boolean spokeDepart = false;
     private String lastMessage = "准备开始盯站…";
 
     /* 给「后台播报自检」面板用的运行状态 */
@@ -289,6 +291,7 @@ public final class WatchService extends Service {
                 spoke5m = false;
                 spoke2s = false;
                 spokeArrived = false;
+                spokeDepart = false;
             }
 
             int away = bus.optInt("stationsAway", -1);
@@ -307,6 +310,18 @@ public final class WatchService extends Service {
                注意 ③ 用 away > 0（不含 0），避免和 ④ 连播两句「马上进站」+「已到站」。
                阈值只决定「什么时候播」，文案用实际 ETA。 */
             boolean arrivedNow = (away == 0) || (eta == 0);
+
+            /* 起点站发车提醒（v1.0.13）：盯的站离起点只有 1~3 站时，
+               起点一有车发出就立刻播一次，让用户知道「车刚发车」。
+               每辆车只播一次（busId 变了才重置）。 */
+            if (!arrivedNow && order > 0 && order <= 3 && !spokeDepart) {
+                Depart dep = checkDeparture();
+                if (dep != null && dep.departed) {
+                    spokeDepart = true;
+                    announce("起点站已发车，" + (dep.away > 0
+                            ? "还有 " + dep.away + " 站到你这站" : "马上到你这站"));
+                }
+            }
 
             if (arrivedNow) {
                 /* 到站优先：一旦到站就只播「已到站」，不再补播前面的节点。
@@ -378,6 +393,47 @@ public final class WatchService extends Service {
         int m = half / 2;
         int r = half % 2;
         return "大约 " + (r == 1 ? m + " 分 30 秒" : m + " 分钟") + "到站";
+    }
+
+    /** 起点站发车检查结果。 */
+    private static final class Depart {
+        final boolean departed;
+        final int away;
+
+        Depart(boolean departed, int away) {
+            this.departed = departed;
+            this.away = away;
+        }
+    }
+
+    /**
+     * 查本线起点站（order 1）的到站情况，判断是否刚有车发出。
+     *
+     * <p>车来了接口一次只给「离目标站最近的那辆车」，所以查起点站拿到的
+     * stationsAway 就是「刚发出的车现在离起点几站」。0 站＝还在起点没走，
+     * 1~3 站＝刚发车不久。拿不到数据返回 null（不播，避免误报）。</p>
+     */
+    private Depart checkDeparture() {
+        try {
+            JSONArray stations = client.lineDetail(lineId).optJSONArray("stations");
+            if (stations == null || stations.length() == 0) return null;
+            JSONObject start = stations.getJSONObject(0);
+            JSONObject target = new JSONObject();
+            target.put("stationId", start.optString("stationId"));
+            target.put("order", start.optInt("order", 1));
+            target.put("name", start.optString("name"));
+            target.put("lat", start.optDouble("lat", 0));
+            target.put("lng", start.optDouble("lng", 0));
+            JSONArray buses = client.arrivals(lineId, target);
+            if (buses == null || buses.length() == 0) return null;
+            JSONObject first = buses.getJSONObject(0);
+            int away = first.optInt("stationsAway", -1);
+            if (away < 0) return null;
+            return new Depart(away > 0 && away <= 3, away);
+        } catch (Exception e) {
+            Log.w(TAG, "起点站发车检查失败", e);
+            return null;
+        }
     }
 
     private void announce(String what) {
