@@ -236,12 +236,8 @@
   .dwatchstop { font-size: 12px; color: #6b7c99; padding: 4px 8px; border-radius: 8px;
     border: 1px solid var(--line); white-space: nowrap; }
   .dwatchstop:active { background: #22304a; color: #fff; }
-  .srow .stpin { padding: 4px 6px; border-radius: 8px; font-size: 19px;
-    line-height: 1; cursor: pointer; }
-  .stpin.off { opacity: .28; }
-
   /* 下车提醒：站点行 🔔、详情页状态条、首页卡片 */
-  /* 🔔 / 📌 只让图标本身可点，但字号放大到易点（原来 13px 偏小） */
+  /* 🔔 只让图标本身可点，字号放大到易点（原来 13px 偏小） */
   .srow .bell { flex: 0 0 auto; padding: 4px 6px; border: 1px solid var(--line);
     border-radius: 8px; font-size: 19px; line-height: 1; color: #b9c6dd;
     cursor: pointer; }
@@ -303,7 +299,7 @@
   .detail-head .titles div:last-child { font-size: var(--fs-sm); color: var(--muted);
     margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  /* 站点行双排布局：第一排 站名+时间；第二排 📌/🔔 靠右。
+  /* 站点行双排布局：第一排 站名+时间；第二排 🔔 靠右。
      图标放大后单排放不下（站名会被挤成省略号），改成两排。 */
   .srow { flex-wrap: wrap; }
   .srow .sname { flex: 1; }
@@ -2361,8 +2357,7 @@
     };
     box.appendChild(btn);
 
-    /* v1.0.17：线路页也能直接盯站（原来只有详情页/车辆页的 📌 行内按钮）。
-       和行内 📌 完全等价：再点一次取消。 */
+    /* 盯站入口：详情页/线路页的「📌 盯站」按钮（行内 📌 已按用户要求取消）。 */
     box.appendChild(renderLineWatchBtn(target));
   }
 
@@ -3379,11 +3374,8 @@
         '<span class="sname">' + station.name +
           (isNearest ? '<em class="spk nb">离我最近</em>' : "") + "</span>" +
         '<span class="swhen">' + when + clock + "</span>" +
-        '<span class="actions"><span class="spk stpin' +
-          (watch.on && watch.target && watch.target.order === station.order &&
-           String(watch.target.lineId) === String(view.lineId) ? " off" : "") +
-          '" data-pin="' + station.order + '">📌</span>' +
-        '<span class="spk bell' + (alightRunning && alightDest && Number(alightDest.order) === Number(station.order) ? " on" : "") +
+        '<span class="actions"><span class="spk bell' +
+          (alightRunning && alightDest && Number(alightDest.order) === Number(station.order) ? " on" : "") +
           '" data-bell="' + station.order + '">🔔</span></span></div>';
     });
     html += '<div class="dhead" style="margin-top:4px">点任一站名看该站其它线路；时间为预测，仅供参考</div>';
@@ -3398,13 +3390,6 @@
         if (order === currentOrder) currentRow = rowEl;
         if (nearestOrder !== null && Number(order) === Number(nearestOrder)) nearestRow = rowEl;
         rowEl.onclick = function () { pickStation(order, rowEl); };
-        var pinEl = rowEl.querySelector ? rowEl.querySelector(".stpin") : null;
-        if (pinEl) {
-          pinEl.onclick = function (ev) {
-            if (ev && ev.stopPropagation) ev.stopPropagation();
-            watchStationByOrder(order);
-          };
-        }
         var bellEl = rowEl.querySelector ? rowEl.querySelector(".bell") : null;
         if (bellEl) {
           bellEl.onclick = function (ev) {
@@ -4193,7 +4178,7 @@
     /* 先刷 UI 再调原生服务：startWatchService 是跨 JNI 的同步调用，
        放在前面会让图标「点了过一会儿才变灰」。 */
     setStatus("盯站中 · " + watchLabel(target) + " · 每 30 秒");
-    repaintWatchState();      // 盯站条、行内 📌、「📌 已盯站」立即更新，不等轮询
+    repaintWatchState();      // 盯站条、「📌 已盯站」按钮立即更新，不等轮询
     startBackgroundWatch();   // 交给前台服务，后台也能播
   }
 
@@ -4202,7 +4187,7 @@
     if (view.name === "detail" && view.data) renderTimes({ scroll: false });
   }
 
-  /* 盯站状态变了：盯站条、站名芯片下方的「📌 已盯站」按钮、行内 📌 一起刷新。
+  /* 盯站状态变了：盯站条、站名芯片下方的「📌 已盯站」按钮一起刷新。
      （v1.0.28 修：停止盯站时只刷了盯站条和行内图标，导航条下面那个
       「📌 已盯站」按钮要等下一次重画才恢复，看起来像卡住了。） */
   function repaintWatchState() {
@@ -4219,7 +4204,7 @@
     watch.lastUrgent = false;
     setStatus("已停止盯站");
     stopBackgroundWatch();
-    repaintWatchState();   // 盯站条、行内 📌、「📌 已盯站」按钮一起恢复
+    repaintWatchState();   // 盯站条、「📌 已盯站」按钮一起恢复
   }
 
   /* 30 秒一刷；同一辆车只在 10 分钟 / 5 分钟 / 2 站 各播一次 */
@@ -4716,7 +4701,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.30";
+  var APP_FALLBACK_VERSION = "1.0.31";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -4749,11 +4734,11 @@
       desc: "在上面的输入框填线路号（如 16），点「查询并播报」。也可以写「16 天府广场南」直接定位到站。",
       demo: "┌─────────────────────────┐\n│ [16            ]        │\n│ [查询并播报] [当前位置] [↻] │\n└─────────────────────────┘" },
     { icon: "📌", name: "盯站",
-      desc: "点站点行右侧的 📌，这一站的车快到时会在四个节点各播报一次。再点一次取消。",
-      demo: "花园永泉      还有 3 站    📌 🔔" },
+      desc: "线路页/详情页里「☆ 收藏站点」旁的「📌 盯站」按钮，这一站的车快到时会在四个节点各播报一次。再点一次取消。",
+      demo: "☆ 收藏站点   📌 盯站   →   📌 已盯站" },
     { icon: "🔔", name: "下车提醒",
       desc: "点 🔔 把某站设为目的地，快到站时会提醒你下车。再点一次取消。",
-      demo: "花园永泉      12 分 30 秒   📌 🔔" },
+      demo: "花园永泉      12 分 30 秒   🔔" },
     { icon: "⚙️", name: "设置",
       desc: "右上角齿轮里可以调语音、看诊断、查看完整说明。",
       demo: "成都公交                        ⚙" }
@@ -4807,10 +4792,10 @@
         demo: "线路页：  📌 盯站   →   📌 已盯站" },
       { icon: "🔔", name: "下车提醒",
         desc: "设为目标站，每 5 秒看一次定位，快到站时提醒你下车。",
-        demo: "花园永泉   12 分 30 秒   📌 🔔(亮)" },
+        demo: "花园永泉   12 分 30 秒   🔔(亮)" },
       { icon: "🔇", name: "如何取消",
-        desc: "再点一次同一个图标即可取消，图标会从高亮变回灰色。",
-        demo: "📌(亮) 点一下 → 📌(灰)" }
+        desc: "盯站：再点一次「📌 已盯站」，或盯站条右侧的「停止」。下车提醒：再点一次 🔔。",
+        demo: "📌 已盯站 → 再点取消；🔔(亮) → 再点取消" }
     ]},
     { title: "设置", items: [
       { icon: "🔊", name: "语音与播报",

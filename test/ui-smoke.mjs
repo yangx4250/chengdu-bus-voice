@@ -1784,17 +1784,6 @@ else {
   if (favCards.length) {
     favCards[0].onclick();
     await new Promise((r) => setTimeout(r, 900));
-    // 点 📌
-    const pins = findByClass(document.getElementById('dlist'), 'stpin');
-    if (pins.length) {
-      pins[0].onclick({ stopPropagation() {} });
-      // 不等待：立刻检查是否已变灰
-      const pinsNow = findByClass(document.getElementById('dlist'), 'stpin');
-      const greyed = pinsNow.filter((p) => String(p.className).includes('off'));
-      if (!greyed.length) {
-        stage4.push('点 📌 后图标没有立刻变灰（有延迟）');
-      }
-    }
   }
 }
 
@@ -1909,9 +1898,10 @@ else {
     }
   }
   const dlistHtml = textOf(document.getElementById('dlist'));
-  if (!/class="spk stpin/.test(dlistHtml)) stage5.push('详情页站点行没有 📌 盯站按钮');
+  /* v1.0.31：行内 📌 已取消——盯站入口是「📌 盯站」按钮和顶部盯站条 */
+  if (/class="spk stpin/.test(dlistHtml)) stage5.push('详情页站点行还残留 📌 盯站按钮（已取消）');
 
-  // 点某一站的 📌（走导出的接口）：应进入盯站、盯站条显示信息、该 📌 变灰
+  // 点某一站盯站（走导出的接口）：应进入盯站、盯站条显示信息
   if (typeof window.cdBusWatchStation === 'function') {
     window.cdBusWatchStation(9);
     await new Promise((r) => setTimeout(r, 300));
@@ -1919,9 +1909,10 @@ else {
     if (String(bar.className).includes('hidden')) stage5.push('盯站后盯站条没有显示');
     const barText = String(document.getElementById('dwatchtext').textContent || '');
     if (!/盯站：/.test(barText)) stage5.push('盯站条没有显示目标：' + barText);
-    const afterPin = textOf(document.getElementById('dlist'));
-    if (!/class="spk stpin off"/.test(afterPin)) stage5.push('正在盯的那一站 📌 没有变灰');
     if (!document.getElementById('dwatchStop')) stage5.push('盯站条没有「停止」入口');
+    // 清理：停掉盯站，别影响后面
+    document.getElementById('dwatchStop').onclick();
+    await new Promise((r) => setTimeout(r, 300));
   }
   if (!dlistHtml.includes('srow')) stage5.push('详情页没有渲染站点行');
   else if (!/class="srow current/.test(dlistHtml)) stage5.push('没有标出「车当前所在站」');
