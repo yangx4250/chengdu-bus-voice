@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.0.2）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.0.3）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -164,8 +164,8 @@ chengdu-bus/build/成都公交.apk    (约 92 KB)
 界面是 WebView + 原生桥。
 
 **应用名「成都公交」（v1.0.1）**：桌面显示名、安装列表、系统标题栏统一改成「成都公交」；
-**v1.0.2 图标改圆形**：取原图红圈以内（含玻璃泡光圈与圆角方形主体）做内切圆裁切，
-边缘 1px 抗锯齿、圆外透明，按 mdpi/hdpi/xhdpi/xxhdpi/xxxhdpi 五档密度生成 48/72/96/144/192px。
+**v1.0.3 图标定稿圆角方形**：主体图案缩至 92% 居中，四周空隙用渐变边缘径向延展填充（无白边、无拉伸），
+圆角半径 22%，按 mdpi/hdpi/xhdpi/xxhdpi/xxxhdpi 五档密度生成 48/72/96/144/192px。
 
 **v1.1 起打开即定位**：启动 → 取一次当前位置 → 校验在成都 → 直接列出附近 5 个站点的实时到站（语音开关开着就念一句）。
 定位条款会写明来源/精度/耗时；失败时显示原因（权限 / 定位开关 / 超时），不再静默退回天府广场。
