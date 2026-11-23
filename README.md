@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.0.13）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.0.14）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -164,6 +164,9 @@ chengdu-bus/build/成都公交.apk    (约 92 KB)
 界面是 WebView + 原生桥。
 
 **应用名「成都公交」（v1.0.1）**：桌面显示名、安装列表、系统标题栏统一改成「成都公交」；
+**v1.0.14 移除自动播报开关**：首页底栏和设置里的「自动播报」开关全部去掉，
+语音始终开启（想静音用手机音量键）。播报逻辑不变，只是不再有开关可关。
+
 **v1.0.13 起点发车提醒**：盯的站离线路起点只有 1~3 站时，起点一有车发出
 就会立刻播一句「起点站已发车，还有 N 站到你这站」，每辆车只播一次。
 前台由页面播（`checkDeparture()`），后台/息屏由 `WatchService.checkDeparture()` 播。

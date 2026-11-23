@@ -757,23 +757,15 @@ else {
 }
 if (html.includes('id="diagBtn"')) failures.push('底部还残留 🔧 按钮');
 if (html.includes('id="speakBtn"')) failures.push('底部还残留大播报按钮');
-// 底部只剩「自动播报」一个开关（盯站开关已移除，改用 📌 图标）
-const footerSwitches = document.getElementById('voice') ? 1 : 0;
-if (footerSwitches !== 1) failures.push('底部开关数量不对（应只剩自动播报）');
+// v1.0.14：首页底栏和「自动播报」开关整体移除，语音常开
+if (/id="voice"/.test(html)) failures.push('还残留自动播报开关 #voice');
+if (/自动播报/.test(html)) failures.push('还残留「自动播报」文案');
+if (/<footer/.test(html)) failures.push('首页底栏 <footer> 还在');
 if (html.includes('id="watch"')) failures.push('底部还残留盯站开关');
-if (String(document.getElementById('status').className).indexOf('hidden') < 0) {
-  failures.push('右下角状态文字没有隐藏');
+if (!/function voiceOn\(\) \{ return true; \}/.test(html)) {
+  failures.push('voiceOn() 应恒为 true（开关已移除）');
 }
-
-// 自动播报默认关闭，并且能记住用户选择
-const voiceBox = document.getElementById('voice');
-if (voiceBox.checked) failures.push('首次打开时自动播报不应默认开启');
-voiceBox.checked = true;
-voiceBox.onchange();
-if (localStorage.getItem('cdbus.voiceAuto') !== '1') failures.push('打开自动播报后没有写入设置');
-voiceBox.checked = false;
-voiceBox.onchange();
-if (localStorage.getItem('cdbus.voiceAuto') !== '0') failures.push('关闭自动播报后没有写入设置');
+if (/cdbus\.voiceAuto/.test(html)) failures.push('还残留自动播报设置的读写逻辑');
 if (!rendered.includes('途经')) failures.push('站点卡没有「途经」线路行');
 if (/出错了/.test(rendered)) failures.push('界面进入了出错分支：' + rendered.slice(0, 160));
 if (missingFns.length) failures.push('调用了未定义的函数：' + missingFns.join(', '));
