@@ -1117,6 +1117,37 @@ if (rowsWithoutSpeaker.length) {
   stage3.push(rowsWithoutSpeaker.length + ' 行缺少小喇叭：' + textOf(rowsWithoutSpeaker[0]).slice(0, 60));
 }
 
+/* 有在途车辆的行要高亮（.live），快到站的行保持红色、不要高亮 */
+const hasClass = (el, cls) => String(el.className || '').split(/\s+/).includes(cls);
+const rowOf = (kw) => allRows.find((r) => textOf(r).includes(kw));
+
+const p36Row = rowOf('P36路');
+if (!p36Row) stage3.push('找不到 P36 行');
+else if (!hasClass(p36Row, 'live')) {
+  stage3.push('有在途车的 P36 行没有高亮：' + textOf(p36Row).slice(0, 60));
+}
+
+/* P02 在桩数据里 stationsAway=2 → 属于「快到站」，必须是红色而不是高亮 */
+const p02Row = rowOf('P02路');
+if (!p02Row) stage3.push('找不到 P02 行');
+else {
+  if (hasClass(p02Row, 'live')) stage3.push('快到站的 P02 行不该高亮');
+  if (p02Row.style.color !== '#ff6b5e') {
+    stage3.push('快到站的 P02 行没有保持红色，实际 ' + p02Row.style.color);
+  }
+}
+
+/* 720 是「待发车」（没有在途车）→ 不该高亮 */
+const preRow = rowOf('720路');
+if (preRow && hasClass(preRow, 'live')) stage3.push('待发车的 720 行不该高亮');
+
+/* 收班的 716 行也不该高亮 */
+const endedRow = rowOf('716路');
+if (endedRow && hasClass(endedRow, 'live')) stage3.push('已收班的 716 行不该高亮');
+
+/* 整个首页至少要有一行高亮，否则功能等于没做 */
+if (!allRows.some((r) => hasClass(r, 'live'))) stage3.push('首页没有任何一行高亮');
+
 // 点某一行的小喇叭：应该只念这一行（方向可选）
 const spkButtons = findByClass(document.getElementById('list'), 'spk');
 if (!spkButtons.length) {

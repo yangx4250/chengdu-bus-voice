@@ -126,6 +126,18 @@
   .armeta .armain-r2 { font-size: var(--fs-sm); color: var(--muted);
     word-break: break-all; line-height: 1.3; }
   .armeta .armain-r2:empty { display: none; }
+  /* 有在途车辆：整行高亮（左侧色条 + 淡蓝底），表示「有车在路上」。
+     快到站（≤2 站 / ≤150 秒）不用这个类，仍走原来的红色文字。
+     padding-left + 负 margin-left 抵消，保证文字位置和其他行对齐。 */
+  .armeta.live {
+    background: linear-gradient(90deg, rgba(79, 140, 255, .16), rgba(79, 140, 255, 0) 72%);
+    box-shadow: inset 3px 0 0 var(--accent);
+    border-radius: 10px;
+    padding-left: 8px;
+    padding-right: 6px;
+    margin-left: -8px;
+  }
+  .armeta.live .armain-r2 { color: #9dc0ff; }
   .armeta .arrow { flex: 0 0 auto; color: #56637d; }
   .armeta .spk { flex: 0 0 auto; padding: 2px 8px; border: 1px solid var(--line);
     border-radius: 8px; font-size: 12px; line-height: 1; color: #b9c6dd; }
@@ -1672,8 +1684,11 @@
         station: { stationId: station.stationId, order: station.order, name: station.name,
                    lat: station.lat || 0, lng: station.lng || 0 }
       });
+      /* mainEl 是 .armain，它父节点才是整行 .armeta —— 高亮加在行上 */
+      var rowEl = mainEl.parentNode;
       if (!buses || !buses.length) {
         // 没有在途车 → 显示起点站的预估发车时间（车来了的发车预测）
+        markLiveRow(rowEl, null, false);
         var short = departureShort(detail);
         if (short) {
           mainEl.innerHTML = "";
@@ -1681,6 +1696,7 @@
         }
         return;
       }
+      markLiveRow(rowEl, buses[0], false);
       var statusText = describe(buses[0]);
       if (buses.length > 1) statusText += " · 下辆 " + buses[1].stationsAway + " 站";
       mainEl.innerHTML = "";
@@ -1762,6 +1778,7 @@
             }
           }
           if (hot) row.style.color = "#ff6b5e";
+          else markLiveRow(row, buses && buses[0], false);
 
           /* 双排：第一排线路→方向，第二排状态（从 text 里去掉前面的「线路 → 方向　」） */
           var main = twoRowMain(dir.name, (dir.endSn || detail.endSn || ""),
@@ -1863,6 +1880,7 @@
       row.style.marginTop = "8px";
       if (ended) row.style.opacity = ".5";
       else if (hot) row.style.color = "#ff6b5e";
+      else markLiveRow(row, buses && buses[0], false);
 
       var main = twoRowMain(arrival.lineName, (other.endSn || detail.endSn || ""),
                             text.replace(/^.*?　/, ""));
@@ -1967,6 +1985,16 @@
     return main;
   }
 
+  /* 首页行高亮：有在途车辆时整行加 .live（淡蓝底 + 左侧色条）。
+     快到站（isUrgent：已到站 / ≤2 站 / ≤150 秒）不加，保持原来的红色文字，
+     避免「高亮」和「紧急」两种强调互相打架。 */
+  function markLiveRow(row, bus, ended) {
+    if (!row || !row.classList) return;
+    var live = !ended && Boolean(bus) && !isUrgent(bus);
+    if (live) row.classList.add("live");
+    else row.classList.remove("live");
+  }
+
   /* 附近站点分组：同一地点（名称近似 + 距离接近）合成一张卡 */
   function buildGroups(stops) {
     var groups = [];
@@ -2046,6 +2074,7 @@
         row.style.marginTop = "8px";
         if (ended) row.style.opacity = ".5";
         else if (hot) row.style.color = "#ff6b5e";
+        else if (hasBus) row.classList.add("live");
 
         var preStart = a.preStartTime || a.preArrivalTime || "";
         var liveText = ended
@@ -4569,7 +4598,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.5";
+  var APP_FALLBACK_VERSION = "1.0.6";
 
   function fillAbout() {
     var verEl = $("abVersion");
