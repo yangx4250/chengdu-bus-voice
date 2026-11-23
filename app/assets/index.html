@@ -785,29 +785,6 @@
   <div id="plist"></div>
 </div>
 
-<div id="lineview" class="hidden">
-  <div id="ltop">
-    <div class="detail-head">
-      <div class="dh-row">
-        <button id="lback">← 返回</button>
-        <div class="dh-actions">
-          <button id="lrefresh">刷新</button>
-        </div>
-      </div>
-      <div class="titles">
-        <div id="ltitle">线路</div>
-        <div id="lsub"></div>
-      </div>
-    </div>
-    <div id="ldirs" class="chips"></div>
-    <div id="lvbuses" class="lvbuses hidden"></div>
-    <div id="lchips" class="chips vertical"></div>
-    <div id="lnav" class="navrow hidden"></div>
-    <div id="lstationfav" class="navrow hidden"></div>
-  </div>
-  <div id="llist"></div>
-</div>
-
 <div id="detail" class="hidden">
   <div id="dtop">
     <div class="detail-head">
@@ -833,10 +810,14 @@
       <span id="alightStop" class="dwatchstop">取消</span>
     </div>
     <div id="ddirs" class="chips"></div>
-    <div id="dbuses" class="chips"></div>
-    <div id="dothers" class="chips hidden"></div>
-    <div id="depbar" class="locbar"><span class="dot"></span><span id="deptext">发车预测</span></div>
+    <div id="lvbuses" class="lvbuses hidden"></div>
+    <div id="lchips" class="chips vertical"></div>
+    <div id="lnav" class="navrow hidden"></div>
+    <div id="lstationfav" class="navrow hidden"></div>
   </div>
+  <div id="dbuses" class="chips"></div>
+  <div id="dothers" class="chips hidden"></div>
+  <div id="depbar" class="locbar"><span class="dot"></span><span id="deptext">发车预测</span></div>
   <div id="dlist"></div>
 </div>
 
@@ -1933,56 +1914,6 @@
 
   /* ------------------------------------------------------------ 首页渲染 */
 
-  /* 到站列表画在哪：线路页有自己的列表，首页的附近站点不能被动过 */
-  function arrivalsBox() {
-    if (view.name === "lineview" && $("llist")) return $("llist");
-    return $("list");
-  }
-
-  function renderBuses(buses) {
-    var list = arrivalsBox();
-    list.innerHTML = "";
-    if (!buses.length) {
-      var endedNow = state.detail && outsideService(state.detail.firstTime, state.detail.lastTime);
-      list.innerHTML = '<div class="empty">' + (endedNow
-        ? endedText(state.detail.firstTime, state.detail.lastTime)
-        : "暂无即将到站的车辆<br>（可能收班或区间调度中）") + "</div>";
-      return;
-    }
-    var title = document.createElement("div");
-    title.className = "stop-title";
-    title.innerHTML = state.detail.name + "路 · " + state.station.name +
-      ' <small>开往 ' + state.detail.endSn + " · 点车辆看这辆车到各站</small>";
-    list.appendChild(title);
-
-    if (outsideService(state.detail.firstTime, state.detail.lastTime)) {
-      var tip = document.createElement("div");
-      tip.className = "empty";
-      tip.style.padding = "6px 8px";
-      tip.textContent = endedText(state.detail.firstTime, state.detail.lastTime);
-      list.appendChild(tip);
-    }
-
-    buses.forEach(function (bus, i) {
-      var card = document.createElement("div");
-      card.className = "bus tap";
-      var arrived = bus.arrived || Number(bus.stationsAway) === 0 ||
-        (bus.etaSeconds !== null && bus.etaSeconds !== undefined && Number(bus.etaSeconds) <= 0);
-      var hot = arrived || (bus.stationsAway !== null && bus.stationsAway <= 2);
-      card.innerHTML =
-        '<div class="head"><span class="line-name">' + (i === 0 ? "最近一辆" : "第 " + (i + 1) + " 辆") +
-        '</span><span class="toward">' + (bus.plate || "未编号") + "</span></div>" +
-        '<div class="eta' + (hot ? " hot" : "") + '">' + (arrived ? "已到站" : fmtEta(bus.etaSeconds)) + "</div>" +
-        '<div class="meta">' + (arrived
-          ? "车已在本站 · 点开看这辆车到各站时间"
-          : "还有 " + bus.stationsAway + " 站 · 距站约 " + bus.distanceMeters + " 米 · 点开看这辆车到各站时间") + "</div>";
-      card.onclick = function () {
-        openVehicleForBus(bus);
-      };
-      list.appendChild(card);
-    });
-  }
-
   /* 把一个站点的线路名并进分组（按归一化名字去重）。
      合并同名站时两边都会贡献线路名，不去重会出现「16路、16路」。 */
   function pushLineNames(group, stop) {
@@ -2207,7 +2138,7 @@
   /* ------------------------------------------------------------ 详情页 */
 
   /* 视图栈：每进一层记一层，返回键永远是「回上一页」，只有栈底才退出 App */
-  var VIEWS = ["home", "detail", "metro", "diag", "pick", "lineview"];
+  var VIEWS = ["home", "detail", "metro", "diag", "pick"];
   var viewStack = ["home"];
 
   function showView(name, opts) {
@@ -2217,10 +2148,9 @@
       if (el) el.classList.toggle("hidden", v !== name);
     });
     if ($("fabSpeak")) $("fabSpeak").classList.toggle("hidden", name !== "detail");
-    // 详情和车辆页共用一份 30 秒刷新，其它页面停掉
+    // 详情页一份 30 秒刷新（到站表 + 车辆位置），其它页面停掉
     if (name !== "detail") stopDetailAutoRefresh();
-    // 线路页的车辆位置刷新只在停留在线路页时跑
-    if (name !== "lineview") stopLineBusTimer();
+    if (name !== "detail") stopLineBusTimer();
     view.name = name;
     view.open = name !== "home";
     if (name !== "detail") view.pickedStation = null;
@@ -2276,61 +2206,46 @@
 
   /* ------------------------------------------------------------ 线路页 */
 
-  /* 搜索选中一条线路后进这里：方向、站名、这一站的车，都留在本页，
-     首页继续显示附近站点，不会被搜索结果顶掉 */
+  /* 搜索选中一条线路后进这里。和详情页是同一页：
+     上半部分是线路信息（方向、站名、导航），下半部分是这辆车到沿途各站的时间。
+     没指定站点时默认选中离我最近的那一站。 */
   async function openLineView(opts) {
     var lineId = opts && opts.lineId;
-    var name = (opts && opts.lineName) || "";
     if (!lineId) { setStatus("没有选中线路", true); return; }
 
     var detail = await rpc("detail", { lineId: lineId });
-    var directions = [];
-    try { directions = await loadDirections(detail.name || name); } catch (e) { directions = []; }
-
     var stations = (detail.stations || []).slice().sort(function (a, b) {
       return Number(a.order) - Number(b.order);
     });
-    state.lineView = {
-      lineId: detail.lineId || lineId,
-      name: detail.name || name,
-      startSn: detail.startSn || "",
-      endSn: detail.endSn || "",
-      firstTime: detail.firstTime || "",
-      lastTime: detail.lastTime || "",
-      stations: stations,
-      directions: directions
-    };
-    // 首页那份状态也跟上，从线路页进详情时用的是同一套数据
-    state.detail = detail;
-    state.directions = directions;
-    state.station = null;
-
     var station = null;
     if (opts.stationId) station = findStation(detail, opts.stationId, opts.stationName);
     else if (opts.stationName) station = findStation(detail, null, opts.stationName);
-    if (station) state.station = station;
+    if (!station) station = nearestStation(stations);
 
-    renderLineView();
-    showView("lineview");
-    /* 没指定站时，把「离我最近」那一站滚到横向中间，方便一眼看到 */
-    renderLineStations({ scroll: !opts.stationId && !opts.stationName });
-    /* 车辆位置：先拉一次把 🚌 标出来，之后每 30 秒刷一次 */
-    refreshLineBuses();
-    startLineBusTimer();
-    if (state.station) await refresh(false);
-    else renderLineEmpty();
+    state.detail = detail;
+    state.station = station || null;
+
+    await openDetail({
+      lineId: detail.lineId || lineId,
+      lineName: detail.name || (opts && opts.lineName) || "",
+      stationId: station ? station.stationId : null,
+      stationName: station ? station.name : "",
+      fromOrder: station ? station.order : 1,
+      scroll: true
+    });
   }
 
-  /* 重新画线路页的顶栏 + 站名（方向切换、返回时都用它） */
+  /* 重新画这一页的顶栏 + 方向 + 站名 + 导航（方向切换、选站时都用它） */
   function renderLineView() {
     var lv = state.lineView;
     if (!lv) return;
-    var titleEl = $("ltitle");
-    var subEl = $("lsub");
-    if (titleEl) titleEl.textContent = lineLabel(lv) + " · " + lv.startSn + " → " + lv.endSn;
+    var titleEl = $("dtitle");
+    var subEl = $("dsub");
+    if (titleEl) {
+      titleEl.textContent = lineLabel(lv) + (state.station ? " · " + state.station.name : "");
+    }
     if (subEl) {
-      subEl.textContent = "全程 " + lv.stations.length + " 站 · " +
-        (state.station ? state.station.name : "点下面的站名查看实时到站");
+      subEl.textContent = lv.startSn + " → " + lv.endSn + " · 全程 " + lv.stations.length + " 站";
     }
     renderLineDirections();
     renderLineBuses();
@@ -2577,21 +2492,6 @@
       lv.busesAt = Date.now();
       renderLineBuses();
       renderLineStations();
-      /* 页面下半部分（选中站的到站卡）也跟着 30 秒一起刷，保持同一份数据 */
-      if (state.station && state.detail) {
-        try {
-          var arrivals = await rpc("arrivals", {
-            lineId: state.detail.lineId,
-            station: state.station
-          });
-          if (state.station && state.detail && state.lineView === lv) {
-            state.buses = arrivals;
-            state.first = arrivals.length ? arrivals[0] : null;
-            renderBuses(arrivals);
-            updateSelbar();
-          }
-        } catch (e2) { /* 同样静默 */ }
-      }
     } catch (e) {
       /* 静默失败，保留上一次的图标 */
     }
@@ -2601,7 +2501,7 @@
     stopLineBusTimer();
     lineBusTimer = setInterval(function () {
       if (document.hidden) return;
-      if (view.name !== "lineview") return;
+      if (view.name !== "detail") return;
       if (state.busy) return;
       refreshLineBuses();
     }, 30000);
@@ -2650,7 +2550,7 @@
   }
 
   function renderLineDirections() {
-    var box = $("ldirs");
+    var box = $("ddirs");
     if (!box) return;
     box.innerHTML = "";
     var lv = state.lineView;
@@ -2761,7 +2661,7 @@
   }
 
   function renderLineEmpty() {
-    var box = $("llist");
+    var box = $("dlist");
     if (!box) return;
     var lv = state.lineView;
     if (!lv) { box.innerHTML = '<div class="empty">还没有选线路</div>'; return; }
@@ -2784,15 +2684,25 @@
       return Number(a.order) - Number(b.order);
     });
     try { lv.directions = await loadDirections(detail.name || lv.name); } catch (e) {}
+    var station = keep ? findStation(detail, keep, null) : null;
+    if (!station) station = nearestStation(lv.stations);
     state.lineView = lv;
     state.detail = detail;
     state.directions = lv.directions;
-    state.station = keep ? findStation(detail, keep, null) : null;
+    state.station = station || null;
     /* 换方向 = 换了一整条线，旧的车辆位置全部作废，立刻重拉 */
     lv.buses = [];
     lv.busesAt = 0;
+    view.lineId = lv.lineId;
+    view.lineName = lv.name;
+    if (station) {
+      view.stationId = station.stationId;
+      view.stationName = station.name;
+      view.fromOrder = station.order;
+    }
     renderLineView();
     refreshLineBuses();
+    await loadMatrix();
     if (state.station) await refresh(false);
     else renderLineEmpty();
   }
@@ -2802,8 +2712,8 @@
     var stop = stops && stops[0];
     if (!stop) return;
     state.lineView = null;
-    var titleEl = $("ltitle");
-    var subEl = $("lsub");
+    var titleEl = $("dtitle");
+    var subEl = $("dsub");
     if (titleEl) titleEl.textContent = "站点 · " + (stop.name || "");
     var arrivals = stop.arrivals || [];
     if (subEl) {
@@ -2811,11 +2721,14 @@
         ? Math.round(stop.distanceMeters) + " 米 · " : "") +
         (arrivals.length ? arrivals.length + " 条线路" : "暂无实时到站");
     }
-    var dirs = $("ldirs");
+    var dirs = $("ddirs");
     if (dirs) dirs.innerHTML = "";
     var chips = $("lchips");
     if (chips) chips.innerHTML = "";
-    var box = $("llist");
+    $("lvbuses").className = "lvbuses hidden";
+    $("lnav").className = "navrow hidden";
+    $("lstationfav").className = "navrow hidden";
+    var box = $("dlist");
     if (!box) return;
     box.innerHTML = "";
     if (!arrivals.length) {
@@ -2905,17 +2818,25 @@
     view.selectedBusId = opts.busId || null;
     view.scrollOnLoad = Boolean(opts.scroll);
     view.directions = [];
-    $("dtitle").textContent = opts.title || "车辆详情";
+    state.lineView = null;
+    $("dtitle").textContent = opts.title || "线路详情";
     $("dsub").textContent = "正在算这辆车到沿途各站的时间…";
     $("dbuses").innerHTML = "";
     $("ddirs").innerHTML = "";
+    $("lchips").innerHTML = "";
+    $("lvbuses").className = "lvbuses hidden";
+    $("lnav").className = "navrow hidden";
+    $("lstationfav").className = "navrow hidden";
     $("dlist").innerHTML = '<div class="empty">加载中…</div>';
     showView("detail");
     updateWatchUI();
     updateAlightUI();
     setTimeout(syncTopOffset, 30);
     startDetailAutoRefresh();
+    startLineBusTimer();
     await Promise.all([loadMatrix(), loadDetailDirections()]);
+    /* 合并页进来看一次全线在途车辆，把 🚌 挂到站名芯片上（之后每 30 秒刷） */
+    refreshLineBuses();
     loadStationOthers();
   }
 
@@ -2925,7 +2846,14 @@
     } catch (e) {
       view.directions = [];
     }
-    renderDetailDirections();
+    /* 方向芯片在合并页里是「方向 + 首末班」两行（renderLineDirections 画的），
+       这里不再用详情页那套单行 chip 覆盖它 */
+    if (state.lineView) {
+      state.lineView.directions = view.directions;
+      renderLineDirections();
+    } else {
+      renderDetailDirections();
+    }
   }
 
   function renderDetailDirections() {
@@ -2970,6 +2898,15 @@
     try {
       var data = await rpc("matrix", { lineId: view.lineId, fromOrder: view.fromOrder, window: 80 });
       view.data = data;
+      /* 合并页：站名芯片、导航、收藏/盯站行都读 state.station，
+         这里按当前站序把它对齐到 matrix 返回的站点（带经纬度）。 */
+      var curStation = null;
+      var allStations = data.stations || [];
+      for (var cs = 0; cs < allStations.length; cs++) {
+        if (Number(allStations[cs].order) === Number(view.fromOrder)) { curStation = allStations[cs]; break; }
+      }
+      if (!curStation && view.stationId) curStation = findStation(data, view.stationId, view.stationName);
+      if (curStation) state.station = curStation;
 
       // 车辆按站序升序：左边离起点近、右边离终点近
       var buses = (data.buses || []).slice().sort(function (a, b) {
@@ -3013,6 +2950,26 @@
       }
       updateFavStar();
       renderBusChips();
+      /* 线路信息（方向芯片 / 站名芯片 / 导航 / 收藏盯站行）跟着一起刷新，
+         这样上下两半永远是同一份数据。这里直接改原有对象，不换引用——
+         refreshLineBuses() 里靠引用判断「期间有没有换线路」。 */
+      var lineStations = (data.stations || []).slice().sort(function (a, b) {
+        return Number(a.order) - Number(b.order);
+      });
+      var lv = state.lineView || {};
+      lv.lineId = data.line.lineId;
+      lv.name = data.line.name;
+      lv.startSn = data.line.startSn || "";
+      lv.endSn = data.line.endSn || "";
+      lv.firstTime = data.line.firstTime || "";
+      lv.lastTime = data.line.lastTime || "";
+      lv.stations = lineStations;
+      if (view.directions && view.directions.length) lv.directions = view.directions;
+      else if (!lv.directions) lv.directions = state.directions || [];
+      if (!lv.buses) lv.buses = [];
+      if (!lv.busesAt) lv.busesAt = 0;
+      state.lineView = lv;
+      renderLineView();
       /* 首次进来：滚到离我最近的那一站（点车辆进入时才算，定时刷新不滚）；
          之后定时刷新滚到车当前所在站 */
       var wantScroll = auto ? true : view.scrollOnLoad;
@@ -3508,12 +3465,9 @@
     if (!bar) return;
     var text = $("seltext");
     var button = $("hfav");
-    if (!state.detail) {
-      bar.className = "selbar hidden";
-      return;
-    }
-    // 线路/车辆页有自己的顶栏，首页那条收藏条不用跟着出现
-    if (view.name === "lineview") {
+    /* 合并后的详情页自带顶栏（#dtitle/#dsub）和收藏按钮（#dfav），
+       首页那条「已选线路」横条在这一页不出现 */
+    if (!state.detail || view.name === "detail") {
       bar.className = "selbar hidden";
       return;
     }
@@ -3587,7 +3541,7 @@
       state.stationView = fav;
       state.favView = { stationId: stop.stationId, name: stop.name, lat: fav.lat, lng: fav.lng };
       renderFavStopPage([stop]);
-      showView("lineview");
+      showView("detail");
       setStatus("站点 · " + stop.name + " · " + (stop.arrivals || []).length + " 条线路");
     } catch (err) {
       setStatus(err.message || "加载失败", true);
@@ -3812,11 +3766,8 @@
     if (state.busy) return;                    // 正在查询，别叠加
     var page = view.name;
 
-    if (page === "lineview") {
-      refreshLineBuses();                      // 车辆位置 + 下半页到站卡
-      return;
-    }
     if (page === "detail") {
+      refreshLineBuses();                      // 车辆位置 + 站名芯片上的 🚌
       loadMatrix({ auto: true }).catch(function () {});
       if (state.detail && state.station) refresh(false).catch(function () {});
       return;
@@ -3845,7 +3796,6 @@
     var buses = await rpc("arrivals", { lineId: state.detail.lineId, station: state.station });
     state.buses = buses;
     state.first = buses.length ? buses[0] : null;
-    renderBuses(buses);
     updateSelbar();
     setStatus(new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) + " 已更新");
     if (announce && voiceOn()) {
@@ -4748,7 +4698,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.24";
+  var APP_FALLBACK_VERSION = "1.0.25";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -5390,8 +5340,8 @@
     $("chips").innerHTML = "";
     $("dirs").innerHTML = "";
     if ($("lchips")) $("lchips").innerHTML = "";
-    if ($("ldirs")) $("ldirs").innerHTML = "";
-    if ($("llist")) $("llist").innerHTML = "";
+    if ($("ddirs")) $("ddirs").innerHTML = "";
+    if ($("dlist")) $("dlist").innerHTML = "";
     if ($("hfav")) $("hfav").style.display = "";
     updateSelbar();
     run(function () { return refreshHome({ announce: false, budget: 18 }); });
@@ -5475,18 +5425,6 @@
   $("prefresh").onclick = function () {
     // 搜索页重跑一次同样的关键字，首末班没加载出来的会补上
     runSearchFromInput();
-  };
-  $("lback").onclick = function () { backHandler(); };
-  $("lrefresh").onclick = function () {
-    run(function () {
-      if (state.lineView && state.station) return refresh(false).then(function () {
-        setStatus(clockTime() + " 已刷新当前站点");
-      });
-      if (state.lineView) { renderLineView(); setStatus("已刷新线路站点"); return Promise.resolve(); }
-      if (state.favView) return refreshFavStopPage();
-      setStatus("没有可刷新的线路", true);
-      return Promise.resolve();
-    });
   };
   $("alightStop").onclick = function (ev) {
     if (ev && ev.stopPropagation) ev.stopPropagation();

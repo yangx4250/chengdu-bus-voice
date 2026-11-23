@@ -309,6 +309,29 @@ const bridge = {
       return JSON.stringify({ state: 'ok', data: hit.slice(0, 3) });
     }
     if (method === 'matrix') {
+      /* v1.0.25 起详情页是「线路页 + 车辆」合体：站名芯片和标题都取自 matrix 的
+         data.line / data.stations，桩必须按 lineId 返回对应线路，否则会串成 P02。 */
+      if (String(args.lineId || '').includes('p36')) {
+        return JSON.stringify({ state: 'ok', data: {
+          line: { lineId: '028-p36-0', name: 'P36', startSn: '郫都区客运中心', endSn: '花园公交站',
+                  firstTime: '06:00', lastTime: '22:30',
+                  departLeft: Date.now() + 600000, depIntervalM: 8, preArrivalTime: '' },
+          stations: [
+            { order: 1, name: '郫都区客运中心', stationId: '028-9', lat: 30.8, lng: 103.9 },
+            { order: 3, name: '招呼站', stationId: '028-4519', lat: 30.79, lng: 103.88 },
+            { order: 5, name: '花园公交站', stationId: '028-1', lat: 30.7, lng: 103.95 },
+            { order: 7, name: '招呼站', stationId: '028-4519', lat: 30.75, lng: 103.9 },
+            { order: 9, name: '友爱公交站', stationId: '028-3', lat: 30.6, lng: 103.9 },
+          ],
+          buses: [
+            { busId: 'p36a', plate: '42001', order: 9, stationsAway: 0, stationsToEnd: 0, passedSelected: false,
+              times: [{ order: 9, passed: false, etaSeconds: 0, arrivalAt: Date.now() }] },
+            { busId: 'p36b', plate: '42002', order: 3, stationsAway: 6, stationsToEnd: 6, passedSelected: false,
+              times: [{ order: 9, passed: false, etaSeconds: 900, arrivalAt: Date.now() + 900000 }] },
+          ],
+          queriedFrom: 1, queriedTo: 9,
+        } });
+      }
       return JSON.stringify({ state: 'ok', data: {
         line: { lineId: '028-p02-0', name: 'P02', startSn: '花园公交站', endSn: '郫都区客运中心',
                 firstTime: '00:00', lastTime: '23:59',
@@ -795,7 +818,7 @@ if (html.includes('id="watch"')) failures.push('底部还残留盯站开关');
 if (/<div id="veh"/.test(html)) failures.push('还残留独立的车辆页 #veh');
 if (/function renderVehicleTimes/.test(html)) failures.push('还残留车辆页渲染函数 renderVehicleTimes');
 if (/function openVehicleView/.test(html)) failures.push('还残留车辆页入口 openVehicleView');
-if (!/VIEWS = \["home", "detail", "metro", "diag", "pick", "lineview"\]/.test(html)) {
+if (!/VIEWS = \["home", "detail", "metro", "diag", "pick"\]/.test(html)) {
   failures.push('VIEWS 里还留着 veh');
 }
 if (!/function voiceOn\(\) \{ return true; \}/.test(html)) {
@@ -921,7 +944,7 @@ await new Promise((r) => setTimeout(r, 800));
     stage2.push('进 App 时自动播报了附近站点：' + startupSpeech.join(' | ').slice(0, 120));
   }
 }
-if (String(document.getElementById('lineview').className).includes('hidden')) {
+if (String(document.getElementById('detail').className).includes('hidden')) {
   stage2.push('搜索单条线路后没有进入线路页');
 }
 if (!String(document.getElementById('home').className).includes('hidden')) {
@@ -935,13 +958,13 @@ if (!homeListBefore.includes('花园永泉')) {
 /* 线路页每个方向 chip 下面要显示这个方向自己的首末班。
    搜索接口不返回首末班，得靠详情接口补，所以这里等一小会儿。 */
 {
-  const dirsBox = document.getElementById('ldirs');
+  const dirsBox = document.getElementById('ddirs');
   const dirChips = findByClass(dirsBox, 'chip');
   if (!dirChips.length) {
     stage2.push('线路页没有方向 chip');
   } else {
     await new Promise((r) => setTimeout(r, 900));   // fillDirectionTimes 是异步补的
-    const filled = findByClass(document.getElementById('ldirs'), 'chip');
+    const filled = findByClass(document.getElementById('ddirs'), 'chip');
     const texts = filled.map((c) => textOf(c));
     texts.forEach((t, i) => {
       if (!/首班 \d{2}:\d{2}/.test(t)) stage2.push('方向 chip ' + i + ' 没显示首班：' + t);
@@ -960,7 +983,7 @@ if (!homeListBefore.includes('花园永泉')) {
       stage2.push('当前方向 chip 显示的不是本方向的时间：' + texts[onIdx]);
     }
     // 每个 chip 内部应该是「方向 + 时间」两段
-    const timeEls = findByClass(document.getElementById('ldirs'), 'dirtime');
+    const timeEls = findByClass(document.getElementById('ddirs'), 'dirtime');
     if (timeEls.length !== filled.length) {
       stage2.push('方向 chip 的时间行数量不对：' + timeEls.length + '/' + filled.length);
     }
@@ -1073,7 +1096,7 @@ if (!stationChips.length) {
   // 下半页（选中站的到站卡）也由同一个 30 秒刷新驱动：
   // 模拟一次 refreshLineBuses，到站卡应跟着重画（桩里 P36 选中的站有车）
   {
-    const before = textOf(document.getElementById('llist'));
+    const before = textOf(document.getElementById('dlist'));
     if (!before.length) stage2.push('线路页下半页到站卡是空的，无法验证联动刷新');
     // 换一辆车进站的场景：改桩数据再触发一次刷新，卡上内容必须变化
     const stationChipsNow = findByClass(document.getElementById('lchips'), 'chip');
@@ -1082,11 +1105,12 @@ if (!stationChips.length) {
     if (zhaoChip && zhaoChip.onclick) {
       zhaoChip.onclick();
       await new Promise((r) => setTimeout(r, 300));
-      const after = textOf(document.getElementById('llist'));
-      if (!after.length) stage2.push('选中站后下半页没有到站卡');
-      if (after === before && before.length) {
-        // 内容一致不算失败（同一辆车的数据），但至少必须有 P36 相关内容
-        if (!after.includes('P36')) stage2.push('下半页到站卡没有 P36 的车：' + after.slice(0, 60));
+      const after = textOf(document.getElementById('dlist'));
+      if (!after.length) stage2.push('选中站后下半页没有到站表');
+      /* v1.0.25 合并后下半页是「这辆车到沿途各站」的到站表（原来那张到站卡并进了车辆芯片），
+         断言站名还在、且确实是一张表 */
+      if (!/花园公交站|友爱公交站|招呼站/.test(after)) {
+        stage2.push('下半页到站表没有站名：' + after.slice(0, 80));
       }
       // 恢复选中花园公交站，别污染后面的导航断言（导航按选中站算距离）
       const gardenChip = findByClass(document.getElementById('lchips'), 'chip')
@@ -1197,18 +1221,18 @@ await new Promise((r) => setTimeout(r, 800));
 if (!document.getElementById('lchips').children.length) {
   stage2.push('刷新后站名芯片消失（被拉回首页）');
 }
-if (String(document.getElementById('lineview').className).includes('hidden')) {
+if (String(document.getElementById('detail').className).includes('hidden')) {
   stage2.push('刷新后离开了线路页');
 }
-if (!/P36路/.test(String(document.getElementById('ltitle').textContent || ''))) {
-  stage2.push('线路页标题没有显示线路：' + String(document.getElementById('ltitle').textContent || ''));
+if (!/P36路/.test(String(document.getElementById('dtitle').textContent || ''))) {
+  stage2.push('线路页标题没有显示线路：' + String(document.getElementById('dtitle').textContent || ''));
 }
 
 // 收藏仍走详情页（线路页只负责选站，不重复一套收藏条）
 const selbar = document.getElementById('selbar');
 if (!String(selbar.className).includes('hidden')) stage2.push('线路页上首页收藏条不该出现');
-const favRows = findByClass(document.getElementById('llist'), 'bus');
-if (!favRows.length) stage2.push('选站后线路页没有列出到站车辆');
+const favRows = findByClass(document.getElementById('dbuses'), 'vchip');
+if (!favRows.length) stage2.push('选站后线路页没有列出在途车辆');
 else {
   favRows[0].onclick();
   await new Promise((r) => setTimeout(r, 900));
@@ -1254,12 +1278,12 @@ if (!stationCard) {
 } else {
   stationCard.onclick();
   await new Promise((r) => setTimeout(r, 900));
-  const stopTitle = String(document.getElementById('ltitle').textContent || '');
+  const stopTitle = String(document.getElementById('dtitle').textContent || '');
   if (!/站点 · /.test(stopTitle)) stage2.push('点站点收藏没有进入站点页：' + stopTitle);
-  if (String(document.getElementById('lineview').className).includes('hidden')) {
+  if (String(document.getElementById('detail').className).includes('hidden')) {
     stage2.push('站点页没有显示');
   }
-  const listNow = textOf(document.getElementById('llist'));
+  const listNow = textOf(document.getElementById('dlist'));
   if (!listNow.includes('P02路')) stage2.push('站点页没有列出该站的线路：' + listNow.slice(0, 120));
   if (!textOf(document.getElementById('list')).includes('花园永泉')) {
     stage2.push('站点页把首页的附近站点顶掉了');
@@ -1285,10 +1309,10 @@ if (!String(document.getElementById('selbar').className).includes('hidden')) {
   if (clickable.length) {
     clickable[0].onclick();
     await new Promise((r) => setTimeout(r, 900));
-    if (String(document.getElementById('lineview').className).includes('hidden')) {
+    if (String(document.getElementById('detail').className).includes('hidden')) {
       stage2.push('点首页站点卡没有进入站点页');
     }
-    const ltitle = String(document.getElementById('ltitle').textContent || '');
+    const ltitle = String(document.getElementById('dtitle').textContent || '');
     if (!/站点 · /.test(ltitle)) stage2.push('站点页标题不对：' + ltitle);
     const navBtns = findByClass(document.getElementById('lnav'), 'navbtn');
     if (!navBtns.length) stage2.push('站点页没有方向导航按钮');
@@ -1771,10 +1795,13 @@ if (typeof window.cdBusStartBackgroundWatch === 'function') {
 
 const favCards = findByClass(document.getElementById('favs'), 'fav')
   .filter((c) => !textOf(c).includes('站点收藏'));   // 只挑线路收藏卡（置顶可能改变顺序）
+/* 这一段验证的是「16 路 + 默认 matrix 桩」这套数据（3 辆车、距终点 28 站、发车间隔 12 分钟），
+   所以必须明确挑 16 路那张卡，不能靠收藏顺序（前面阶段会新收藏 P36 并置顶）。 */
+const favCard16 = favCards.find((c) => /16路/.test(textOf(c))) || favCards[0];
 const stage5 = [];
 if (!favCards.length) stage5.push('没有线路收藏卡');
 else {
-  favCards[0].onclick();
+  favCard16.onclick();
   await new Promise((r) => setTimeout(r, 900));
   const chipsHtml = textOf(document.getElementById('dbuses'));
   const chipEls = findByClass(document.getElementById('dbuses'), 'chip');
@@ -1975,7 +2002,8 @@ console.log('✓ 收藏进详情通过：芯片显示「已过收藏站 · 距�
 // -------------------------------------------------- 第五阶段附加：下车提醒
 {
   const stage5c = [];
-  const favCard = findByClass(document.getElementById('favs'), 'fav').find((c) => !textOf(c).includes('站点收藏'));
+  const favCard = findByClass(document.getElementById('favs'), 'fav').find((c) => /16路/.test(textOf(c)))
+    || findByClass(document.getElementById('favs'), 'fav').find((c) => !textOf(c).includes('站点收藏'));
   if (!favCard) stage5c.push('没有线路收藏卡，无法进入详情');
   else {
     favCard.onclick();
@@ -2197,16 +2225,19 @@ if (pickerCards.length) {
   if (String(document.getElementById('pick').className).includes('hidden') === false) {
     stage6.push('选中候选线路后没有离开搜索结果页');
   }
-  if (String(document.getElementById('lineview').className).includes('hidden')) {
+  if (String(document.getElementById('detail').className).includes('hidden')) {
     stage6.push('点候选线路后没有进入该线路的新页面');
   }
   if (!String(document.getElementById('home').className).includes('hidden')) {
     stage6.push('线路页显示时首页仍然可见');
   }
-  const ltitle = String(document.getElementById('ltitle').textContent || '');
-  if (!/路/.test(ltitle) || !/→/.test(ltitle)) stage6.push('线路页标题没有显示选中的线路：' + ltitle);
-  if (!/全程 \d+ 站/.test(String(document.getElementById('lsub').textContent || ''))) {
-    stage6.push('线路页没有显示站点数：' + String(document.getElementById('lsub').textContent || ''));
+  /* v1.0.25 合并页：标题是「线路名 · 站名」，起终点方向挪到了副标题 */
+  const ltitle = String(document.getElementById('dtitle').textContent || '');
+  if (!/路/.test(ltitle)) stage6.push('线路页标题没有显示选中的线路：' + ltitle);
+  const dsubNow = String(document.getElementById('dsub').textContent || '');
+  if (!/→/.test(dsubNow)) stage6.push('线路页副标题没有显示起终点方向：' + dsubNow);
+  if (!/全程 \d+ 站/.test(dsubNow)) {
+    stage6.push('线路页没有显示站点数：' + dsubNow);
   }
   const lineChips = findByClass(document.getElementById('lchips'), 'chip');
   if (!lineChips.length) {
@@ -2214,11 +2245,13 @@ if (pickerCards.length) {
   } else {
     lineChips[0].onclick();
     await new Promise((r) => setTimeout(r, 1200));
-    const arrivals = findByClass(document.getElementById('llist'), 'bus');
+    /* 合并页下半页是「这辆车到沿途各站」的到站表（.srow），不再是线路卡。
+       这些行是 innerHTML 一次性写入的，假 DOM 的 children 为空，只能查文本。 */
+    const arrivals = /class="srow/.test(textOf(document.getElementById('dlist'))) ? [1] : [];
     if (!arrivals.length) {
-      stage6.push('线路页选站后没有列出到站信息：' + textOf(document.getElementById('llist')).slice(0, 120));
+      stage6.push('线路页选站后没有列出到站信息：' + textOf(document.getElementById('dlist')).slice(0, 120));
     }
-    if (!/站/.test(String(document.getElementById('lsub').textContent || ''))) {
+    if (!/站/.test(String(document.getElementById('dsub').textContent || ''))) {
       stage6.push('线路页选站后副标题没更新');
     }
   }
