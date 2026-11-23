@@ -795,12 +795,58 @@ if (failures.length) {
 
 // ---------------------------------------------------- 第二阶段：搜索 → 选站 → 首页收藏
 
+// 选中线路后进「线路页」，站名芯片在这页上
+const stage2 = [];
+
+/* v1.0.16：首页刷新要重新定位，不能一直用启动时那一个坐标。
+   把 location 桩换成「已经走到别处」的坐标，再触发一次回前台刷新，
+   断言 nearby 的请求参数跟着变了。
+   注意：页面脚本初始化时就把 window.AndroidBus 存进了闭包（var bridge），
+   所以这里改的是 bridge 这个对象自己的方法；nearby 的坐标在请求参数里。 */
+{
+  const bridge = window.AndroidBus;
+  const origStart = bridge.start;
+  const origPoll = bridge.poll;
+  const nearbyArgs = [];
+
+  bridge.start = function (method, payload) {
+    if (method === 'nearby') {
+      let args = {};
+      try { args = JSON.parse(payload || '{}'); } catch (e) {}
+      nearbyArgs.push(args);
+    }
+    return origStart.apply(this, arguments);
+  };
+  bridge.poll = function (id) {
+    if (String(id).split('-')[1] === 'location') {
+      /* 人民公园一带，和默认的天府广场差得足够远 */
+      return JSON.stringify({ state: 'ok', data: { lat: 30.66, lng: 104.07, accuracy: 25, provider: 'gps', stale: false } });
+    }
+    return origPoll.apply(this, arguments);
+  };
+
+  window.cdBusResume();
+  await new Promise((r) => setTimeout(r, 1500));
+  bridge.start = origStart;
+  bridge.poll = origPoll;
+
+  /* 首页刷新用的是 state.fix 的坐标；收藏卡那边也会发 nearby（用站点自己的坐标），
+     所以这里找「有没有一次用的是新定位」，而不是看最后一次。 */
+  const usedNewFix = nearbyArgs.some((a) =>
+    Math.abs(Number(a.lat) - 30.66) < 0.002 && Math.abs(Number(a.lng) - 104.07) < 0.002);
+  if (!nearbyArgs.length) {
+    stage2.push('回前台刷新时没有请求 nearby');
+  } else if (!usedNewFix) {
+    stage2.push('首页刷新没有按新定位取附近站点，nearby 坐标：' +
+      nearbyArgs.map((a) => a.lat + ',' + a.lng).join(' / '));
+  }
+}
+
 document.getElementById('line').value = 'P36';
 document.getElementById('go').onclick();
 await new Promise((r) => setTimeout(r, 800));
 
 // 选中线路后进「线路页」，站名芯片在这页上
-const stage2 = [];
 
 /* v1.0.15：进 App（autoLoad 定位完）不再自动播报附近站点。
    附近播报是一整段「花园永泉站，P02路往…。龙溪村委会站，…」，用句式识别。 */

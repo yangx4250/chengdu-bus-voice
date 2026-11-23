@@ -3496,7 +3496,7 @@
     if (!shouldAutoRefreshHome()) return;
     if (homeRefreshDue()) {
       setTimeout(function () {
-        if (shouldAutoRefreshHome()) refreshHome({});
+        if (shouldAutoRefreshHome()) refreshHome({ locate: true });
       }, 250);
     } else {
       paintCountdown();
@@ -3856,7 +3856,8 @@
       return;
     }
     if (page === "home") {
-      refreshHome({ announce: false, budget: 18 }).catch(function () {});
+      /* v1.0.16：从后台回来先重新定位，位置可能已经变了 */
+      refreshHome({ announce: false, budget: 18, locate: true }).catch(function () {});
       catchUpHome();
       return;
     }
@@ -3935,14 +3936,45 @@
     return await rpc("location", { timeout: timeout || 12000 });
   }
 
-  /* 首页数据刷新：用上一次定位的坐标，不再重新定位 */
+  /* 重新定位并更新 state.fix。
+     返回 true 表示位置有变化（调用方需要按新坐标重拉附近站点）。
+     timeoutMs 给小值：定时刷新时宁可慢一步，也不要卡住 12 秒。 */
+  async function relocate(timeoutMs) {
+    var before = state.fix;
+    var fix;
+    try {
+      fix = await locate(timeoutMs || 5000);
+    } catch (err) {
+      return false;                       // 定位失败就沿用旧坐标，不打断刷新
+    }
+    if (!fix || typeof fix.lat !== "number" || typeof fix.lng !== "number") return false;
+    /* 旧的 fix 是新鲜的、新的却是缓存的老位置时，别用旧的换掉新的 */
+    if (fix.stale && before && !before.stale) return false;
+
+    var moved = !before ||
+      geoDistanceMeters(before.lat, before.lng, fix.lat, fix.lng) >= 50;
+    state.fix = fix;
+    var accuracy = fix.accuracy > 0 ? Math.round(fix.accuracy) + " 米" : "未知精度";
+    setLocbar((fix.stale ? "缓存位置" : "已定位") + " · " + (fix.provider || "network") +
+      " · " + accuracy);
+    return moved;
+  }
+
+  /* 首页数据刷新。
+     options.locate = true 时先重新定位再拉附近站点（定时刷新、回前台都走这条路），
+     否则沿用上一次的坐标，只刷到站数据。 */
   async function refreshHome(options) {
     var announce = options && options.announce;
     var budget = options && options.budget !== undefined ? options.budget : 10;
-    var lat = state.fix ? state.fix.lat : DEFAULT_LAT;
-    var lng = state.fix ? state.fix.lng : DEFAULT_LNG;
 
     searching = false;
+
+    if (options && options.locate) {
+      try { await relocate(options.locateTimeout || 5000); } catch (e) {}
+    }
+
+    var lat = state.fix ? state.fix.lat : DEFAULT_LAT;
+    var lng = state.fix ? state.fix.lng : DEFAULT_LNG;
 
     var data = await rpc("nearby", { lat: lat, lng: lng, limit: 8 });
     var groups = buildGroups(data.stops);
@@ -4029,7 +4061,8 @@
     if (homeTimer) clearInterval(homeTimer);
     homeTimer = setInterval(function () {
       if (!shouldAutoRefreshHome()) return;
-      refreshHome({ budget: 8 }).catch(function () {});
+      /* v1.0.16：定时刷新时重新定位，人走了位置变了，附近站点要跟着变 */
+      refreshHome({ budget: 8, locate: true }).catch(function () {});
     }, 30000);
   }
 
@@ -4840,7 +4873,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.15";
+  var APP_FALLBACK_VERSION = "1.0.16";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -5599,7 +5632,19 @@
   renderFavs();
   renderHistory();
   alightResume();
-  if (bridge) startAuto(false);
+  if (bridge) {
+    startAuto(false);
+    /* v1.0.16：定位在 App 运行期间会变（坐车、走路），不能只在启动时取一次。
+       这里每 60 秒静默重定位，位置变了就按新坐标重拉附近站点。 */
+    setInterval(function () {
+      if (document.hidden) return;
+      if (!shouldAutoRefreshHome()) return;
+      if (state.busy) return;
+      relocate(5000).then(function (moved) {
+        if (moved) refreshHome({ budget: 8 }).catch(function () {});
+      }).catch(function () {});
+    }, 60000);
+  }
 })();
 </script>
 </body>
