@@ -20,20 +20,32 @@ import java.util.concurrent.TimeUnit;
 /**
  * 取一次「当前」位置。
  *
- * 旧实现只看 getLastKnownLocation：手机刚开机/刚关过定位时它通常是 null 或者几个小时前的位置，
- * 于是 App 静默退回天府广场，看起来就是「定位有问题」。
+ * 精度优先，而不是「快」优先。旧实现有三个会让人明显感觉「定位不准」的问题：
+ *
+ *   1. 只要 2 分钟内的 lastKnown 就直接用，根本不看精度 —— 城市里 NETWORK 的
+ *      lastKnown 偏差几百米很常见，于是你明明在 A 站，App 认成 B 站。
+ *   2. lastKnown 取的是「时间最新」的那条，而不是「最准」的那条。
+ *   3. 精度门槛 50 米就提前收工，GPS 还没来得及收敛。
  *
  * 现在的顺序：
- *   1. 有 2 分钟内的 lastKnown → 直接用（秒回）；
- *   2. 否则同时向 GPS / NETWORK / PASSIVE 请求一次定位，最多等 timeoutMs；
- *      精度 ≤50 米就提前结束，否则取这段时间里最准的一条；
- *   3. 还拿不到，退回最旧的 lastKnown（并标记 stale）。
+ *   1. 30 秒内、精度 ≤ 50 米的 lastKnown → 直接用（秒回，且确实准）；
+ *   2. 否则同时向 GPS / NETWORK 请求实时定位，最多等 timeoutMs：
+ *      拿到 ≤ 30 米就立刻用；到时间就取这段时间里精度最好的那条；
+ *   3. 实时没拿到，退回 lastKnown 里最准的那条（标记 stale）。
  */
 public final class Locator {
 
     private static final String TAG = "CdBusLocator";
-    private static final long FRESH_MS = 2 * 60 * 1000;
-    private static final float GOOD_ACCURACY = 50f;
+
+    /** lastKnown 只有这么新、这么准才允许直接返回 */
+    private static final long TRUST_AGE_MS = 30 * 1000;
+    private static final float TRUST_ACCURACY = 50f;
+
+    /** 实时定位拿到这个精度就收工 */
+    private static final float GOOD_ACCURACY = 30f;
+
+    /** 精度未知时的惩罚值（当作很差） */
+    private static final float UNKNOWN_ACCURACY = 5000f;
 
     public static final class Fix {
         public double lat;
@@ -63,7 +75,11 @@ public final class Locator {
         if (!gpsEnabled && !netEnabled) throw new IllegalStateException("系统定位开关是关闭的");
 
         Location lastKnown = bestLastKnown(manager);
-        if (lastKnown != null && System.currentTimeMillis() - lastKnown.getTime() < FRESH_MS) {
+        long age = lastKnown == null ? Long.MAX_VALUE
+                : System.currentTimeMillis() - lastKnown.getTime();
+        /* 又新又准才敢直接信它；否则宁可多等几秒去拿一个真的 */
+        if (lastKnown != null && age < TRUST_AGE_MS
+                && accuracyOf(lastKnown) <= TRUST_ACCURACY) {
             return toFix(lastKnown, false);
         }
 
@@ -72,10 +88,10 @@ public final class Locator {
         LocationListener listener = new LocationListener() {
             @Override
             public void onLocationChanged(Location location) {
-                if (best[0] == null || location.getAccuracy() < best[0].getAccuracy()) {
+                if (best[0] == null || accuracyOf(location) < accuracyOf(best[0])) {
                     best[0] = location;
                 }
-                if (location.getAccuracy() <= GOOD_ACCURACY) latch.countDown();
+                if (accuracyOf(location) <= GOOD_ACCURACY) latch.countDown();
             }
 
             @Override
@@ -89,7 +105,8 @@ public final class Locator {
         };
 
         int requested = 0;
-        for (String provider : new String[]{LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER}) {
+        /* GPS 先注册：它收敛慢但最准，早一点开始等 */
+        for (String provider : new String[]{LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER}) {
             try {
                 if (!manager.isProviderEnabled(provider)) continue;
                 manager.requestLocationUpdates(provider, 0L, 0f, listener, Looper.getMainLooper());
@@ -112,19 +129,45 @@ public final class Locator {
             }
         }
 
-        Location fix = best[0] != null ? best[0] : lastKnown;
+        Location fix = best[0];
+        /* 实时结果太差（比如 1 公里外的基站定位）而 lastKnown 更准时，用 lastKnown */
+        if (fix != null && lastKnown != null
+                && accuracyOf(fix) > 200f && accuracyOf(lastKnown) < accuracyOf(fix)) {
+            return toFix(lastKnown, true);
+        }
+        if (fix == null) fix = lastKnown;
         if (fix == null) throw new IllegalStateException("定位超时（户外或信号差时多等几秒再试）");
         return toFix(fix, best[0] == null);
     }
 
+    /** 精度未知按很差处理，避免「没写精度」的定位被当成好点 */
+    private static float accuracyOf(Location location) {
+        return location.hasAccuracy() ? location.getAccuracy() : UNKNOWN_ACCURACY;
+    }
+
+    /**
+     * 取最准的一条 lastKnown，而不是最新的一条。
+     * 同一台设备上 NETWORK 的 lastKnown 往往是几十秒前的基站定位（偏差几百米），
+     * GPS 的可能是十分钟前的（但只有十几米）——后者对「离哪个站最近」更有用。
+     */
     private static Location bestLastKnown(LocationManager manager) {
         Location best = null;
         try {
             List<String> providers = manager.getProviders(true);
             for (String provider : providers) {
-                Location location = manager.getLastKnownLocation(provider);
+                Location location;
+                try {
+                    location = manager.getLastKnownLocation(provider);
+                } catch (SecurityException e) {
+                    continue;
+                }
                 if (location == null) continue;
-                if (best == null || location.getTime() > best.getTime()) best = location;
+                if (best == null || accuracyOf(location) < accuracyOf(best)) {
+                    best = location;
+                } else if (accuracyOf(location) == accuracyOf(best)
+                        && location.getTime() > best.getTime()) {
+                    best = location;
+                }
             }
         } catch (SecurityException ignored) {
         }

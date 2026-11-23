@@ -3790,7 +3790,7 @@
     var before = state.fix;
     var fix;
     try {
-      fix = await locate(timeoutMs || 5000);
+      fix = await locate(timeoutMs || 8000);
     } catch (err) {
       return false;                       // 定位失败就沿用旧坐标，不打断刷新
     }
@@ -3798,6 +3798,11 @@
     /* 旧的 fix 是新鲜的、新的却是缓存的老位置时，别用旧的换掉新的 */
     if (fix.stale && before && !before.stale) return false;
 
+    /* 新点精度明显更差（比如从 15 米的 GPS 掉到 800 米的基站定位）就别覆盖：
+       宁可位置旧一点，也不要站名乱跳。 */
+    var beforeAcc = before && before.accuracy > 0 ? before.accuracy : Infinity;
+    var nowAcc = fix.accuracy > 0 ? fix.accuracy : Infinity;
+    if (before && !fix.stale && nowAcc > beforeAcc * 2.5 + 50) return false;
     var moved = !before ||
       geoDistanceMeters(before.lat, before.lng, fix.lat, fix.lng) >= 50;
     state.fix = fix;
@@ -3817,7 +3822,7 @@
     searching = false;
 
     if (options && options.locate) {
-      try { await relocate(options.locateTimeout || 5000); } catch (e) {}
+      try { await relocate(options.locateTimeout || 8000); } catch (e) {}
     }
 
     var lat = state.fix ? state.fix.lat : DEFAULT_LAT;
@@ -4625,7 +4630,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.34";
+  var APP_FALLBACK_VERSION = "1.0.35";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -5374,7 +5379,7 @@
       if (document.hidden) return;
       if (!shouldAutoRefreshHome()) return;
       if (state.busy) return;
-      relocate(5000).then(function (moved) {
+      relocate(8000).then(function (moved) {
         if (moved) refreshHome({ budget: 8 }).catch(function () {});
       }).catch(function () {});
     }, 60000);
