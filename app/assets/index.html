@@ -149,29 +149,13 @@
   .bus .meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
   .armeta { display: flex; align-items: center; gap: 6px; }
   .armeta .armain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  /* 第一排：线路 往 方向（醒目、不省略，长了就换行） */
+  /* 第一排：只有线路名（醒目、不省略，长了就换行） */
   .armeta .armain-r1 { font-size: var(--fs); color: var(--text);
     word-break: break-all; line-height: 1.35; }
   /* 第二排：到站状态/时间（小一号、弱化色） */
   .armeta .armain-r2 { font-size: var(--fs-sm); color: var(--muted);
     word-break: break-all; line-height: 1.3; }
   .armeta .armain-r2:empty { display: none; }
-  /* 有在途车辆：整行高亮（左侧色条 + 淡蓝底），表示「有车在路上」。
-     快到站（≤2 站 / ≤150 秒）**保留高亮**，只是文字转红（见下面的 .hot）。
-     padding-left + 负 margin-left 抵消，保证文字位置和其他行对齐。 */
-  .armeta.live {
-    background: linear-gradient(90deg, rgba(79, 140, 255, .16), rgba(79, 140, 255, 0) 72%);
-    box-shadow: inset 3px 0 0 var(--accent);
-    border-radius: 10px;
-    padding-left: 8px;
-    padding-right: 6px;
-    margin-left: -8px;
-  }
-  .armeta.live .armain-r2 { color: #9dc0ff; }
-  /* 快到站：高亮保留，文字转红。必须写在 .armeta.live .armain-r2 之后
-     （同优先级后者生效），否则会被上一条的淡蓝色盖掉。 */
-  .armeta.hot .armain-r1,
-  .armeta.hot .armain-r2 { color: #ff6b5e; }
   .armeta .arrow { flex: 0 0 auto; color: #56637d; }
   .armeta .spk { flex: 0 0 auto; padding: 2px 8px; border: 1px solid var(--line);
     border-radius: 8px; font-size: 12px; line-height: 1; color: #b9c6dd; }
@@ -2256,14 +2240,15 @@
     });
   }
 
-  /* 站点行的双排主文案：第一排「线路 往 方向」，第二排「状态/时间」 */
+  /* 站点行的双排主文案：第一排只有线路名，第二排「状态/时间」。
+     方向（往 XX 站）不再显示——用户要求首页行只留线路名，
+     方向信息进详情页看（那里有完整的站点表）。 */
   function twoRowMain(lineName, toward, statusText) {
     var main = document.createElement("span");
     main.className = "armain";
     var r1 = document.createElement("span");
     r1.className = "armain-r1";
-    /* 第一排：线路 往 方向（原来是「线路 → 方向」，用户要求换成「往」更好读） */
-    r1.textContent = lineName + "路 往 " + (toward || "");
+    r1.textContent = lineName + "路";
     var r2 = document.createElement("span");
     r2.className = "armain-r2";
     r2.textContent = statusText || "";
@@ -2272,35 +2257,15 @@
     return main;
   }
 
-  /* 首页行状态统一着色。一次调用把透明度/文字颜色/高亮都定死，
-     避免「先加了 live，异步补到车是急行又只删 live 不给红色」这种半吊子状态。
-       ended          → 变淡，不高亮
-       有车（含急行） → 一定高亮；急行时文字变红（高亮和红色叠加，不互斥）
-       无车           → 普通样式 */
+  /* 首页行状态：只处理「收班变淡」。
+     用户明确要求取消有车高亮和快到站红字（首页只看线路和到站时间），
+     所以这里不再加 live/hot，顺便把可能残留的类清掉。 */
   function paintRowState(row, bus, ended) {
     if (!row || !row.style) return;
-    if (ended) {
-      row.style.opacity = ".5";
-      if (row.classList) {
-        row.classList.remove("live");
-        row.classList.remove("hot");
-      }
-      return;
-    }
-    row.style.opacity = "";
-    if (bus) {
-      if (row.classList) row.classList.add("live");
-      /* 快到站：在保持高亮的前提下把文字改成红色（走 class，见上面 CSS）。
-         行内 style.color 盖不住 .armain-r1/.armain-r2 自己的颜色，所以必须用类。 */
-      if (row.classList) {
-        if (isUrgent(bus)) row.classList.add("hot");
-        else row.classList.remove("hot");
-      }
-    } else {
-      if (row.classList) {
-        row.classList.remove("live");
-        row.classList.remove("hot");
-      }
+    row.style.opacity = ended ? ".5" : "";
+    if (row.classList) {
+      row.classList.remove("live");
+      row.classList.remove("hot");
     }
   }
 
@@ -5150,7 +5115,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.19";
+  var APP_FALLBACK_VERSION = "1.0.20";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -5213,15 +5178,15 @@
         demo: "🚇 地铁 / 有轨电车 · 站点查询    [查看]" }
     ]},
     { title: "首页 · 站点列表", items: [
-      { icon: "1", name: "第一排：线路 往 方向",
-        desc: "告诉你这路车开往哪里，避免坐反。",
-        demo: "716路 往 高新西区公交站" },
+      { icon: "1", name: "第一排：线路名",
+        desc: "这个站停靠哪几路车，一行一路。点行进详情页看方向和沿途各站。",
+        demo: "716路" },
       { icon: "2", name: "第二排：到站状态",
         desc: "「还有 3 站」「12 分 30 秒」或「不在运营时段（首班 06:00 · 末班 21:50）」。",
         demo: "还有 3 站 · 11 分 30 秒" },
       { icon: "🔊", name: "单独播报",
         desc: "点行尾的 🔊 只念这一条，不影响其它。",
-        demo: "716路 往 高新西区   还有 3 站   🔊 ›" }
+        demo: "716路   还有 3 站   🔊 ›" }
     ]},
     { title: "线路页 / 详情页", items: [
       { icon: "⇄", name: "方向切换",
@@ -5565,7 +5530,7 @@
           var text = outsideService(a.firstTime, a.lastTime, a) ? endedText(a.firstTime, a.lastTime)
             : (a.etaSeconds !== null ? describe(a)
               : (a.preStartTime ? "待发车 " + a.preStartTime : "暂无实时车辆"));
-          html += '<div class="meta">' + a.lineName + "路 往 " + (a.toward || "") + "　" + text + "</div>";
+          html += '<div class="meta">' + a.lineName + "路　" + text + "</div>";
         });
       });
       html += '<div class="meta" style="margin-top:8px;opacity:.6">地铁实时到站请用「成都地铁」App</div></div>';
