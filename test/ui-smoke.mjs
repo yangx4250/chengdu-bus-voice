@@ -801,6 +801,15 @@ await new Promise((r) => setTimeout(r, 800));
 
 // 选中线路后进「线路页」，站名芯片在这页上
 const stage2 = [];
+
+/* v1.0.15：进 App（autoLoad 定位完）不再自动播报附近站点。
+   附近播报是一整段「花园永泉站，P02路往…。龙溪村委会站，…」，用句式识别。 */
+{
+  const startupSpeech = speakLog.filter((t) => /站，[A-Z]*\d+路/.test(t));
+  if (startupSpeech.length) {
+    stage2.push('进 App 时自动播报了附近站点：' + startupSpeech.join(' | ').slice(0, 120));
+  }
+}
 if (String(document.getElementById('lineview').className).includes('hidden')) {
   stage2.push('搜索单条线路后没有进入线路页');
 }

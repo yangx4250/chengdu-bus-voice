@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.0.14）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.0.15）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -164,6 +164,9 @@ chengdu-bus/build/成都公交.apk    (约 92 KB)
 界面是 WebView + 原生桥。
 
 **应用名「成都公交」（v1.0.1）**：桌面显示名、安装列表、系统标题栏统一改成「成都公交」；
+**v1.0.15 进 App 不再自动播报**：打开 App 只安静地拉附近站点、不念。
+想看声音时点站点卡或「查询并播报」即可，那两条路径照常播。
+
 **v1.0.14 移除自动播报开关**：首页底栏和设置里的「自动播报」开关全部去掉，
 语音始终开启（想静音用手机音量键）。播报逻辑不变，只是不再有开关可关。
 

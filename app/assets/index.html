@@ -4070,7 +4070,9 @@
     state.lineView = null;
     state.favView = null;
     state.fix = fix;
-    await refreshHome({ announce: true, budget: 18 });
+    /* v1.0.15：进 App 不再自动念附近站点（原来一打开就播一串，太吵）。
+       想听的时候点「当前位置」或点站点卡，仍会照常播报。 */
+    await refreshHome({ announce: false, budget: 18 });
     startHomeAutoRefresh();
     startCountdown();
   }
@@ -4838,7 +4840,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.14";
+  var APP_FALLBACK_VERSION = "1.0.15";
 
   function fillAbout() {
     var verEl = $("abVersion");
