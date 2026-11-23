@@ -20,3 +20,9 @@ sources.txt
 
 # 演示音频（生成物）
 demo/*.mp3
+
+# 临时输出
+.o.txt
+.o2.txt
+*.bak.html
+.inline.js
