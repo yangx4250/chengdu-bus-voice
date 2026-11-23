@@ -147,7 +147,7 @@
   .bus .eta { font-size: 26px; font-weight: 700; margin-top: 8px; color: var(--accent); }
   .bus .eta.hot { color: var(--hot); }
   .bus .meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
-  /* 站点卡的线路列表：三列网格，每格只放线路名，
+  /* 站点卡的线路列表：三列网格，每格只有线路名，
      这样一屏能看全这个站的所有线路，不用上下滚。 */
   .gridlines {
     display: grid;
@@ -166,8 +166,6 @@
   .gcell:active { background: #22304a; }
   .gcell.ended { opacity: .5; }
   .gcell .gname { font-size: var(--fs); font-weight: 600; color: var(--text);
-    word-break: break-all; line-height: 1.25; }
-  .gcell .gtime { font-size: 11px; color: var(--muted);
     word-break: break-all; line-height: 1.25; }
 
   .stop-title { font-size: 16px; font-weight: 600; margin: 4px 2px 8px; }
@@ -1823,14 +1821,6 @@
     return null;
   }
 
-  /* 格子第二排文案：用户要求取消「几站」这类到站状态，
-     这里只保留能判断「有没有车」的信息——待发车时间、收班提示。 */
-  function gridTimeText(opts) {
-    if (opts.ended) return endedText(opts.firstTime, opts.lastTime);
-    if (opts.preStart) return "待发车 " + opts.preStart;
-    return "";
-  }
-
   function appendGridCell(box, group, opts) {
     var name = String(opts.lineName || "");
     if (!name) return false;
@@ -1838,22 +1828,12 @@
     var cell = document.createElement("div");
     cell.className = "gcell" + (opts.ended ? " ended" : "");
 
-    /* 用户要求：取消「几站」这类到站状态、取消播报按钮。
-       格子只保留线路名，让一个站的所有线路一屏列全；
-       待发车时间、收班提示不属于「几站」，保留下来，
-       否则用户看到一条线路完全没有信息、分不清是没车还是没数据。 */
+    /* 用户要求：格子只显示线路名——「几站」到站状态、待发车/收班时间、
+       播报按钮全部取消，一个站的所有线路一屏列全。 */
     var gname = document.createElement("div");
     gname.className = "gname";
     gname.textContent = name + "路";
     cell.appendChild(gname);
-
-    var hint = gridTimeText(opts);
-    if (hint) {
-      var gtime = document.createElement("div");
-      gtime.className = "gtime";
-      gtime.textContent = hint;
-      cell.appendChild(gtime);
-    }
 
     cell.onclick = function () {
       if (opts.ended || !opts.lineId) return;
@@ -2125,15 +2105,6 @@
 
       rows.forEach(function (a) { appendArrivalCell(rowsBox, group, a); });
       fillGroupLines(rowsBox, group, rows.map(function (a) { return a.lineName; }));
-
-      if (group.lineNames) {
-        var via = document.createElement("div");
-        via.className = "meta";
-        via.style.marginTop = "8px";
-        via.style.opacity = ".55";
-        via.textContent = "途经 " + group.lineNames;
-        card.appendChild(via);
-      }
 
       var starEl = card.querySelector ? card.querySelector(".stopstar") : null;
       if (starEl) {
@@ -4891,7 +4862,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.22";
+  var APP_FALLBACK_VERSION = "1.0.23";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -4955,11 +4926,8 @@
     ]},
     { title: "首页 · 站点列表", items: [
       { icon: "▦", name: "三列格子：线路名",
-        desc: "每个站用三列格子把停靠线路全部列出来，一格一条线路名，一屏看全。点格子进详情页看方向和沿途各站。",
-        demo: "┌────┬────┬────┐\n│ 716路 │ P36路 │ 720路 │\n│ 45路 │ 801路 │ P02路 │\n└────┴────┴────┘" },
-      { icon: "⏱", name: "格子第二排",
-        desc: "只保留「有没有车」这类信息：待发车时间（如 待发车 09:24）、或收班提示（不在运营时段（首班 06:00 · 末班 21:50））。「还有 N 站」这类到站状态已取消。",
-        demo: "┌────────────────┐\n│ 720路 待发车 09:24 │\n└────────────────┘" }
+        desc: "每个站用三列格子把停靠线路全部列出来，一格只有线路名，一屏看全。点格子进详情页看方向、首末班和沿途各站。",
+        demo: "┌────┬────┬────┐\n│ 716路 │ P36路 │ 720路 │\n│ 45路 │ 801路 │ P02路 │\n└────┴────┴────┘" }
     ]},
     { title: "线路页 / 详情页", items: [
       { icon: "⇄", name: "方向切换",

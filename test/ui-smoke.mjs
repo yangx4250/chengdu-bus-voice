@@ -668,10 +668,9 @@ if (/is not a function|is not defined|undefined 的/.test(rendered)) {
 }
 if (!rendered.includes('花园永泉')) failures.push('没有渲染出站点「花园永泉」');
 if (!rendered.includes('龙溪村委会')) failures.push('没有渲染出站点「龙溪村委会」');
-if (!rendered.includes('不在运营时段')) failures.push('收班线路没有标「不在运营时段」');
-/* 收班提示要带首末班时间，让用户知道什么时候有车 */
-if (!/不在运营时段（[^）]*首班[^）]*）/.test(rendered)) {
-  failures.push('「不在运营时段」没有带首末班时间：' + (rendered.match(/不在运营时段[^<]*/) || [''])[0]);
+/* v1.0.23：首页卡片取消「途经」和首末班时间，只剩站名 + 三列线路名 */
+if (/不在运营时段/.test(rendered)) {
+  failures.push('首页卡片还在显示收班时间：' + (rendered.match(/不在运营时段[^<]*/) || [''])[0]);
 }
 if (!rendered.includes('暂无实时车辆')) failures.push('没有到站数据的站点没有标「暂无实时车辆」');
 /* 首页站点卡右上角要有 🧭 导航按钮，点了能调起地图 */
@@ -796,7 +795,7 @@ if (!/function voiceOn\(\) \{ return true; \}/.test(html)) {
   failures.push('voiceOn() 应恒为 true（开关已移除）');
 }
 if (/cdbus\.voiceAuto/.test(html)) failures.push('还残留自动播报设置的读写逻辑');
-if (!rendered.includes('途经')) failures.push('站点卡没有「途经」线路行');
+if (/途经/.test(rendered)) failures.push('站点卡还在显示「途经 …」线路行');
 if (/出错了/.test(rendered)) failures.push('界面进入了出错分支：' + rendered.slice(0, 160));
 if (missingFns.length) failures.push('调用了未定义的函数：' + missingFns.join(', '));
 
@@ -1341,17 +1340,20 @@ if (/往 /.test(cardsHtml)) {
   });
 }
 /* v1.0.22：用户要求取消「几站」这类到站状态——格子里不能再出现「N 站」 */
-if (/\d+\s*站(?![\s\S]{0,60}?(?:待发车|不在运营时段))/.test(cardsHtml)) {
+/* v1.0.23：格子里只剩线路名，「几站」「待发车」「收班时间」都不能出现 */
+if (/\d+\s*站/.test(cardsHtml)) {
   stage3.push('三列格子还在显示「几站」到站状态：' + cardsHtml.slice(0, 240));
 }
-if (!cardsHtml.includes('P36路')) stage3.push('近似站名没有合并/数据没带过来：' + cardsHtml.slice(0, 240));
-if (!cardsHtml.includes('09:24')) stage3.push('起点站没有显示待发车时间：' + cardsHtml.slice(0, 240));
-if (!/720路[\s\S]{0,40}?待发车 09:24/.test(cardsHtml)) {
-  stage3.push('720路格子的第二排不是发车时间 09:24');
+if (/待发车/.test(cardsHtml)) {
+  stage3.push('三列格子还在显示待发车时间：' + cardsHtml.slice(0, 240));
 }
+if (/不在运营时段/.test(cardsHtml)) {
+  stage3.push('三列格子还在显示收班时间：' + cardsHtml.slice(0, 240));
+}
+if (!cardsHtml.includes('P36路')) stage3.push('近似站名没有合并/数据没带过来：' + cardsHtml.slice(0, 240));
 // 同名站点应该合并成一张卡片
 if (stopCards.length !== 4) stage3.push('站点卡片数不对：' + stopCards.length);
-if (!cardsHtml.includes('途经')) stage3.push('站点卡缺少途经线路');
+if (/途经/.test(cardsHtml)) stage3.push('站点卡还在显示「途经」线路行');
 
 /* v1.0.21：线路列表改成三列网格 */
 if (!/\.gridlines\s*\{[^}]*grid-template-columns:\s*repeat\(3/.test(html)) {
@@ -1368,8 +1370,8 @@ if (!/\.gridlines\s*\{[^}]*grid-template-columns:\s*repeat\(3/.test(html)) {
 }
 if (/🔊/.test(cardsHtml)) stage3.push('三列格子里还留着播报按钮（🔊）');
 const allRows = findByClass(document.getElementById('list'), 'gcell');
-if (!/P49路[\s\S]{0,120}?待发车 \d{2}:\d{2}/.test(cardsHtml)) {
-  stage3.push('没有在途车的行没有显示起点预估发车：' + cardsHtml.slice(-320));
+if (!cardsHtml.includes('P49路')) {
+  stage3.push('站点卡缺少线路「P49路」：' + cardsHtml.slice(-320));
 }
 
 /* v1.0.20：用户要求取消首页的「有车高亮」和「快到站红字」。
@@ -1414,7 +1416,7 @@ if (stage3.length) {
   process.exit(1);
 }
 
-console.log('✓ UI 冒烟通过：站点渲染、收班标记、途经线路都正常');
+console.log('✓ UI 冒烟通过：站点渲染、三列线路名都正常');
 console.log('✓ 双向显示通过：同一站点两个方向分行显示，无 ⇄ 按钮');
 console.log('✓ 收藏链路通过：选站出现收藏条 → 点收藏写入并展示在首页');
 
