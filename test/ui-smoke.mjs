@@ -933,6 +933,16 @@ if (!stationChips.length) {
     })) {
       stage2.push('🚌 混进了站名文本里，应该是独立徽标');
     }
+    // 一辆车一个图标：桩里每个站只有一辆车，所以每站恰好一个 🚌
+    const ones = findByClass(lchips, 'onebus');
+    if (ones.length !== withBus.length) {
+      stage2.push('🚌 图标数不对：有车 ' + withBus.length + ' 站，图标 ' + ones.length + ' 个');
+    }
+    // 图标必须在芯片内部（.chips.vertical .chip 有 overflow:hidden，放外面会被裁掉看不见）
+    const htmlNow = readFileSync(path.join(here, '..', 'app', 'assets', 'index.html'), 'utf8');
+    if (!/\.chips\.vertical \.chip\.hasbus\s*\{[^}]*padding-top/.test(htmlNow)) {
+      stage2.push('竖排芯片没给 🚌 留出顶部空间，图标会被 overflow 裁掉');
+    }
   }
   // 摘要条：显示在途车辆数和更新时间
   const lvb = document.getElementById('lvbuses');

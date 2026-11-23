@@ -62,16 +62,23 @@
   .chip.dirchip.on .dirtime { color: #b9c6dd; }
   /* 站名条里「离我最近」的那一站 */
   .chip.nearest { border-color: var(--ok); background: #12302a; }
-  /* 实时车辆位置：🚌 挂在站名芯片上（绝对定位在右上角，不挤占站名）。
-     车在两站之间时用 .moving 加个轻微呼吸感，表示正在靠近。 */
-  .chip.hasbus { position: relative; }
+  /* 实时车辆位置：🚌 挂在站名芯片「头上」（站名上方、芯片内部）。
+     注意 .chips.vertical .chip 有 overflow: hidden，图标放在芯片外会被裁掉看不见。 */
+  .chip.hasbus { position: relative; padding-top: 20px; }
   .chip.hasbus .busmark {
-    position: absolute; top: -7px; right: -6px;
-    font-size: 13px; line-height: 1;
-    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .7));
+    writing-mode: horizontal-tb; text-orientation: mixed;
+    position: absolute; top: 2px; left: 50%; transform: translateX(-50%);
+    font-size: 14px; line-height: 1; margin: 0; letter-spacing: 0;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .8));
     pointer-events: none;
   }
-  .chip.hasbus.moving .busmark { animation: busPulse 2s ease-in-out infinite; }
+  /* 竖排芯片：🚌 单独占顶部一行，站名整体往下让 */
+  .chips.vertical .chip.hasbus { padding-top: 22px; }
+  /* 既是最近站又有车：最近徽标在上、🚌 在下，两行都露出来 */
+  .chips.vertical .chip.hasbus.nearest { padding-top: 38px; }
+  .chips.vertical .chip.hasbus.nearest .busmark { top: 20px; }
+  .chip.hasbus .busmark .onebus { font-style: normal; display: inline-block; }
+  .chip.hasbus.moving .busmark .onebus { animation: busPulse 2s ease-in-out infinite; }
   @keyframes busPulse {
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.18); }
@@ -2765,9 +2772,15 @@
         chip.appendChild(nb);
       }
       if (busHere.count > 0) {
+        /* 一辆车一个图标，几辆并排几个（不用数字角标，一眼看出是几辆车） */
         var bm = document.createElement("i");
         bm.className = "busmark";
-        bm.textContent = busHere.count > 1 ? "🚌" + busHere.count : "🚌";
+        for (var bi = 0; bi < busHere.count; bi++) {
+          var one = document.createElement("em");
+          one.className = "onebus";
+          one.textContent = "🚌";
+          bm.appendChild(one);
+        }
         chip.appendChild(bm);
       }
       chip.onclick = function () {
@@ -4762,7 +4775,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.9";
+  var APP_FALLBACK_VERSION = "1.0.10";
 
   function fillAbout() {
     var verEl = $("abVersion");
