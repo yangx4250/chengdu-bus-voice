@@ -59,11 +59,10 @@ public final class MainActivity extends Activity {
         settings.setUseWideViewPort(true);
         settings.setSupportZoom(false);
         settings.setMediaPlaybackRequiresUserGesture(false);
-        /* 跟随系统字体大小：WebView 默认 textZoom=100（固定），
-           不主动设置的话，用户把系统字体调大时页面文字不会变。
-           读 config.fontScale（系统「字体大小」滑块），换算成百分比；
-           同时页面 CSS 用 rem 作基准，两者配合才能真正跟着系统走。 */
-        settings.setTextZoom(fontZoomPercent());
+        /* 不跟随系统字体大小：固定 textZoom=100，让 rem 基准保持稳定。
+           字号改由 App 内「设置 → 字体大小」控制（页面用 CSS 变量 --font-scale），
+           这样系统「字体大小」滑块调大调小都不会影响本 App 的排版。 */
+        settings.setTextZoom(100);
         web.setBackgroundColor(Color.parseColor("#0B1220"));
 
         // 长按不选文字、不弹菜单（页面里只用到点按）
@@ -135,20 +134,6 @@ public final class MainActivity extends Activity {
         });
     }
 
-    /** 系统字体缩放 → WebView textZoom 百分比（限制在 80%~200% 防止撑破布局）。 */
-    private int fontZoomPercent() {
-        try {
-            float scale = getResources().getConfiguration().fontScale;
-            if (!(scale > 0)) return 100;
-            int percent = Math.round(scale * 100);
-            if (percent < 80) percent = 80;
-            if (percent > 200) percent = 200;
-            return percent;
-        } catch (Throwable e) {
-            return 100;
-        }
-    }
-
     private boolean hasNotificationPermission() {
         if (android.os.Build.VERSION.SDK_INT < 33) return true;
         return checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
@@ -179,17 +164,13 @@ public final class MainActivity extends Activity {
         });
     }
 
-    /** 系统字体/显示大小变化时，重新应用 WebView 的 textZoom（不重建页面）。 */
+    /**
+     * 系统字体大小变化时不做任何事：App 字号由内部「设置 → 字体大小」控制。
+     * 保留该方法是为了把事件消化掉，避免 Activity 被重建、页面重新加载。
+     */
     @Override
     public void onConfigurationChanged(android.content.res.Configuration cfg) {
         super.onConfigurationChanged(cfg);
-        try {
-            if (web != null) {
-                web.getSettings().setTextZoom(fontZoomPercent());
-            }
-        } catch (Throwable e) {
-            // 忽略：拿不到就保持原样
-        }
     }
 
     @Override

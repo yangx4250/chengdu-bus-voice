@@ -373,6 +373,23 @@
     border-radius: 12px; padding: 12px; margin-bottom: 12px; }
   .setcardtitle { font-size: var(--fs-sm); color: var(--muted); margin-bottom: 8px;
     letter-spacing: .5px; }
+  /* 字体大小：选项列表 + 实时预览 */
+  .fontlist { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+  .fontopt { display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+    background: #0e1626; border: 1px solid var(--line); border-radius: 12px; }
+  .fontopt.on { border-color: var(--accent); background: #16233d; }
+  .fontopt .fradio { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%;
+    border: 2px solid #46536e; display: flex; align-items: center;
+    justify-content: center; }
+  .fontopt.on .fradio { border-color: var(--accent); }
+  .fontopt.on .fradio::after { content: ""; width: 10px; height: 10px;
+    border-radius: 50%; background: var(--accent); }
+  .fontopt .fname { flex: 1; font-size: var(--fs); }
+  .fontopt .fscale { flex: 0 0 auto; font-size: var(--fs-sm); color: var(--muted); }
+  .fontprev { background: #0d1524; border: 1px dashed #2c3a55; border-radius: 12px;
+    padding: 12px 14px; margin-bottom: 10px; }
+  .fontprev .fp-title { font-size: var(--fs-lg); font-weight: 700; }
+  .fontprev .fp-sub { font-size: var(--fs-sm); color: var(--muted); margin-top: 5px; }
   #diag .kv { display: flex; gap: 8px; font-size: var(--fs-sm); padding: 7px 0;
     border-bottom: 1px solid #1d273b; }
   #diag .kv span:first-child { color: var(--muted); flex: 0 0 auto; width: 6em; }
@@ -394,12 +411,17 @@
        最小值用 rem 保证系统字体大时不至于小到看不清；
        中间用 vw 让窄屏自动收缩；
        最大值也用 rem，系统字体超大时仍能继续放大。
-     上限用 2 倍左右，避免极端设置下把布局撑破。 */
+     上限用 2 倍左右，避免极端设置下把布局撑破。
+
+     v9.x 起：字体大小不再跟随系统，改由 App 内「设置 → 字体大小」控制。
+     所有字号都乘以 --font-scale 系数（由 setFontScale() 写入 <html> 内联样式），
+     rem 基准固定为 WebView 默认值，所以系统字体变化不再影响界面。 */
   :root {
-    --fs-sm: clamp(0.75rem, 3vw, 1rem);
-    --fs: clamp(0.9rem, 3.6vw, 1.25rem);
-    --fs-lg: clamp(1.05rem, 4.4vw, 1.6rem);
-    --fs-xl: clamp(1.25rem, 5.6vw, 2rem);
+    --font-scale: 1;
+    --fs-sm: calc(clamp(0.75rem, 3vw, 1rem) * var(--font-scale));
+    --fs: calc(clamp(0.9rem, 3.6vw, 1.25rem) * var(--font-scale));
+    --fs-lg: calc(clamp(1.05rem, 4.4vw, 1.6rem) * var(--font-scale));
+    --fs-xl: calc(clamp(1.25rem, 5.6vw, 2rem) * var(--font-scale));
     --pad: clamp(10px, 3.2vw, 18px);
     --radius: clamp(10px, 3vw, 16px);
   }
@@ -553,6 +575,12 @@
           <div class="setsub">各按钮作用 · 图解</div></div>
         <div class="setarrow">›</div>
       </div>
+      <div class="setitem" id="setFont">
+        <div class="seticon">🔤</div>
+        <div class="setinfo"><div class="setname">字体大小</div>
+          <div class="setsub" id="setFontSub">标准（100%）</div></div>
+        <div class="setarrow">›</div>
+      </div>
       <div class="setitem" id="setVoice">
         <div class="seticon">🔊</div>
         <div class="setinfo"><div class="setname">语音与播报</div>
@@ -582,6 +610,25 @@
     </div>
     <div class="setbody" id="guideBody">
       <!-- 由 renderGuide() 填充 -->
+    </div>
+  </div>
+
+  <!-- 二级：字体大小 -->
+  <div id="setPageFont" class="setpage hidden">
+    <div class="sethead">
+      <button id="fontBack" class="setback">‹</button>
+      <div class="settitle">字体大小</div>
+    </div>
+    <div class="setbody">
+      <div class="setcard">
+        <div class="setcardtitle">选择字号</div>
+        <div class="fontlist" id="fontList"></div>
+        <div class="fontprev" id="fontPreview">
+          <div class="fp-title">成都公交 · 示例</div>
+          <div class="fp-sub">花园公交站 · P36 · 大约 3 分钟到站</div>
+        </div>
+        <div class="dhead">字号只影响 App 内文字，不跟随系统「字体大小」设置；改完立即生效。</div>
+      </div>
     </div>
   </div>
 
@@ -4522,7 +4569,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.4";
+  var APP_FALLBACK_VERSION = "1.0.5";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -4689,10 +4736,104 @@
     box.innerHTML = html;
   }
 
+  /* ---------------------------------------------------------- 字体大小
+
+     不跟随系统「字体大小」：MainActivity 固定 textZoom=100，rem 基准不再变化，
+     字号全部乘以 CSS 变量 --font-scale（写在 <html> 内联样式上）。
+     选项存在 localStorage 的 cdbus.fontScale，默认 1（标准 100%）。 */
+  var FONT_OPTIONS = [
+    { id: "xs", name: "特小", scale: 0.85 },
+    { id: "sm", name: "小", scale: 0.92 },
+    { id: "md", name: "标准", scale: 1 },
+    { id: "lg", name: "大", scale: 1.12 },
+    { id: "xl", name: "特大", scale: 1.25 },
+    { id: "xxl", name: "超大", scale: 1.4 }
+  ];
+  var FONT_KEY = "cdbus.fontScale";
+  var DEFAULT_FONT_SCALE = 1;
+
+  function fontScale() {
+    try {
+      var v = parseFloat(localStorage.getItem(FONT_KEY));
+      if (isFinite(v) && v >= 0.7 && v <= 1.6) return v;
+    } catch (e) {}
+    return DEFAULT_FONT_SCALE;
+  }
+
+  function fontOptionName(scale) {
+    for (var i = 0; i < FONT_OPTIONS.length; i++) {
+      if (Math.abs(FONT_OPTIONS[i].scale - scale) < 0.005) return FONT_OPTIONS[i].name;
+    }
+    return "自定义";
+  }
+
+  /** 把字号系数写到 <html> 内联样式，全站 --fs-* 立刻重算。 */
+  function applyFontScale(scale) {
+    var v = scale;
+    if (!isFinite(v)) v = DEFAULT_FONT_SCALE;
+    if (v < 0.7) v = 0.7;
+    if (v > 1.6) v = 1.6;
+    try {
+      var root = document && document.documentElement;
+      if (root && root.style && root.style.setProperty) {
+        root.style.setProperty("--font-scale", String(v));
+      }
+    } catch (e) {}
+    var sub = $("setFontSub");
+    if (sub) sub.textContent = fontOptionName(v) + "（" + Math.round(v * 100) + "%）";
+    return v;
+  }
+
+  function setFontScale(scale, announce) {
+    var v = applyFontScale(scale);
+    try { localStorage.setItem(FONT_KEY, String(v)); } catch (e) {}
+    renderFontPage();
+    if (announce) showToast("字号已改为「" + fontOptionName(v) + "」");
+    return v;
+  }
+
+  function renderFontPage() {
+    var list = $("fontList");
+    if (!list) return;
+    var cur = fontScale();
+    /* 用 createElement 逐个搭，而不是拼 innerHTML：
+       innerHTML 里的 onclick 拿不到闭包里的选项对象，
+       而且部分容器（如旧 WebView 的 shadow 场景）不保证 querySelectorAll 可用。 */
+    list.innerHTML = "";
+    for (var i = 0; i < FONT_OPTIONS.length; i++) {
+      (function (opt) {
+        var row = document.createElement("div");
+        row.className = "fontopt" + (Math.abs(opt.scale - cur) < 0.005 ? " on" : "");
+        row.setAttribute("data-scale", String(opt.scale));
+
+        var radio = document.createElement("span");
+        radio.className = "fradio";
+
+        var name = document.createElement("span");
+        name.className = "fname";
+        name.textContent = opt.name;
+
+        var scale = document.createElement("span");
+        scale.className = "fscale";
+        scale.textContent = Math.round(opt.scale * 100) + "%";
+
+        row.appendChild(radio);
+        row.appendChild(name);
+        row.appendChild(scale);
+        row.onclick = function () { setFontScale(opt.scale, true); };
+        list.appendChild(row);
+      })(FONT_OPTIONS[i]);
+    }
+    applyFontScale(cur);
+  }
+
+  /* 启动即应用已保存的字号（不等设置页打开）。 */
+  applyFontScale(fontScale());
+
   /* 设置页导航：主页 ↔ 分类面板。用一个简单栈管理返回。 */
   var setStack = [];
   function showSetPage(id) {
-    var ids = ["setHome", "setPageGuide", "setPageVoice", "setPageDiag", "setPageAbout"];
+    var ids = ["setHome", "setPageGuide", "setPageFont", "setPageVoice", "setPageDiag", "setPageAbout"];
     ids.forEach(function (x) {
       var el = $(x);
       if (el) el.classList.toggle("hidden", x !== id);
@@ -4896,6 +5037,7 @@
     showSetPage(id);
     if (id === "setPageAbout") fillAbout();
     if (id === "setPageGuide") renderGuide();
+    if (id === "setPageFont") renderFontPage();
     if (id === "setPageVoice") renderDiag();
     if (id === "setPageDiag") renderHeartbeatInfo();
   }
@@ -4917,6 +5059,8 @@
 
   $("setGuide").onclick = function () { enterSet("setPageGuide"); };
   $("guideBack").onclick = function () { backFromDiag(); };
+  $("setFont").onclick = function () { enterSet("setPageFont"); };
+  $("fontBack").onclick = function () { backFromDiag(); };
   $("setVoice").onclick = function () { enterSet("setPageVoice"); };
   $("setDiag").onclick = function () { enterSet("setPageDiag"); };
   $("setAbout").onclick = function () { enterSet("setPageAbout"); };

@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.0.4）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.0.5）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -164,6 +164,10 @@ chengdu-bus/build/成都公交.apk    (约 92 KB)
 界面是 WebView + 原生桥。
 
 **应用名「成都公交」（v1.0.1）**：桌面显示名、安装列表、系统标题栏统一改成「成都公交」；
+**v1.0.5 字体大小可调（不再跟随系统）**：「设置 → 字体大小」提供 特小/小/标准/大/特大/超大
+六档（85%~140%），点选立即生效并记住；WebView 的 textZoom 固定 100，系统「字体大小」滑块
+不再影响本 App 的排版。
+
 **v1.0.4 图标换新版白色立体图案**：新图（白底棋盘格上的白色圆角方形图标）自动去掉
 圆角方形以外的内容——拟合角部曲线得圆角比例 116/736≈0.158，按该几何裁切、圆外透明，
 **v1.0.3 图标定稿圆角方形**：主体图案缩至 92% 居中，四周空隙用渐变边缘径向延展填充（无白边、无拉伸），

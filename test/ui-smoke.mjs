@@ -31,7 +31,11 @@ function makeElement(id = '') {
     id,
     textContent: '',
     className: '',
-    style: {},
+    style: {
+      props: {},
+      setProperty(k, v) { this.props[k] = String(v); },
+      getPropertyValue(k) { return Object.prototype.hasOwnProperty.call(this.props, k) ? this.props[k] : ''; },
+    },
     dataset: {},
     checked: false,
     disabled: false,
@@ -98,7 +102,16 @@ function makeElement(id = '') {
 }
 
 const elements = new Map();
+/* 根元素桩：页面用 document.documentElement.style.setProperty('--font-scale', …)
+   控制字号，真实 WebView 里由 CSSOM 提供，桩里要手动实现。 */
+const rootStyle = {
+  props: {},
+  setProperty(k, v) { this.props[k] = String(v); },
+  getPropertyValue(k) { return Object.prototype.hasOwnProperty.call(this.props, k) ? this.props[k] : ''; },
+  removeProperty(k) { delete this.props[k]; },
+};
 const document = {
+  documentElement: { style: rootStyle },
   getElementById(id) {
     if (!elements.has(id)) elements.set(id, makeElement(id));
     return elements.get(id);
@@ -2036,6 +2049,70 @@ if (stage8.length) {
   process.exit(1);
 }
 console.log('✓ 地铁/有轨通过：线路芯片、站点列表、换乘标注、站点详情');
+
+// ------------------------------------------------ 第九阶段：设置 → 字体大小
+
+const stage9 = [];
+const fontScaleOf = () => parseFloat(rootStyle.getPropertyValue('--font-scale'));
+
+// 打开设置，主页应有「字体大小」入口
+document.getElementById('settingsBtn').onclick();
+await new Promise((r) => setTimeout(r, 300));
+document.getElementById('setFont').onclick();
+await new Promise((r) => setTimeout(r, 300));
+
+// 六个档位都要渲染出来
+const fontText = textOf(document.getElementById('fontList'));
+for (const name of ['特小', '小', '标准', '大', '特大', '超大']) {
+  if (!fontText.includes(name)) stage9.push('字体页面缺少档位：' + name);
+}
+if (!fontText.includes('125%')) stage9.push('选项没有显示百分比：' + fontText.slice(0, 200));
+
+// 默认应是标准 100%
+if (Math.abs(fontScaleOf() - 1) > 0.01) stage9.push('默认字号系数不是 1，实际 ' + fontScaleOf());
+
+// 点「特大」→ 系数 1.25、写入 localStorage
+const fontRows = findByClass(document.getElementById('fontList'), 'fontopt');
+if (fontRows.length !== 6) stage9.push('字号选项数量不是 6，实际 ' + fontRows.length);
+else {
+  const xlRow = fontRows.find((el) => textOf(el).includes('特大'));
+  if (!xlRow) stage9.push('找不到「特大」选项');
+  else if (typeof xlRow.onclick !== 'function') stage9.push('「特大」选项没有绑定点击事件');
+  else {
+    xlRow.onclick();
+    await new Promise((r) => setTimeout(r, 200));
+    if (Math.abs(fontScaleOf() - 1.25) > 0.01) {
+      stage9.push('点「特大」后系数应为 1.25，实际 ' + fontScaleOf());
+    }
+    const stored = localStorage.getItem('cdbus.fontScale');
+    if (stored !== '1.25') stage9.push('字号没有写进 localStorage，实际 ' + stored);
+    // 注意：className 里 "fontopt" 本身就含子串 "on"，必须按空格分词比较
+    const onRows = findByClass(document.getElementById('fontList'), 'fontopt')
+      .filter((el) => String(el.className || '').split(/\s+/).includes('on'));
+    if (onRows.length !== 1) stage9.push('选中态数量应为 1，实际 ' + onRows.length);
+    else if (!textOf(onRows[0]).includes('特大')) stage9.push('选中态不是「特大」');
+  }
+}
+
+// 返回设置主页，副标题要显示当前字号
+document.getElementById('fontBack').onclick();
+await new Promise((r) => setTimeout(r, 200));
+const sub = textOf(document.getElementById('setFontSub'));
+if (!sub.includes('特大') || !sub.includes('125%')) {
+  stage9.push('设置主页副标题没反映当前字号：' + sub);
+}
+
+// 再进一次，确认选项状态被保留（不是每次重新渲染就丢）
+document.getElementById('setFont').onclick();
+await new Promise((r) => setTimeout(r, 200));
+if (Math.abs(fontScaleOf() - 1.25) > 0.01) stage9.push('重新进入后字号被重置');
+
+if (stage9.length) {
+  console.error('✗ UI 冒烟失败（字体大小）：');
+  for (const f of stage9) console.error('  - ' + f);
+  process.exit(1);
+}
+console.log('✓ 字体大小通过：6 档选项、实时生效、持久化、不跟随系统');
 
 // 首页有 30 秒自动刷新定时器，测试用完直接退出
 process.exit(0);
