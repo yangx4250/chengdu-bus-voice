@@ -119,9 +119,12 @@ public final class Navigator {
         }
 
         /* 一律步行导航。
-         * 坑（用户实测截图确认）：高德的 androidamap://navi 是「驾车导航」接口，
-         * t=2 会被直接忽略——所以之前传了步行参数仍进驾车导航。
-         * 步行必须走 route/plan（t=2）；百度的 navi 同理是驾车，步行要用 walknavi。 */
+         * 坑 1（用户实测截图确认）：高德的 androidamap://navi 是「驾车导航」接口，
+         *   t=2 会被直接忽略——所以之前传了步行参数仍进驾车导航。
+         *   步行必须走 route/plan（t=2）；百度的 navi 同理是驾车，步行要用 walknavi。
+         * 坑 2（用户实测确认）：把站名（如「龙溪村村委会」）当目的地名传给地图，
+         *   地图会优先按 POI 名字搜索，导到村委会的地址而不是公交站坐标。
+         *   所以下面只传坐标，不传名字——名字只在 App 自己的状态栏里显示。 */
         int distance = distanceMeters(fromLat, fromLng, lat, lng);
 
         double[] c;
@@ -131,7 +134,6 @@ public final class Navigator {
             default: c = Geo.wgsToGcj(lat, lng); break;
         }
 
-        String encName = URLEncoder.encode(name == null ? "目的地" : name, "UTF-8");
         Uri uri = null;
         try {
             switch (target.id) {
@@ -139,8 +141,7 @@ public final class Navigator {
                     // 高德：navi 只支持驾车；步行用 route/plan + t=2，
                     // 打开的是步行路线页，点「开始导航」即进入步行导航
                     uri = Uri.parse("androidamap://route/plan/?sourceApplication=chengdubus"
-                            + "&dlat=" + c[0] + "&dlon=" + c[1] + "&dname=" + encName
-                            + "&dev=0&t=2");
+                            + "&dlat=" + c[0] + "&dlon=" + c[1] + "&dev=0&t=2");
                     break;
                 case "baidu":
                     // 百度：walknavi 是步行导航专用 scheme（navi 是驾车）；
@@ -151,7 +152,7 @@ public final class Navigator {
                 case "tencent":
                     // 腾讯：routeplan type=walk 打开步行路线；coord_type=gcj02
                     uri = Uri.parse("qqmap://map/routeplan?type=walk"
-                            + "&to=" + encName
+                            + "&to=" + URLEncoder.encode("公交站", "UTF-8")
                             + "&tocoord=" + c[0] + "," + c[1] + "&referer=chengdubus&coord_type=gcj02");
                     break;
                 case "google":
@@ -161,12 +162,12 @@ public final class Navigator {
                     break;
                 case "here":
                     uri = Uri.parse("here-destination://lat=" + c[0] + ";lon=" + c[1]
-                            + ";name=" + encName + ";mode=pedestrian");
+                            + ";mode=pedestrian");
                     break;
                 case "petal":
                     // 花瓣地图：petalmaps:// scheme（原来误写成高德的 scheme，永远调不起来）
                     uri = Uri.parse("petalmaps://navigation?daddr=" + c[0] + "," + c[1]
-                            + "&dname=" + encName + "&type=walk");
+                            + "&type=walk");
                     break;
                 default:
                     return openGeo(lat, lng, name);
@@ -210,7 +211,9 @@ public final class Navigator {
 
     /** 系统通用地图 URI（WGS84 坐标）。 */
     private JSONObject openGeo(double lat, double lng, String name) throws Exception {
-        String encName = URLEncoder.encode(name == null ? "目的地" : name, "UTF-8");
+        /* 只用坐标，标签固定写「公交站」：有些 ROM 会把括号里的名字当 POI 去搜，
+           站名（如「xx村委会」）就会被导到村委会地址。 */
+        String encName = URLEncoder.encode("公交站", "UTF-8");
         Uri uri = Uri.parse("geo:" + lat + "," + lng + "?q=" + lat + "," + lng + "(" + encName + ")");
         Intent intent = new Intent(Intent.ACTION_VIEW, uri);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);

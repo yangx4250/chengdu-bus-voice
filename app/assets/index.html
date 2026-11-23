@@ -2279,7 +2279,7 @@
     if (res.ok) {
       var modeText = res.mode === "walk" ? "步行" : "驾车";   // 正常情况下恒为步行
       var distText = res.distance >= 0 ? "（约 " + res.distance + " 米）" : "";
-      setStatus("正在用" + (res.label || "地图") + modeText + "导航到 " + target.name + distText);
+      setStatus("正在用" + (res.label || "地图") + modeText + "导航到 " + target.name + "站" + distText);
     } else {
       setStatus(res.error || "导航失败", true);
     }
@@ -4642,7 +4642,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.36";
+  var APP_FALLBACK_VERSION = "1.0.37";
 
   function fillAbout() {
     var verEl = $("abVersion");
