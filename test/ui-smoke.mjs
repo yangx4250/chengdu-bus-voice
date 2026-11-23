@@ -1093,9 +1093,9 @@ const stage3 = [];
 
 
 if (/⇄/.test(cardsHtml)) stage3.push('首页还残留 ⇄ 换向按钮');
-if (!cardsHtml.includes('→ 花园公交站')) stage3.push('没有显示正向：' + cardsHtml.slice(0, 200));
-if (!cardsHtml.includes('→ 郫都区客运中心')) stage3.push('没有补出反方向：' + cardsHtml.slice(0, 200));
-if (!/P36路 → 花园公交站[^›]*还有 3 站/.test(cardsHtml)) {
+if (!cardsHtml.includes('往 花园公交站')) stage3.push('没有显示正向：' + cardsHtml.slice(0, 200));
+if (!cardsHtml.includes('往 郫都区客运中心')) stage3.push('没有补出反方向：' + cardsHtml.slice(0, 200));
+if (!/P36路 往 花园公交站[^›]*还有 3 站/.test(cardsHtml)) {
   stage3.push('近似站名没有合并/数据没带过来：' + cardsHtml.slice(0, 240));
 }
 if (!/下辆 \d+ 站/.test(cardsHtml)) stage3.push('同一方向多辆车时没有显示「下辆 N 站」：' + cardsHtml.slice(0, 240));

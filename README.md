@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.0.7）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.0.8）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -164,6 +164,10 @@ chengdu-bus/build/成都公交.apk    (约 92 KB)
 界面是 WebView + 原生桥。
 
 **应用名「成都公交」（v1.0.1）**：桌面显示名、安装列表、系统标题栏统一改成「成都公交」；
+**v1.0.8 「往」代替箭头**：首页每个线路行的第一排由「716路 → 高新西区公交站」改成
+「716路 往 高新西区公交站」，读起来更顺、和语音播报的「716路往……」一致。
+设置里的使用说明图解、附近面板的行文案同步更新。
+
 **v1.0.7 高亮与红色并存**：有在途车辆的行**一律高亮**（淡蓝底 + 左侧蓝色竖线）；
 快到站（已到站 / ≤2 站 / ≤150 秒）时**高亮保留**，只是文字转红。两者不再互斥，
 所以「有车且在附近」的行既显眼又能一眼看出快到了。无车、待发车、已收班的行不高亮。

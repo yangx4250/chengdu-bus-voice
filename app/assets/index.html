@@ -119,7 +119,7 @@
   .bus .meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
   .armeta { display: flex; align-items: center; gap: 6px; }
   .armeta .armain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  /* 第一排：线路 → 方向（醒目、不省略，长了就换行） */
+  /* 第一排：线路 往 方向（醒目、不省略，长了就换行） */
   .armeta .armain-r1 { font-size: var(--fs); color: var(--text);
     word-break: break-all; line-height: 1.35; }
   /* 第二排：到站状态/时间（小一号、弱化色） */
@@ -1760,7 +1760,7 @@
           row.className = "armeta";
           row.style.marginTop = "8px";
 
-          var text = dir.name + "路 → " + (dir.endSn || detail.endSn || "") + "　";
+          var text = dir.name + "路 往 " + (dir.endSn || detail.endSn || "") + "　";
 
           if (ended) {
             text += endedText(dir.firstTime || detail.firstTime, dir.lastTime || detail.lastTime);
@@ -1781,7 +1781,7 @@
           }
           paintRowState(row, ended ? null : (buses && buses[0]), ended);
 
-          /* 双排：第一排线路→方向，第二排状态（从 text 里去掉前面的「线路 → 方向　」） */
+          /* 双排：第一排线路 往 方向，第二排状态（从 text 里去掉前面的「线路 往 方向　」） */
           var main = twoRowMain(dir.name, (dir.endSn || detail.endSn || ""),
                                 text.replace(/^.*?　/, ""));
           var spk = document.createElement("span");
@@ -1856,7 +1856,7 @@
       if (!station) return;
 
       var ended = outsideService(other.firstTime || detail.firstTime, other.lastTime || detail.lastTime, null);
-      var text = arrival.lineName + "路 → " + (other.endSn || detail.endSn || "") + "　";
+      var text = arrival.lineName + "路 往 " + (other.endSn || detail.endSn || "") + "　";
 
       if (ended) {
         text += endedText(other.firstTime || detail.firstTime, other.lastTime || detail.lastTime);
@@ -1967,13 +1967,14 @@
     });
   }
 
-  /* 站点行的双排主文案：第一排「线路 → 方向」，第二排「状态/时间」 */
+  /* 站点行的双排主文案：第一排「线路 往 方向」，第二排「状态/时间」 */
   function twoRowMain(lineName, toward, statusText) {
     var main = document.createElement("span");
     main.className = "armain";
     var r1 = document.createElement("span");
     r1.className = "armain-r1";
-    r1.textContent = lineName + "路 → " + (toward || "");
+    /* 第一排：线路 往 方向（原来是「线路 → 方向」，用户要求换成「往」更好读） */
+    r1.textContent = lineName + "路 往 " + (toward || "");
     var r2 = document.createElement("span");
     r2.className = "armain-r2";
     r2.textContent = statusText || "";
@@ -2099,7 +2100,7 @@
           : preStart ? ("待发车 " + preStart)
           : "暂无实时车辆";
 
-        /* 双排布局：第一排「线路 → 方向」，第二排「状态 + 时间」 */
+        /* 双排布局：第一排「线路 往 方向」，第二排「状态 + 时间」 */
         var main = twoRowMain(a.lineName, a.toward, liveText);
 
         var spk = document.createElement("span");
@@ -4614,7 +4615,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.7";
+  var APP_FALLBACK_VERSION = "1.0.8";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -4680,15 +4681,15 @@
         demo: "🚇 地铁 / 有轨电车 · 站点查询    [查看]" }
     ]},
     { title: "首页 · 站点列表", items: [
-      { icon: "1", name: "第一排：线路 → 方向",
+      { icon: "1", name: "第一排：线路 往 方向",
         desc: "告诉你这路车开往哪里，避免坐反。",
-        demo: "716路 → 高新西区公交站" },
+        demo: "716路 往 高新西区公交站" },
       { icon: "2", name: "第二排：到站状态",
         desc: "「还有 3 站」「12 分 30 秒」或「不在运营时段（首班 06:00 · 末班 21:50）」。",
         demo: "还有 3 站 · 11 分 30 秒" },
       { icon: "🔊", name: "单独播报",
         desc: "点行尾的 🔊 只念这一条，不影响其它。",
-        demo: "716路 → 高新西区   还有 3 站   🔊 ›" }
+        demo: "716路 往 高新西区   还有 3 站   🔊 ›" }
     ]},
     { title: "线路页 / 详情页", items: [
       { icon: "⇄", name: "方向切换",
@@ -5031,7 +5032,7 @@
           var text = outsideService(a.firstTime, a.lastTime, a) ? endedText(a.firstTime, a.lastTime)
             : (a.etaSeconds !== null ? describe(a)
               : (a.preStartTime ? "待发车 " + a.preStartTime : "暂无实时车辆"));
-          html += '<div class="meta">' + a.lineName + "路 → " + (a.toward || "") + "　" + text + "</div>";
+          html += '<div class="meta">' + a.lineName + "路 往 " + (a.toward || "") + "　" + text + "</div>";
         });
       });
       html += '<div class="meta" style="margin-top:8px;opacity:.6">地铁实时到站请用「成都地铁」App</div></div>';
