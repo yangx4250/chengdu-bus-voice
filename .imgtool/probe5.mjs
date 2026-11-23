@@ -1,0 +1,13 @@
+import fs from 'fs';
+import jpeg from 'jpeg-js';
+const img = jpeg.decode(fs.readFileSync('/data/user/0/com.dsharnessmobile.shell/files/home/.local/state/billion-context/retrieve/img/session-0c793835-7dd1-4d96-a1a7-f20152a8e1c9/m03903-70ac30dd.jpg'), { useTArray: true });
+const { width: w, height: h, data } = img;
+const px = (x,y) => { const i=(y*w+x)*4; return [data[i],data[i+1],data[i+2]]; };
+console.log('--- row 400, x 20..80');
+for (let x=20;x<=80;x+=4) console.log(`  x=${x}: ${px(x,400).join(',')}`);
+console.log('--- row 400, x 730..790');
+for (let x=730;x<=790;x+=4) console.log(`  x=${x}: ${px(x,400).join(',')}`);
+console.log('--- col 400, y 20..90');
+for (let y=20;y<=90;y+=4) console.log(`  y=${y}: ${px(400,y).join(',')}`);
+console.log('--- col 400, y 740..800');
+for (let y=740;y<=799;y+=4) console.log(`  y=${y}: ${px(400,y).join(',')}`);
