@@ -139,6 +139,9 @@
   .bus .toward { color: var(--muted); font-size: 13px; }
   /* 搜索结果页的卡：只显示线路名，方向/首末班进线路页再看 */
   .bus .pickhead { display: block; }
+  .pickgroup { font-size: var(--fs-sm); color: var(--muted); padding: 14px 4px 6px;
+    letter-spacing: .04em; }
+  .pickgroup:first-child { padding-top: 4px; }
   .bus .pickhead .line-name { display: block; overflow: visible;
     text-overflow: clip; }
   .bus .eta { font-size: 26px; font-weight: 700; margin-top: 8px; color: var(--accent); }
@@ -1555,15 +1558,72 @@
         截断会让真正想找的线路直接消失。） */
     return matches;
   }
+  /* 站点模糊搜索：query!nSearch 的 result.stations。
+     接口单次只给 3 条（stationCount 是真实总数），没有分页参数，
+     所以对同一个 key 做「逐字前缀」多轮查询来凑全：
+       花园 → 花园桥/花园路/花园街
+       再补 花园路 / 花园街 … 的下一层，能挖出 花园路中、下花园街 这些。 */
+  async function searchStationsFuzzy(key) {
+    var cacheKey = "cdbus.stns1." + key;
+    var hit = cacheGet(cacheKey);
+    if (hit && Date.now() - hit.at < 86400000 && Array.isArray(hit.list)) return hit.list;
+
+    var seen = {};
+    var pool = [];
+    function absorb(list) {
+      (list || []).forEach(function (st) {
+        if (!st || !st.stationId || seen[st.stationId]) return;
+        seen[st.stationId] = true;
+        pool.push(st);
+      });
+    }
+
+    var lists = await Promise.all([key].map(function (q) {
+      return rpc("stations", { key: q }).catch(function () { return []; });
+    }));
+    lists.forEach(absorb);
+
+    /* 第二轮：对已经拿到的站名再各查一次，捞出「花园路」→「花园路中」这类
+       只在更长关键词下才出现的站。只在第一轮有结果时才做，最多 8 个。 */
+    var second = pool.slice(0, 8).map(function (st) { return String(st.name || ""); })
+      .filter(function (name) { return name && name !== key; });
+    if (second.length) {
+      var more = await Promise.all(second.map(function (q) {
+        return rpc("stations", { key: q }).catch(function () { return []; });
+      }));
+      more.forEach(absorb);
+    }
+
+    /* 名字里必须真的包含关键词，且按「开头命中 → 包含」+ 距离排序 */
+    var upper = String(key).toUpperCase();
+    var matches = pool.filter(function (st) {
+      return String(st.name || "").toUpperCase().indexOf(upper) >= 0;
+    });
+    matches.sort(function (a, b) {
+      var pa = String(a.name).toUpperCase().indexOf(upper) === 0 ? 0 : 1;
+      var pb = String(b.name).toUpperCase().indexOf(upper) === 0 ? 0 : 1;
+      if (pa !== pb) return pa - pb;
+      var da = Number(a.distance) || 0;
+      var db = Number(b.distance) || 0;
+      if (da !== db) return da - db;
+      return String(a.name).localeCompare(String(b.name), "zh");
+    });
+
+    if (pool.length) cacheSet(cacheKey, { at: Date.now(), list: matches });
+    return matches;
+  }
+  window.cdBusSearchStations = searchStationsFuzzy;
+
   window.cdBusSearchLines = searchLinesFuzzy;   /* 测试/调试用 */
   window.cdBusNaturalCompare = naturalCompare;
 
   /* 多条匹配时进「搜索结果」二级页：列出候选线路，点一条再进站名选择
      （数量提示在顶栏 #psub 里，列表里不再放重复标题） */
-  function renderLinePicker(lines, stopName) {
+  function renderLinePicker(lines, stopName, stations) {
     searching = true;
     var list = $("plist");
     list.innerHTML = "";
+    stations = stations || [];
 
     /* 同一条线（名字相同）只留一条：上下行是两个不同 lineId，
        但用户搜线路时要的是「这条线」，方向进详情页再切。
@@ -1592,9 +1652,47 @@
       };
       list.appendChild(card);
     });
-    setStatus("匹配 " + lines.length + " 条线路");
+    /* 站点分组：搜站名时线路常常一条都没有，站点卡片才是用户要的。
+       点站点 → 按它自己的坐标查附近站台 → 进站点页看该站所有线路到站。 */
+    if (stations.length) {
+      var shead = document.createElement("div");
+      shead.className = "pickgroup";
+      shead.textContent = "站点（" + stations.length + "）";
+      list.appendChild(shead);
+      stations.forEach(function (st) {
+        var scard = document.createElement("div");
+        scard.className = "bus tap";
+        scard.innerHTML =
+          '<div class="head pickhead"><span class="line-name">' + (st.name || "") + "</span></div>" +
+          '<div class="toward">' + (Number(st.distance) > 0
+            ? (Number(st.distance) >= 1000
+              ? (Number(st.distance) / 1000).toFixed(1) + " 公里"
+              : Math.round(Number(st.distance)) + " 米") + " · "
+            : "") + "查看该站所有线路</div>";
+        scard.onclick = function () {
+          run(function () {
+            return openStationView({
+              type: "station",
+              stationId: st.stationId,
+              stationName: st.name,
+              lat: st.lat,
+              lng: st.lng
+            });
+          });
+        };
+        list.appendChild(scard);
+      });
+    }
+
+    var total = lines.length + stations.length;
+    setStatus("匹配 " + total + " 项");
     if ($("ptitle")) $("ptitle").textContent = "搜索结果";
-    if ($("psub")) $("psub").textContent = "共 " + lines.length + " 条匹配线路，点一条查看";
+    if ($("psub")) {
+      var bits = [];
+      if (lines.length) bits.push(lines.length + " 条线路");
+      if (stations.length) bits.push(stations.length + " 个站点");
+      $("psub").textContent = bits.length ? "共 " + bits.join(" · ") + "，点一条查看" : "没有匹配结果";
+    }
     showView("pick");
   }
 
@@ -3948,17 +4046,27 @@
     if (!key) throw new Error("请先填线路号");
 
     setStatus("搜索 " + key + " …");
-    var candidates = await searchLinesFuzzy(key);
-    if (!candidates.length) {
-      throw new Error("没有查到「" + key + "」相关的线路，换个关键词试试（如线路号或站名）");
+    /* 线路和站点并行查：输入「花园永泉」这类站名时线路通常一条都没有，
+       站点结果才是用户要的；输入「36」时线路多、站点空。 */
+    var both = await Promise.all([
+      searchLinesFuzzy(key).catch(function () { return []; }),
+      searchStationsFuzzy(key).catch(function () { return []; })
+    ]);
+    var candidates = both[0];
+    var stations = both[1];
+    if (!candidates.length && !stations.length) {
+      throw new Error("没有查到「" + key + "」相关的线路或站点，换个关键词试试");
     }
 
     var nameSet = {};
     candidates.forEach(function (line) { nameSet[line.name] = true; });
     var names = Object.keys(nameSet);
 
-    if (names.length > 1) {
-      renderLinePicker(candidates, stopName);
+    /* 有多条线路，或搜到了站点 → 都进搜索结果页。
+       （站名和线路名可能重名，比如「花园永泉」既是站也是线路，
+        这时不能直接跳线路页，否则站点结果永远看不到。） */
+    if (names.length > 1 || stations.length) {
+      renderLinePicker(candidates, stopName, stations);
       return;
     }
     // 同一条线只是方向不同：直接进（默认方向 0），方向可在上面切
@@ -4910,7 +5018,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.17";
+  var APP_FALLBACK_VERSION = "1.0.18";
 
   function fillAbout() {
     var verEl = $("abVersion");

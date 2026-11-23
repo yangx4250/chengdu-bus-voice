@@ -126,6 +126,33 @@ public final class ChelaileClient {
         return out;
     }
 
+    /** 站点搜索：query!nSearch 的 result.stations（服务端最多给 3 条）。 */
+    public JSONArray searchStations(String keyword) throws Exception {
+        LinkedHashMap<String, String> extra = new LinkedHashMap<>();
+        extra.put("key", keyword);
+        extra.put("supportPhyStn", "true");
+        JSONObject data = call("query!nSearch.action", extra);
+        JSONObject result = data.optJSONObject("result");
+        JSONArray out = new JSONArray();
+        if (result == null) return out;
+        JSONArray stations = result.optJSONArray("stations");
+        if (stations == null) return out;
+        for (int i = 0; i < stations.length(); i++) {
+            JSONObject st = stations.getJSONObject(i);
+            String name = st.optString("sn");
+            if (name == null || name.length() == 0) continue;
+            if (st.optInt("subwayV2", 0) == 1) continue;
+            JSONObject item = new JSONObject();
+            item.put("stationId", st.optString("sId"));
+            item.put("name", name);
+            item.put("lat", st.optDouble("lat", 0));
+            item.put("lng", st.optDouble("lng", 0));
+            item.put("distance", st.optDouble("distance", 0));
+            out.put(item);
+        }
+        return out;
+    }
+
     /** 线路详情 + 站点表。 */
     public JSONObject lineDetail(String lineId) throws Exception {
         LinkedHashMap<String, String> extra = new LinkedHashMap<>();

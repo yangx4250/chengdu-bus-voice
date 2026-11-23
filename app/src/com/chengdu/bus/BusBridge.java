@@ -413,6 +413,8 @@ public final class BusBridge {
         switch (method) {
             case "lines":
                 return client.searchLines(args.optString("key"));
+            case "stations":
+                return client.searchStations(args.optString("key"));
             case "detail":
                 return client.lineDetail(args.optString("lineId"));
             case "arrivals":

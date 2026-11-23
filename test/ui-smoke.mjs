@@ -288,6 +288,23 @@ const bridge = {
       ];
       return JSON.stringify({ state: 'ok', data: pLines.filter((l) => l.name.toUpperCase().includes(key)) });
     }
+
+    if (method === 'stations') {
+      const key = String(args.key || '');
+      /* 真实接口 result.stations 单次最多 3 条（stationCount 是真实总数，
+         且没有任何分页参数能翻页）。这里如实模拟：每次只给 3 条。 */
+      /* 顺序按真实接口的返回（实测「花园」给 花园桥/花园路/花园街 三条） */
+      const all = [
+        { stationId: '028-10894', name: '花园桥', lat: 30.86, lng: 103.76, distance: 400 },
+        { stationId: '028-40', name: '花园路', lat: 30.86, lng: 103.761, distance: 620 },
+        { stationId: '028-23306', name: '花园街', lat: 30.86, lng: 103.762, distance: 800 },
+        { stationId: '028-23531', name: '花园永泉', lat: 30.865296, lng: 103.762676, distance: 120 },
+        { stationId: '028-40b', name: '花园路中', lat: 30.861, lng: 103.761, distance: 950 },
+        { stationId: '028-23306b', name: '下花园街', lat: 30.862, lng: 103.762, distance: 1200 },
+      ];
+      const hit = all.filter((st) => st.name.includes(key));
+      return JSON.stringify({ state: 'ok', data: hit.slice(0, 3) });
+    }
     if (method === 'matrix') {
       return JSON.stringify({ state: 'ok', data: {
         line: { lineId: '028-p02-0', name: 'P02', startSn: '花园公交站', endSn: '郫都区客运中心',
@@ -796,7 +813,9 @@ if (failures.length) {
 // ---------------------------------------------------- 第二阶段：搜索 → 选站 → 首页收藏
 
 // 选中线路后进「线路页」，站名芯片在这页上
+
 const stage2 = [];
+
 
 /* v1.0.16：首页刷新要重新定位，不能一直用启动时那一个坐标。
    把 location 桩换成「已经走到别处」的坐标，再触发一次回前台刷新，
@@ -840,6 +859,33 @@ const stage2 = [];
     stage2.push('首页刷新没有按新定位取附近站点，nearby 坐标：' +
       nearbyArgs.map((a) => a.lat + ',' + a.lng).join(' / '));
   }
+}
+
+/* v1.0.18：站点模糊搜索——搜站名时结果页要同时列出「线路」和「站点」两组。
+   真实接口每次只给 3 条站点（无分页），前端靠「拿到的站名再查一轮」补全。 */
+{
+  document.getElementById('line').value = '花园';
+  document.getElementById('go').onclick();
+  await new Promise((r) => setTimeout(r, 900));
+
+  const pickText = String(document.getElementById('plist').innerHTML || '');
+  if (String(document.getElementById('pick').className).includes('hidden')) {
+    stage2.push('搜站名没有进入搜索结果页');
+  }
+  if (!pickText.includes('站点（')) {
+    stage2.push('搜索结果页没有站点分组：' + pickText.slice(0, 160));
+  }
+  /* 第一轮 3 条（花园永泉/花园桥/花园路）+ 第二轮对已有站名再查，
+     应能捞出 花园街 / 花园路中 / 下花园街 */
+  /* 首轮 3 条 + 对已有站名再查一轮，能挖出 花园路中 / 下花园街 */
+  ['花园桥', '花园路', '花园街', '花园路中', '下花园街'].forEach((n) => {
+    if (!pickText.includes(n)) stage2.push('站点搜索结果缺少「' + n + '」：' + pickText.slice(0, 200));
+  });
+  if (!/站点（\d+）/.test(pickText)) {
+    stage2.push('站点分组没有显示数量');
+  }
+  const psub = String(document.getElementById('psub').textContent || '');
+  if (!psub.includes('站点')) stage2.push('搜索结果页副标题没有提到站点：' + psub);
 }
 
 document.getElementById('line').value = 'P36';
