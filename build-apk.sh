@@ -60,11 +60,11 @@ if [ ! -f "$KEYSTORE" ]; then
     -dname "CN=Chengdu Bus, OU=DSH, O=local, L=Chengdu, S=Sichuan, C=CN" >/dev/null 2>&1
 fi
 apksigner sign --ks "$KEYSTORE" --ks-pass pass:cdbus123 \
-  --key-pass pass:cdbus123 --out "$ROOT/build/成都公交播报.apk" "$OUT/aligned.apk" 2>&1 | grep -v "^$" || true
-apksigner verify --print-certs "$ROOT/build/成都公交播报.apk" 2>&1 | head -3
+  --key-pass pass:cdbus123 --out "$ROOT/build/成都公交.apk" "$OUT/aligned.apk" 2>&1 | grep -v "^$" || true
+apksigner verify --print-certs "$ROOT/build/成都公交.apk" 2>&1 | head -3
 
 # 6.5 产物自检：dex 里必须能找到每个类的描述符
-python3 - "$ROOT/build/成都公交播报.apk" <<'PYEOF'
+python3 - "$ROOT/build/成都公交.apk" <<'PYEOF'
 import sys, zipfile
 apk = sys.argv[1]
 dex = zipfile.ZipFile(apk).read("classes.dex")
@@ -78,8 +78,8 @@ print("dex 校验通过，大小", len(dex), "字节")
 PYEOF
 [ $? -eq 0 ] || exit 1
 
-FINGERPRINT=$(apksigner verify --print-certs "$ROOT/build/成都公交播报.apk" 2>/dev/null | grep -m1 "SHA-256 digest" | sed "s/.*: //")
+FINGERPRINT=$(apksigner verify --print-certs "$ROOT/build/成都公交.apk" 2>/dev/null | grep -m1 "SHA-256 digest" | sed "s/.*: //")
 echo "== 签名 SHA-256: $FINGERPRINT"
 
-SIZE=$(stat -c %s "$ROOT/build/成都公交播报.apk")
-echo "== 完成：$ROOT/build/成都公交播报.apk ($((SIZE/1024)) KB)"
+SIZE=$(stat -c %s "$ROOT/build/成都公交.apk")
+echo "== 完成：$ROOT/build/成都公交.apk ($((SIZE/1024)) KB)"

@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v9.56）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.0.1）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -158,10 +158,14 @@ node test/smoke.mjs
 同一套协议做成了原生 App，可以直接装到手机桌面：
 
 ```
-chengdu-bus/build/成都公交播报.apk    (约 92 KB)
+chengdu-bus/build/成都公交.apk    (约 92 KB)
 ```
 
 界面是 WebView + 原生桥。
+
+**应用名「成都公交」（v1.0.1）**：桌面显示名、安装列表、系统标题栏统一改成「成都公交」；
+图标换成绿色渐变底的圆角方形图案（原图裁掉外围背景，只留圆角方形内部内容），
+按 mdpi/hdpi/xhdpi/xxhdpi/xxxhdpi 五档密度生成 48/72/96/144/192px。
 
 **v1.1 起打开即定位**：启动 → 取一次当前位置 → 校验在成都 → 直接列出附近 5 个站点的实时到站（语音开关开着就念一句）。
 定位条款会写明来源/精度/耗时；失败时显示原因（权限 / 定位开关 / 超时），不再静默退回天府广场。
@@ -594,7 +598,7 @@ Java 合成 mp3 → base64 → WebView <audio> 播放
 头部拆成两排：
 
 ```
-成都公交播报                                    12  ⚙
+成都公交                                        12  ⚙
 ● 已定位 · network · 30 米 · 用时 0.5 秒 · 成都
 ```
 
@@ -609,12 +613,12 @@ Java 合成 mp3 → base64 → WebView <audio> 播放
 
 ### 去掉系统标题栏，页面头部成为唯一标题（v9.0）
 
-App 没指定主题，默认 `Theme.DeviceDefault` 带 ActionBar，于是顶部会有一条系统标题栏「成都公交播报」，
+App 没指定主题，默认 `Theme.DeviceDefault` 带 ActionBar，于是顶部会有一条系统标题栏「成都公交」，
 和页面里的 `<header>` 重复。现在 `<application android:theme="@android:style/Theme.DeviceDefault.NoActionBar">`，
 只剩页面这一条：
 
 ```
-成都公交播报  ● 已定位 · network · 30 米 · 用时 0.5 秒   12s 后自动刷新  ⚙
+成都公交  ● 已定位 · network · 30 米 · 用时 0.5 秒   12s 后自动刷新  ⚙
 ```
 
 ### 首页头部改成一行（v8.9）
@@ -622,7 +626,7 @@ App 没指定主题，默认 `Theme.DeviceDefault` 带 ActionBar，于是顶部�
 原来头部是「⚙ + 标题 + 实时到站」一行，定位信息单独一行。现在合成一行：
 
 ```
-成都公交播报  ● 已定位 · network · 30 米 · 用时 0.5 秒 · 成都   12s 后自动刷新  ⚙
+成都公交  ● 已定位 · network · 30 米 · 用时 0.5 秒 · 成都   12s 后自动刷新  ⚙
 ```
 
 - 删掉「实时到站」标签和单独的定位行；
@@ -1382,7 +1386,8 @@ javac(17) → d8 → aapt(资源/清单) → tools/zipalign.py(4 字节对齐) �
 ```
 app/
 ├── AndroidManifest.xml        包名/权限/入口 Activity
-├── res/drawable-xxhdpi/       桌面图标（脚本生成）
+├── res/drawable-*/            桌面图标 48/72/96/144/192px（由原图裁切生成）
+├── res/values/strings.xml     应用名「成都公交」
 ├── assets/index.html          全部界面与交互逻辑（单文件）
 └── src/com/chengdu/bus/
     ├── MainActivity.java      WebView 壳 + 定位权限
