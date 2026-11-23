@@ -2343,12 +2343,19 @@
     btn.className = "navbtn stationfav" + (isFav ? " on" : "");
     btn.textContent = isFav ? "★ 已收藏站点" : "☆ 收藏站点";
     btn.onclick = function () {
+      /* 记住「我是从哪条线的哪个方向收藏的」，收藏卡点进来才能回到这条线 */
       toggleStationFav({
         type: "station",
         stationId: target.stationId,
         stationName: target.name,
         lat: target.lat || 0,
-        lng: target.lng || 0
+        lng: target.lng || 0,
+        lineId: lv.lineId || "",
+        lineName: lv.name || "",
+        order: target.order,
+        toward: lv.endSn || "",
+        firstTime: lv.firstTime || "",
+        lastTime: lv.lastTime || ""
       });
       renderStationFavRow();   // 重新渲染本行按钮状态
     };
@@ -3527,8 +3534,30 @@
     setStatus(idx >= 0 ? "已取消收藏站点" : "已收藏站点 " + fav.stationName);
   }
 
-  /* 站点收藏 → 看这一站所有线路的到站 */
+  /* 站点收藏 → 回到「当初收藏它的那条线」的这一站。
+     收藏时记了 lineId/order（见 renderStationFavRow），直接进线路详情并定位到该站；
+     只有老数据（没有 lineId）才退回「这一站所有线路」的列表页。 */
   async function openStationView(fav) {
+    if (fav && fav.lineId) {
+      setStatus("正在加载 " + (fav.lineName || "") + "路…");
+      try {
+        await openDetail({
+          lineId: fav.lineId,
+          lineName: fav.lineName || "",
+          stationId: fav.stationId,
+          stationName: fav.stationName || "",
+          fromOrder: fav.order || 1,
+          scroll: true,
+          title: (fav.lineName || "") + "路 · " + (fav.stationName || "")
+        });
+        setStatus("已回到 " + (fav.lineName || "") + "路 · " + (fav.stationName || ""));
+      } catch (err) {
+        setStatus(err.message || "加载失败", true);
+      }
+      return;
+    }
+
+    /* 老收藏（没有记录线路）：仍按「这一站所有线路」展示 */
     setStatus("正在加载站点…");
     try {
       var data = await rpc("nearby", { lat: fav.lat || 0, lng: fav.lng || 0, limit: 8 });
@@ -3588,7 +3617,10 @@
 
     var sub = document.createElement("div");
     sub.className = "fs";
-    sub.textContent = "站点收藏 · 点看全部线路";
+    /* 收藏时记了线路就显示「哪条线 · 这一站」，老收藏没有线路信息才显示「点看全部线路」 */
+    sub.textContent = fav.lineName
+      ? fav.lineName + "路 · 这一站"
+      : "站点收藏 · 点看全部线路";
 
     var del = document.createElement("div");
     del.className = "del";
@@ -4684,7 +4716,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.29";
+  var APP_FALLBACK_VERSION = "1.0.30";
 
   function fillAbout() {
     var verEl = $("abVersion");

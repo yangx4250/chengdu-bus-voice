@@ -126,8 +126,10 @@ storage.set('cdbus.favorites', JSON.stringify([{
   stationId: '028-1', stationName: '天府广场南', order: 22,
   lat: 30.6, lng: 104.0, firstTime: '00:00', lastTime: '23:59', addedAt: Date.now(),
 }, {
+  /* v1.0.30：站点收藏现在会记下「在哪条线上收藏的」，点回来直接回那条线 */
   type: 'station', stationId: '028-1', stationName: '花园永泉', lat: 30.7, lng: 103.95,
-  addedAt: Date.now(),
+  lineId: '028-p02-0', lineName: 'P02', order: 9, toward: '郫都区客运中心',
+  firstTime: '06:00', lastTime: '22:30', addedAt: Date.now(),
 }]));
 const localStorage = {
   getItem: (k) => (storage.has(k) ? storage.get(k) : null),
@@ -837,7 +839,7 @@ if (!/还有 \d+ 站/.test(favsHtml)) failures.push('收藏卡没有拉到实时
 /* v1.0.29：站点收藏卡不再显示「xx路 还有 N 站」——只有线路收藏卡才显示到站 */
 {
   const allFavCards = findByClass(document.getElementById('favs'), 'fav');
-  const stationFav = allFavCards.find((c) => textOf(c).includes('站点收藏'));
+  const stationFav = allFavCards.find((c) => /站点收藏|这一站/.test(textOf(c)));
   if (stationFav && /还有 \d+ 站/.test(textOf(stationFav))) {
     failures.push('站点收藏卡还在显示「xx路 还有 N 站」：' + textOf(stationFav).slice(0, 80));
   }
@@ -1282,21 +1284,31 @@ const favCardsAll = findByClass(document.getElementById('favs'), 'fav');
     }
   }
 }
-const stationCard = favCardsAll.find((c) => textOf(c).includes('站点收藏'));
+const hasClass2 = (el, cls) => String((el && el.className) || '').split(/\s+/).includes(cls);
+const stationCard = favCardsAll.find((c) => /站点收藏|这一站/.test(textOf(c)));
 if (!stationCard) {
   stage2.push('没有渲染站点收藏卡片');
 } else {
   stationCard.onclick();
   await new Promise((r) => setTimeout(r, 900));
+  /* v1.0.30：收藏时记了线路 → 点回来直接回到「那条线的那一站」（线路详情页），
+     不再是「这一站所有线路」的列表。 */
   const stopTitle = String(document.getElementById('dtitle').textContent || '');
-  if (!/站点 · /.test(stopTitle)) stage2.push('点站点收藏没有进入站点页：' + stopTitle);
+  if (!/P02路 · 花园永泉/.test(stopTitle)) {
+    stage2.push('点站点收藏没有回到收藏时的那条线那一站：' + stopTitle);
+  }
   if (String(document.getElementById('detail').className).includes('hidden')) {
-    stage2.push('站点页没有显示');
+    stage2.push('站点收藏点进去没有显示详情页');
   }
   const listNow = textOf(document.getElementById('dlist'));
-  if (!listNow.includes('P02路')) stage2.push('站点页没有列出该站的线路：' + listNow.slice(0, 120));
-  if (!textOf(document.getElementById('list')).includes('花园永泉')) {
-    stage2.push('站点页把首页的附近站点顶掉了');
+  if (!listNow.includes('花园永泉')) {
+    stage2.push('回到线路后到站表里没有该站：' + listNow.slice(0, 120));
+  }
+  /* 站名芯片里要有「花园永泉」被选中，说明定位到了那一站 */
+  const chipsNow = findByClass(document.getElementById('lchips'), 'chip');
+  const onChip = chipsNow.find((c) => hasClass2(c, 'on'));
+  if (!onChip || !textOf(onChip).includes('花园永泉')) {
+    stage2.push('回到线路后没有选中收藏的那一站：' + (onChip ? textOf(onChip) : '没有选中项'));
   }
   window.cdBusBackView();
   await new Promise((r) => setTimeout(r, 700));
@@ -1614,6 +1626,44 @@ else {
 
     arrivalsEta = null;
     arrivalsArrived = false;
+  }
+}
+
+/* v1.0.30：在线路详情页收藏站点时，要把「哪条线/哪个方向/第几站」一起存下来，
+   这样收藏卡点进去才能回到这条线。 */
+{
+  const favCards3 = findByClass(document.getElementById('favs'), 'fav')
+    .filter((c) => !/站点收藏|这一站/.test(textOf(c)));
+  if (favCards3.length) {
+    favCards3[0].onclick();
+    await new Promise((r) => setTimeout(r, 900));
+    const chips3 = findByClass(document.getElementById('lchips'), 'chip');
+    if (chips3.length) {
+      chips3[0].onclick();
+      await new Promise((r) => setTimeout(r, 500));
+      const sfav3 = findByClass(document.getElementById('lstationfav'), 'stationfav');
+      if (sfav3.length && String(sfav3[0].textContent).indexOf('已收藏') < 0) {
+        const chipStationId = chips3[0].__stationId || null;
+        sfav3[0].onclick();
+        await new Promise((r) => setTimeout(r, 400));
+        const saved = JSON.parse(storage.get('cdbus.favorites') || '[]');
+        /* 只认这次点出来的那张：桩里预置的站点收藏也带 lineId，不能拿它充数 */
+        const stationSaved = saved.filter((f) => f.type === 'station')
+          .find((f) => String(f.stationId) !== '028-1');
+        if (!stationSaved) {
+          stage4.push('点「收藏站点」没有把站点写进收藏');
+        } else if (!stationSaved.lineId) {
+          stage4.push('收藏站点时没有记下线路信息（lineId），收藏卡点进去回不到这条线');
+        } else if (!stationSaved.order && stationSaved.order !== 0) {
+          stage4.push('收藏站点时没有记下站序（order）');
+        }
+        // 清掉，别影响后面的断言
+        sfav3[0].onclick();
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    }
+    window.cdBusBackView && window.cdBusBackView();
+    await new Promise((r) => setTimeout(r, 400));
   }
 }
 
