@@ -3863,6 +3863,40 @@
   /* 原生返回键调用这个：无论第几级页面都回上一页，只有首页才退出 App */
   window.cdBusBackView = function () { return backHandler(); };
 
+  /* ------------------------------------------------- 回到前台立即刷新
+
+     原生 MainActivity.onResume 会调这里。要求：不管停在哪一页，回来就刷一次。
+     各页面对应一次轻量请求，不重新定位（定位很慢，后台回来先看数据）。 */
+
+  function resumeRefresh() {
+    if (state.busy) return;                    // 正在查询，别叠加
+    var page = view.name;
+
+    if (page === "lineview") {
+      refreshLineBuses();                      // 车辆位置 + 下半页到站卡
+      return;
+    }
+    if (page === "detail" || page === "veh") {
+      loadMatrix({ auto: true }).catch(function () {});
+      if (state.detail && state.station) refresh(false).catch(function () {});
+      return;
+    }
+    if (page === "home") {
+      refreshHome({ announce: false, budget: 18 }).catch(function () {});
+      catchUpHome();
+      return;
+    }
+    /* 搜索结果页 / 地铁页 / 设置页：这些是静态或本地列表，不用刷新 */
+  }
+
+  window.cdBusResume = function () { resumeRefresh(); return true; };
+
+  /* 部分 WebView 版本 resume 时不一定回调 onResume（比如只是切了应用内页面），
+     用 visibilitychange 兜底；两条路都走 resumeRefresh，内部有 state.busy 防重入 */
+  document.addEventListener && document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) resumeRefresh();
+  });
+
   /* ------------------------------------------------------------ 流程 */
 
   async function refresh(announce) {
@@ -4790,7 +4824,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.11";
+  var APP_FALLBACK_VERSION = "1.0.12";
 
   function fillAbout() {
     var verEl = $("abVersion");

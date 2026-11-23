@@ -187,6 +187,24 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         VISIBLE = true;
+        // 从后台回到前台：让页面立刻刷新一次当前页面（不管停在哪一页）
+        notifyResume();
+    }
+
+    /**
+     * 通知页面「回到前台了」。页面收到后按当前所在视图各刷一次：
+     * 首页刷附近站点、线路页刷车辆位置+到站卡、详情页刷车辆矩阵……
+     * 放在 web.post 里，避免 onResume 时 WebView 还没准备好。
+     */
+    private void notifyResume() {
+        if (web == null) return;
+        web.post(new Runnable() {
+            @Override
+            public void run() {
+                web.evaluateJavascript(
+                        "window.cdBusResume && window.cdBusResume()", null);
+            }
+        });
     }
 
     @Override

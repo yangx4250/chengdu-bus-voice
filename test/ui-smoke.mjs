@@ -221,6 +221,7 @@ const batteryLog = [];
 const notes = [];
 /* 让 arrivals 桩返回「已到站」的车（盯站到站播报测试用） */
 let arrivalsArrived = false;
+let arrivalsCalls = 0;   // arrivals 被调用次数（验证回到前台会重新拉数据）
 let arrivalsEta = null;
 const heartbeatLog = [];
 let heartbeatRunning = false;
@@ -363,6 +364,7 @@ const bridge = {
       } });
     }
     if (method === 'arrivals') {
+      arrivalsCalls++;
       if (String(args.lineId || '').includes('p49')) {
         return JSON.stringify({ state: 'ok', data: [] });
       }
@@ -975,6 +977,24 @@ if (!stationChips.length) {
         await new Promise((r) => setTimeout(r, 300));
       }
     }
+  }
+}
+
+// 回到前台立即刷新：原生 onResume → window.cdBusResume()，不管停在哪一页都要刷一次
+{
+  if (typeof window.cdBusResume !== 'function') {
+    stage2.push('没有暴露 window.cdBusResume，原生 onResume 无法通知页面刷新');
+  } else {
+    // 线路页：应重新拉一次车辆位置（arrivals 被调用即算刷新）
+    const before = arrivalsCalls;
+    window.cdBusResume();
+    await new Promise((r) => setTimeout(r, 400));
+    if (arrivalsCalls <= before) {
+      stage2.push('回到前台后线路页没有重新拉取到站数据');
+    }
+    // 摘要条的更新时间应该被刷新（和当前时间一致，不是上次的）
+    const lvbText2 = textOf(document.getElementById('lvbuses'));
+    if (!/更新/.test(lvbText2)) stage2.push('回到前台后车辆摘要没有更新：' + lvbText2.slice(0, 60));
   }
 }
 
