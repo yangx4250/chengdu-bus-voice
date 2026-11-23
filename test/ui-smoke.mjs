@@ -1340,16 +1340,13 @@ if (/往 /.test(cardsHtml)) {
     if (!hit.length) stage3.push('站点卡里缺少线路「' + n + '路」：' + firstNameRows.join(' | '));
   });
 }
-if (!/P36路\s*3 站/.test(cardsHtml.replace(/🔊/g, ' '))) {
-  stage3.push('近似站名没有合并/数据没带过来：' + cardsHtml.slice(0, 240));
+/* v1.0.22：用户要求取消「几站」这类到站状态——格子里不能再出现「N 站」 */
+if (/\d+\s*站(?![\s\S]{0,60}?(?:待发车|不在运营时段))/.test(cardsHtml)) {
+  stage3.push('三列格子还在显示「几站」到站状态：' + cardsHtml.slice(0, 240));
 }
-/* 三列格子太窄，第二排只放「N 站 / 进站 / 待发车 / 收班」，
-   不再拼「下辆 N 站」这种长文案 */
-if (!/P02路\s*2 站/.test(cardsHtml.replace(/🔊/g, ' '))) {
-  stage3.push('三列格子没有显示到站站数：' + cardsHtml.slice(0, 240));
-}
+if (!cardsHtml.includes('P36路')) stage3.push('近似站名没有合并/数据没带过来：' + cardsHtml.slice(0, 240));
 if (!cardsHtml.includes('09:24')) stage3.push('起点站没有显示待发车时间：' + cardsHtml.slice(0, 240));
-if (!/720路\s*09:24/.test(cardsHtml.replace(/🔊/g, ' '))) {
+if (!/720路[\s\S]{0,40}?待发车 09:24/.test(cardsHtml)) {
   stage3.push('720路格子的第二排不是发车时间 09:24');
 }
 // 同名站点应该合并成一张卡片
@@ -1369,15 +1366,10 @@ if (!/\.gridlines\s*\{[^}]*grid-template-columns:\s*repeat\(3/.test(html)) {
     }
   }
 }
-if (!/🔊/.test(cardsHtml)) stage3.push('线路行没有单独的播报按钮');
+if (/🔊/.test(cardsHtml)) stage3.push('三列格子里还留着播报按钮（🔊）');
 const allRows = findByClass(document.getElementById('list'), 'gcell');
-const rowsWithoutSpeaker = allRows.filter((row) => !findByClass(row, 'spk').length);
-// 双排布局后「线路」和「待发车」分属两排，允许中间夹着按钮文本
 if (!/P49路[\s\S]{0,120}?待发车 \d{2}:\d{2}/.test(cardsHtml)) {
   stage3.push('没有在途车的行没有显示起点预估发车：' + cardsHtml.slice(-320));
-}
-if (rowsWithoutSpeaker.length) {
-  stage3.push(rowsWithoutSpeaker.length + ' 行缺少小喇叭：' + textOf(rowsWithoutSpeaker[0]).slice(0, 60));
 }
 
 /* v1.0.20：用户要求取消首页的「有车高亮」和「快到站红字」。
@@ -1407,16 +1399,10 @@ if (endedRow && !hasClass(endedRow, 'ended')) {
   stage3.push('已收班的 716 格子没有标 ended（应收班变淡）');
 }
 
-// 点某一行的小喇叭：应该只念这一行（方向可选）
+// 用户要求取消格子里的播报按钮：一行格子都不应该挂小喇叭
 const spkButtons = findByClass(document.getElementById('list'), 'spk');
-if (!spkButtons.length) {
-  stage3.push('没有找到行内播报按钮');
-} else {
-  spkButtons[0].onclick({ stopPropagation() {} });
-  await new Promise((r) => setTimeout(r, 100));
-  if (!speakLog.some((t) => /716路/.test(t) || /P02路/.test(t) || /720路/.test(t))) {
-    stage3.push('行内播报没有念出线路名：' + JSON.stringify(speakLog.slice(-2)));
-  }
+if (spkButtons.length) {
+  stage3.push('站点卡的格子里还留着播报按钮：' + textOf(spkButtons[0]));
 }
 if (!/flex-wrap:\s*nowrap/.test(html) || !/overflow-x:\s*auto/.test(html)) {
   stage3.push('站点芯片没有改成横向滑动');
