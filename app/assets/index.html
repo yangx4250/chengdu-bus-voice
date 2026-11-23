@@ -127,7 +127,7 @@
     word-break: break-all; line-height: 1.3; }
   .armeta .armain-r2:empty { display: none; }
   /* 有在途车辆：整行高亮（左侧色条 + 淡蓝底），表示「有车在路上」。
-     快到站（≤2 站 / ≤150 秒）不用这个类，仍走原来的红色文字。
+     快到站（≤2 站 / ≤150 秒）**保留高亮**，只是文字转红（见下面的 .hot）。
      padding-left + 负 margin-left 抵消，保证文字位置和其他行对齐。 */
   .armeta.live {
     background: linear-gradient(90deg, rgba(79, 140, 255, .16), rgba(79, 140, 255, 0) 72%);
@@ -138,6 +138,10 @@
     margin-left: -8px;
   }
   .armeta.live .armain-r2 { color: #9dc0ff; }
+  /* 快到站：高亮保留，文字转红。必须写在 .armeta.live .armain-r2 之后
+     （同优先级后者生效），否则会被上一条的淡蓝色盖掉。 */
+  .armeta.hot .armain-r1,
+  .armeta.hot .armain-r2 { color: #ff6b5e; }
   .armeta .arrow { flex: 0 0 auto; color: #56637d; }
   .armeta .spk { flex: 0 0 auto; padding: 2px 8px; border: 1px solid var(--line);
     border-radius: 8px; font-size: 12px; line-height: 1; color: #b9c6dd; }
@@ -1684,11 +1688,11 @@
         station: { stationId: station.stationId, order: station.order, name: station.name,
                    lat: station.lat || 0, lng: station.lng || 0 }
       });
-      /* mainEl 是 .armain，它父节点才是整行 .armeta —— 高亮加在行上 */
+      /* mainEl 是 .armain，它父节点才是整行 .armeta —— 状态画在行上 */
       var rowEl = mainEl.parentNode;
       if (!buses || !buses.length) {
         // 没有在途车 → 显示起点站的预估发车时间（车来了的发车预测）
-        markLiveRow(rowEl, null, false);
+        paintRowState(rowEl, null, false);
         var short = departureShort(detail);
         if (short) {
           mainEl.innerHTML = "";
@@ -1696,7 +1700,7 @@
         }
         return;
       }
-      markLiveRow(rowEl, buses[0], false);
+      paintRowState(rowEl, buses[0], false);
       var statusText = describe(buses[0]);
       if (buses.length > 1) statusText += " · 下辆 " + buses[1].stationsAway + " 站";
       mainEl.innerHTML = "";
@@ -1757,7 +1761,6 @@
           row.style.marginTop = "8px";
 
           var text = dir.name + "路 → " + (dir.endSn || detail.endSn || "") + "　";
-          var hot = false;
 
           if (ended) {
             text += endedText(dir.firstTime || detail.firstTime, dir.lastTime || detail.lastTime);
@@ -1774,11 +1777,9 @@
             } else {
               text += describe(buses[0]);
               if (buses.length > 1) text += " · 下一辆 " + describe(buses[1]);
-              hot = isUrgent(buses[0]);
             }
           }
-          if (hot) row.style.color = "#ff6b5e";
-          else markLiveRow(row, buses && buses[0], false);
+          paintRowState(row, ended ? null : (buses && buses[0]), ended);
 
           /* 双排：第一排线路→方向，第二排状态（从 text 里去掉前面的「线路 → 方向　」） */
           var main = twoRowMain(dir.name, (dir.endSn || detail.endSn || ""),
@@ -1856,7 +1857,6 @@
 
       var ended = outsideService(other.firstTime || detail.firstTime, other.lastTime || detail.lastTime, null);
       var text = arrival.lineName + "路 → " + (other.endSn || detail.endSn || "") + "　";
-      var hot = false;
 
       if (ended) {
         text += endedText(other.firstTime || detail.firstTime, other.lastTime || detail.lastTime);
@@ -1870,7 +1870,6 @@
           text += "暂无实时车辆";
         } else {
           text += describe(buses[0]);
-          hot = isUrgent(buses[0]);
           if (buses.length > 1) text += " · 下辆 " + buses[1].stationsAway + " 站";
         }
       }
@@ -1878,9 +1877,7 @@
       var row = document.createElement("div");
       row.className = "armeta";
       row.style.marginTop = "8px";
-      if (ended) row.style.opacity = ".5";
-      else if (hot) row.style.color = "#ff6b5e";
-      else markLiveRow(row, buses && buses[0], false);
+      paintRowState(row, ended ? null : (buses && buses[0]), ended);
 
       var main = twoRowMain(arrival.lineName, (other.endSn || detail.endSn || ""),
                             text.replace(/^.*?　/, ""));
@@ -1985,14 +1982,36 @@
     return main;
   }
 
-  /* 首页行高亮：有在途车辆时整行加 .live（淡蓝底 + 左侧色条）。
-     快到站（isUrgent：已到站 / ≤2 站 / ≤150 秒）不加，保持原来的红色文字，
-     避免「高亮」和「紧急」两种强调互相打架。 */
-  function markLiveRow(row, bus, ended) {
-    if (!row || !row.classList) return;
-    var live = !ended && Boolean(bus) && !isUrgent(bus);
-    if (live) row.classList.add("live");
-    else row.classList.remove("live");
+  /* 首页行状态统一着色。一次调用把透明度/文字颜色/高亮都定死，
+     避免「先加了 live，异步补到车是急行又只删 live 不给红色」这种半吊子状态。
+       ended          → 变淡，不高亮
+       有车（含急行） → 一定高亮；急行时文字变红（高亮和红色叠加，不互斥）
+       无车           → 普通样式 */
+  function paintRowState(row, bus, ended) {
+    if (!row || !row.style) return;
+    if (ended) {
+      row.style.opacity = ".5";
+      if (row.classList) {
+        row.classList.remove("live");
+        row.classList.remove("hot");
+      }
+      return;
+    }
+    row.style.opacity = "";
+    if (bus) {
+      if (row.classList) row.classList.add("live");
+      /* 快到站：在保持高亮的前提下把文字改成红色（走 class，见上面 CSS）。
+         行内 style.color 盖不住 .armain-r1/.armain-r2 自己的颜色，所以必须用类。 */
+      if (row.classList) {
+        if (isUrgent(bus)) row.classList.add("hot");
+        else row.classList.remove("hot");
+      }
+    } else {
+      if (row.classList) {
+        row.classList.remove("live");
+        row.classList.remove("hot");
+      }
+    }
   }
 
   /* 附近站点分组：同一地点（名称近似 + 距离接近）合成一张卡 */
@@ -2064,7 +2083,6 @@
       var rowEls = rows.map(function (a) {
         var ended = outsideService(a.firstTime, a.lastTime, a);
         var hasBus = a.stationsAway !== null && a.stationsAway >= 0 && a.etaSeconds !== null;
-        var hot = !ended && (a.arrived || (a.stationsAway !== null && a.stationsAway <= 2));
 
         var block = document.createElement("div");
         block.className = "lineblock";
@@ -2072,9 +2090,7 @@
         var row = document.createElement("div");
         row.className = "armeta";
         row.style.marginTop = "8px";
-        if (ended) row.style.opacity = ".5";
-        else if (hot) row.style.color = "#ff6b5e";
-        else if (hasBus) row.classList.add("live");
+        paintRowState(row, hasBus ? a : null, ended);
 
         var preStart = a.preStartTime || a.preArrivalTime || "";
         var liveText = ended
@@ -4598,7 +4614,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.6";
+  var APP_FALLBACK_VERSION = "1.0.7";
 
   function fillAbout() {
     var verEl = $("abVersion");

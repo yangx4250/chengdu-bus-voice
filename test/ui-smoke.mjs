@@ -1117,23 +1117,40 @@ if (rowsWithoutSpeaker.length) {
   stage3.push(rowsWithoutSpeaker.length + ' 行缺少小喇叭：' + textOf(rowsWithoutSpeaker[0]).slice(0, 60));
 }
 
-/* 有在途车辆的行要高亮（.live），快到站的行保持红色、不要高亮 */
+/* 有在途车辆的行要高亮（.live）；快到站（.hot）在**保持高亮**的前提下文字转红。
+   两者不互斥 —— 用户明确要求「有在途车就亮，快到站只是字体变红，高亮保持」。 */
 const hasClass = (el, cls) => String(el.className || '').split(/\s+/).includes(cls);
 const rowOf = (kw) => allRows.find((r) => textOf(r).includes(kw));
 
 const p36Row = rowOf('P36路');
 if (!p36Row) stage3.push('找不到 P36 行');
-else if (!hasClass(p36Row, 'live')) {
-  stage3.push('有在途车的 P36 行没有高亮：' + textOf(p36Row).slice(0, 60));
+else {
+  if (!hasClass(p36Row, 'live')) {
+    stage3.push('有在途车的 P36 行没有高亮：' + textOf(p36Row).slice(0, 60));
+  }
+  /* P36 桩里 stationsAway=3 → 不算快到站，不该转红 */
+  if (hasClass(p36Row, 'hot')) {
+    stage3.push('还有 3 站的 P36 行不该标红：' + textOf(p36Row).slice(0, 60));
+  }
 }
 
-/* P02 在桩数据里 stationsAway=2 → 属于「快到站」，必须是红色而不是高亮 */
+/* P02 在桩数据里 stationsAway=2 → 属于「快到站」：既要高亮，又要标红 */
 const p02Row = rowOf('P02路');
 if (!p02Row) stage3.push('找不到 P02 行');
 else {
-  if (hasClass(p02Row, 'live')) stage3.push('快到站的 P02 行不该高亮');
-  if (p02Row.style.color !== '#ff6b5e') {
-    stage3.push('快到站的 P02 行没有保持红色，实际 ' + p02Row.style.color);
+  if (!hasClass(p02Row, 'live')) {
+    stage3.push('快到站的 P02 行也必须保持高亮：' + textOf(p02Row).slice(0, 60));
+  }
+  if (!hasClass(p02Row, 'hot')) {
+    stage3.push('快到站的 P02 行没有标红：' + textOf(p02Row).slice(0, 60));
+  }
+}
+
+/* .hot 必须是 .live 的子集：红色只作为高亮之上的强调，不能单独存在 */
+for (const r of allRows) {
+  if (hasClass(r, 'hot') && !hasClass(r, 'live')) {
+    stage3.push('标红的行没有高亮（hot 必须依附 live）：' + textOf(r).slice(0, 60));
+    break;
   }
 }
 
@@ -1146,7 +1163,24 @@ const endedRow = rowOf('716路');
 if (endedRow && hasClass(endedRow, 'live')) stage3.push('已收班的 716 行不该高亮');
 
 /* 整个首页至少要有一行高亮，否则功能等于没做 */
-if (!allRows.some((r) => hasClass(r, 'live'))) stage3.push('首页没有任何一行高亮');
+const liveRows = allRows.filter((r) => hasClass(r, 'live'));
+if (!liveRows.length) stage3.push('首页没有任何一行高亮');
+/* 回归：曾经只剩一行高亮，因为异步补查到车后把 live 抹掉了 */
+if (liveRows.length < 2) {
+  stage3.push('高亮行只有 ' + liveRows.length + ' 行（异步补查后状态被抹掉？）');
+}
+/* 高亮行不该残留收班的半透明 */
+for (const r of liveRows) {
+  if (r.style.opacity === '.5') {
+    stage3.push('高亮行残留透明：' + textOf(r).slice(0, 60));
+    break;
+  }
+}
+
+/* 标红必须走 CSS 类而不是行内颜色（行内 color 盖不住 .armain-r1/.armain-r2 自身颜色） */
+if (!/\.armeta\.hot\s+\.armain-r1[^{]*\{[^}]*#ff6b5e/i.test(html)) {
+  stage3.push('缺少 .armeta.hot .armain-r1 { color: #ff6b5e } 样式');
+}
 
 // 点某一行的小喇叭：应该只念这一行（方向可选）
 const spkButtons = findByClass(document.getElementById('list'), 'spk');
