@@ -19,5 +19,9 @@
     "start": "node bin/cd-bus.mjs",
     "near": "node bin/cd-bus.mjs near",
     "test": "node test/smoke.mjs"
+  },
+  "dependencies": {
+    "jpeg-js": "^0.4.4",
+    "pngjs": "^7.0.0"
   }
 }
