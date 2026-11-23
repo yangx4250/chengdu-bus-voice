@@ -1687,6 +1687,23 @@ else {
           const stopAfter = watchServiceLog.filter((x) => x[0] === 'stop').length;
           if (stopAfter <= stopBefore) stage4.push('再点「已盯站」没有取消盯站');
         }
+
+        /* v1.0.28：点顶部盯站条上的「停止」后，下面那个「📌 已盯站」按钮
+           必须立刻变回「📌 盯站」，不能等下一次重画。 */
+        wBtn[0].onclick();                        // 先重新盯上
+        await new Promise((r) => setTimeout(r, 300));
+        const stopEl = document.getElementById('dwatchStop');
+        if (!stopEl || typeof stopEl.onclick !== 'function') {
+          stage4.push('盯站条上没有「停止」按钮');
+        } else {
+          stopEl.onclick();
+          await new Promise((r) => setTimeout(r, 300));
+          const wBtn3 = findByClass(document.getElementById('lstationfav'), 'stationwatch');
+          const label3 = wBtn3.length ? String(wBtn3[0].textContent) : '';
+          if (label3.indexOf('已盯站') >= 0) {
+            stage4.push('点盯站条的「停止」后按钮还是「已盯站」，没有立刻刷新：' + label3);
+          }
+        }
       }
     }
     window.cdBusBackView && window.cdBusBackView();
