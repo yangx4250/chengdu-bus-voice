@@ -791,6 +791,13 @@ if (/id="voice"/.test(html)) failures.push('还残留自动播报开关 #voice')
 if (/自动播报/.test(html)) failures.push('还残留「自动播报」文案');
 if (/<footer/.test(html)) failures.push('首页底栏 <footer> 还在');
 if (html.includes('id="watch"')) failures.push('底部还残留盯站开关');
+/* v1.0.24：搜索/线路/首页的车辆统一进详情页，不再有独立的 #veh */
+if (/<div id="veh"/.test(html)) failures.push('还残留独立的车辆页 #veh');
+if (/function renderVehicleTimes/.test(html)) failures.push('还残留车辆页渲染函数 renderVehicleTimes');
+if (/function openVehicleView/.test(html)) failures.push('还残留车辆页入口 openVehicleView');
+if (!/VIEWS = \["home", "detail", "metro", "diag", "pick", "lineview"\]/.test(html)) {
+  failures.push('VIEWS 里还留着 veh');
+}
 if (!/function voiceOn\(\) \{ return true; \}/.test(html)) {
   failures.push('voiceOn() 应恒为 true（开关已移除）');
 }
@@ -1205,8 +1212,9 @@ if (!favRows.length) stage2.push('选站后线路页没有列出到站车辆');
 else {
   favRows[0].onclick();
   await new Promise((r) => setTimeout(r, 900));
-  if (String(document.getElementById('veh').className).includes('hidden')) {
-    stage2.push('点线路页的车辆没有进车辆页');
+  /* v1.0.24：点车辆不再进单独的「车辆页」，统一进详情页 */
+  if (String(document.getElementById('detail').className).includes('hidden')) {
+    stage2.push('点线路页的车辆没有进详情页');
   }
   const before = JSON.parse(storage.get('cdbus.favorites') || '[]').length;
   document.getElementById('dfav').onclick();
@@ -1927,16 +1935,16 @@ console.log('✓ 收藏进详情通过：芯片显示「已过收藏站 · 距�
       const dlistText = textOf(document.getElementById('dlist'));
       if (!/车牌/.test(dlistText)) stage5b.push('到站表没有车牌行：' + dlistText.slice(0, 80));
 
-      /* 车辆页整行点击不应触发下车提醒（只有 🔔 图标本身可点） */
+      /* v1.0.24：只有详情页一个车辆页，且进来时要标出「离我最近」的站。
+         假 DOM 不解析 innerHTML，只能对原始 HTML 文本做正则统计。 */
       {
-        const vrows = findByClass(document.getElementById('vlist'), 'srow');
-        if (vrows.length) {
-          const beforeAlight = alightServiceLog.length;
-          if (typeof vrows[0].onclick === 'function') vrows[0].onclick({ target: { getAttribute: () => null } });
-          await new Promise((r) => setTimeout(r, 100));
-          if (alightServiceLog.length > beforeAlight) {
-            stage5b.push('车辆页整行点击触发了下车提醒（应只有 🔔 可点）');
-          }
+        const raw = String(document.getElementById('dlist').__rawHtml || '');
+        const marks = raw.match(/离我最近/g) || [];
+        if (marks.length !== 1) {
+          stage5b.push('详情页「离我最近」标记应该恰好 1 处，实际 ' + marks.length);
+        }
+        if (!/class="srow[^"]*nearest/.test(raw)) {
+          stage5b.push('详情页最近站没有 nearest 类：' + raw.slice(0, 160));
         }
       }
       if (exitLog.length !== beforeExit0) stage5b.push('点车辆芯片触发了退出');

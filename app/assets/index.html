@@ -328,7 +328,7 @@
   .srow.picked { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
   .srow.arrived .swhen { color: #ff5b5b; font-weight: 700; }
   .srow.current .sname { color: #fff; font-weight: 600; }
-  /* 车辆页里离我最近的站：绿色描边高亮 + 「离我最近」徽标 */
+  /* 详情页里离我最近的站：绿色描边高亮 + 「离我最近」徽标 */
   .srow.nearest { border-color: var(--ok); background: #12302a; }
   .srow.nearest .sname { color: #d8fff1; font-weight: 600; }
   .srow .spk.nb { font-style: normal; font-size: 10px; color: #06130e; background: var(--ok);
@@ -783,24 +783,6 @@
     </div>
   </div>
   <div id="plist"></div>
-</div>
-
-<div id="veh" class="hidden">
-  <div id="vtop">
-    <div class="detail-head">
-      <div class="dh-row">
-        <button id="vback">← 返回</button>
-        <div class="dh-actions">
-          <button id="vrefresh">刷新</button>
-        </div>
-      </div>
-      <div class="titles">
-        <div id="vtitle">车辆</div>
-        <div id="vsub"></div>
-      </div>
-    </div>
-  </div>
-  <div id="vlist"></div>
 </div>
 
 <div id="lineview" class="hidden">
@@ -2225,7 +2207,7 @@
   /* ------------------------------------------------------------ 详情页 */
 
   /* 视图栈：每进一层记一层，返回键永远是「回上一页」，只有栈底才退出 App */
-  var VIEWS = ["home", "detail", "metro", "diag", "pick", "veh", "lineview"];
+  var VIEWS = ["home", "detail", "metro", "diag", "pick", "lineview"];
   var viewStack = ["home"];
 
   function showView(name, opts) {
@@ -2234,9 +2216,9 @@
       var el = $(v);
       if (el) el.classList.toggle("hidden", v !== name);
     });
-    if ($("fabSpeak")) $("fabSpeak").classList.toggle("hidden", name !== "detail" && name !== "veh");
+    if ($("fabSpeak")) $("fabSpeak").classList.toggle("hidden", name !== "detail");
     // 详情和车辆页共用一份 30 秒刷新，其它页面停掉
-    if (name !== "detail" && name !== "veh") stopDetailAutoRefresh();
+    if (name !== "detail") stopDetailAutoRefresh();
     // 线路页的车辆位置刷新只在停留在线路页时跑
     if (name !== "lineview") stopLineBusTimer();
     view.name = name;
@@ -2891,36 +2873,26 @@
     });
   }
 
-  /* 首页「最近一辆」卡片 → 直接进这辆车的页面 */
+  /* 点车辆 → 进详情页并选中这一辆。
+     v1.0.24 起搜索页、线路页、首页都进同一个详情页，不再有单独的「车辆页」。 */
   async function openVehicleForBus(bus) {
     var station = state.station;
     var detail = state.detail;
     if (!station || !detail || !bus) return;
-    view.lineId = detail.lineId;
-    view.lineName = detail.name;
-    view.stationId = station.stationId;
-    view.stationName = station.name;
-    view.fromOrder = station.order;
-    view.fromFavorite = false;
-    view.index = 0;
-    view.selectedBusId = bus.busId;
-    $("vtitle").textContent = "车牌 " + (bus.plate || String(bus.busId).slice(-4));
-    $("vsub").textContent = detail.name + "路 · 正在加载沿途各站…";
-    $("vlist").innerHTML = '<div class="empty">加载中…</div>';
-    showView("veh");
-    startDetailAutoRefresh();
-    await loadMatrix({ auto: true });
-    // 车辆页里换成用户点的那一辆
-    var buses = view.buses || [];
-    for (var i = 0; i < buses.length; i++) {
-      if (buses[i].busId === bus.busId) { view.index = i; break; }
-    }
-    if (buses[view.index]) view.selectedBusId = buses[view.index].busId;
-    renderBusChips();
-    // 跳进车辆页：自动滑到离我最近的那一站并标注
-    openVehicleView({ scroll: true });
+    await openDetail({
+      lineId: detail.lineId,
+      lineName: detail.name,
+      stationId: station.stationId,
+      stationName: station.name,
+      fromOrder: station.order,
+      busId: bus.busId,
+      scroll: true
+    });
   }
 
+  /* 唯一的车辆/到站详情页。所有入口（搜索、线路页、首页、收藏）都走这里。
+     opts.busId  —— 指定选中哪一辆（点车辆时传）
+     opts.scroll —— 进来后自动滚到离我最近的那一站并标注 */
   async function openDetail(opts) {
     view.lineId = opts.lineId;
     view.lineName = opts.lineName;
@@ -2930,6 +2902,8 @@
     view.fromFavorite = Boolean(opts.fromFavorite);
     view.data = null;
     view.index = 0;
+    view.selectedBusId = opts.busId || null;
+    view.scrollOnLoad = Boolean(opts.scroll);
     view.directions = [];
     $("dtitle").textContent = opts.title || "车辆详情";
     $("dsub").textContent = "正在算这辆车到沿途各站的时间…";
@@ -3039,8 +3013,11 @@
       }
       updateFavStar();
       renderBusChips();
-      renderTimes({ scroll: !auto });
-      if (view.name === "veh") renderVehicleTimes();
+      /* 首次进来：滚到离我最近的那一站（点车辆进入时才算，定时刷新不滚）；
+         之后定时刷新滚到车当前所在站 */
+      var wantScroll = auto ? true : view.scrollOnLoad;
+      view.scrollOnLoad = false;
+      renderTimes({ scroll: wantScroll, nearest: !auto });
     } catch (err) {
       $("dsub").textContent = "";
       $("dlist").innerHTML = '<div class="empty">' + (err.message || "加载失败") + "</div>";
@@ -3381,6 +3358,9 @@
 
   function renderTimes(options) {
     var doScroll = !options || options.scroll !== false;
+    /* 「离我最近」的站一直标着；滚到哪儿由 options.nearest 决定：
+       刚进来滚到最近站，之后定时刷新滚到车当前所在站，不再抢焦点。 */
+    var scrollNearest = Boolean(options && options.nearest);
     var data = view.data;
     var list = $("dlist");
     if (!data || !data.buses.length) {
@@ -3393,6 +3373,9 @@
     var timesByOrder = {};
     (bus.times || []).forEach(function (t) { timesByOrder[t.order] = t; });
     var queriedFrom = data.queriedFrom || 1;
+    /* 「离我最近」的站：用当前定位算，一直标在站名后面 */
+    var nearSt = nearestStation(stations);
+    var nearestOrder = nearSt ? nearSt.order : null;
 
     var html = '<div class="dhead">车牌 ' + (bus.plate || "未知") +
       " · 当前在第 " + bus.order + " 站 · 全程 " + stations.length + " 站</div>";
@@ -3422,10 +3405,13 @@
       else when = "—";
       var clock = (t && !passed && t.arrivalAt) ? " · " + fmtClock(t.arrivalAt) : "";
       var isCurrent = station.order === currentOrder;
-      html += '<div class="srow' + (isCurrent ? " current" : "") + (arrived ? " arrived" : "") + (passed ? " passed" : hot ? " hot" : "") +
+      var isNearest = nearestOrder !== null && Number(station.order) === Number(nearestOrder);
+      html += '<div class="srow' + (isCurrent ? " current" : "") + (isNearest ? " nearest" : "") +
+        (arrived ? " arrived" : "") + (passed ? " passed" : hot ? " hot" : "") +
         '" data-order="' + station.order + '" data-name="' + station.name + '">' +
         '<span class="idx">' + station.order + "</span>" +
-        '<span class="sname">' + station.name + "</span>" +
+        '<span class="sname">' + station.name +
+          (isNearest ? '<em class="spk nb">离我最近</em>' : "") + "</span>" +
         '<span class="swhen">' + when + clock + "</span>" +
         '<span class="actions"><span class="spk stpin' +
           (watch.on && watch.target && watch.target.order === station.order &&
@@ -3439,10 +3425,12 @@
 
     var rows = list.children;
     var currentRow = null;
+    var nearestRow = null;
     for (var i = 0; i < rows.length; i++) {
       (function (rowEl) {
         var order = parseInt(rowEl.getAttribute ? rowEl.getAttribute("data-order") : rowEl.dataset.order, 10);
         if (order === currentOrder) currentRow = rowEl;
+        if (nearestOrder !== null && Number(order) === Number(nearestOrder)) nearestRow = rowEl;
         rowEl.onclick = function () { pickStation(order, rowEl); };
         var pinEl = rowEl.querySelector ? rowEl.querySelector(".stpin") : null;
         if (pinEl) {
@@ -3461,11 +3449,10 @@
       })(rows[i]);
     }
 
-    /* 进入详情 / 切换车辆后，自动滚到车当前所在的那一站 */
-    if (doScroll && currentRow && typeof currentRow.scrollIntoView === "function") {
-      setTimeout(function () {
-        try { currentRow.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (e) {}
-      }, 60);
+    /* 刚进来滚到离我最近的站；之后刷新滚到车当前所在的那一站 */
+    var scrollRow = (scrollNearest && nearestRow) || currentRow;
+    if (doScroll && scrollRow) {
+      scrollElementIntoView(scrollRow, 60);
     }
   }
 
@@ -3526,7 +3513,7 @@
       return;
     }
     // 线路/车辆页有自己的顶栏，首页那条收藏条不用跟着出现
-    if (view.name === "lineview" || view.name === "veh") {
+    if (view.name === "lineview") {
       bar.className = "selbar hidden";
       return;
     }
@@ -3829,7 +3816,7 @@
       refreshLineBuses();                      // 车辆位置 + 下半页到站卡
       return;
     }
-    if (page === "detail" || page === "veh") {
+    if (page === "detail") {
       loadMatrix({ auto: true }).catch(function () {});
       if (state.detail && state.station) refresh(false).catch(function () {});
       return;
@@ -4252,7 +4239,6 @@
   /* 立即重画当前页面的站点行（详情页/车辆页），用于图标状态即时反馈 */
   function repaintStationRows() {
     if (view.name === "detail" && view.data) renderTimes({ scroll: false });
-    else if (view.name === "veh" && view.data) renderVehicleTimes();
   }
 
   function stopWatch() {
@@ -4422,103 +4408,6 @@
   }
 
 
-  function openVehicleView(opts) {
-    if (!view.data || !view.buses || !view.buses.length) {
-      setStatus("这条线暂时没有在途车辆", true);
-      return;
-    }
-    var bus = view.buses[view.index] || view.buses[0];
-    var box = $("vlist");
-    if (box) box.innerHTML = "";
-    if ($("vtitle")) $("vtitle").textContent = "车牌 " + (bus.plate || String(bus.busId).slice(-4));
-    if ($("vsub")) {
-      $("vsub").textContent = (view.lineName || "") + "路 · 当前在第 " + bus.order + " 站 · 全程 " +
-        ((view.data.stations || []).length) + " 站";
-    }
-    showView("veh");
-    renderVehicleTimes(opts);
-  }
-
-  /* 车辆页的到站表：和详情页同一套行样式，只列这一辆车的预测 */
-  /* opts.scroll：跳进车辆页时，自动滚到离我最近的那一站并标注 */
-  function renderVehicleTimes(opts) {
-    var box = $("vlist");
-    if (!box) return;
-    var data = view.data;
-    var bus = (view.buses || [])[view.index] || (view.buses || [])[0];
-    if (!data || !bus) { box.innerHTML = '<div class="empty">暂无车辆信息</div>'; return; }
-    var stations = data.stations || [];
-    var timesByOrder = {};
-    (bus.times || []).forEach(function (t) { timesByOrder[t.order] = t; });
-    var queriedFrom = data.queriedFrom || 1;
-    var nearSt = nearestStation(stations);
-    var nearestOrder = nearSt ? nearSt.order : view.fromOrder;
-
-    var html = "";
-    stations.forEach(function (station) {
-      var t = timesByOrder[station.order];
-      var passed = t ? t.passed : (station.order < queriedFrom);
-      var hot = t && !passed && t.etaSeconds >= 0 && t.etaSeconds <= 150;
-      var arrived = !passed && (
-        (Number(station.order) === Number(bus.order)) ||
-        (t && t.etaSeconds !== null && t.etaSeconds !== undefined && Number(t.etaSeconds) <= 0)
-      );
-      var isNearest = Number(station.order) === Number(nearestOrder);
-      var when;
-      if (passed) when = "已过";
-      else if (arrived) when = "已到站";
-      else if (t && t.etaSeconds >= 0) when = fmtEta(t.etaSeconds);
-      else if (t) when = "暂无";
-      else when = "—";
-      var clock = (t && !passed && t.arrivalAt) ? " · " + fmtClock(t.arrivalAt) : "";
-      html += '<div class="srow' + (isNearest ? " nearest" : "") +
-        (arrived ? " arrived" : "") + (passed ? " passed" : hot ? " hot" : "") +
-        '" data-order="' + station.order + '" data-name="' + station.name + '">' +
-        '<span class="idx">' + station.order + "</span>" +
-        '<span class="sname">' + station.name + "</span>" +
-        '<span class="swhen">' + when + clock + "</span>" +
-        '<span class="actions"><span class="spk stpin' +
-          (watch.on && watch.target && watch.target.order === station.order &&
-           String(watch.target.lineId) === String(view.lineId) ? " off" : "") +
-          '" data-pin="' + station.order + '">📌</span>' +
-        '<span class="spk bell' + (alightRunning && alightDest && Number(alightDest.order) === Number(station.order) ? " on" : "") +
-          '" data-bell="' + station.order + '">🔔</span></span></div>';
-    });
-    html += '<div class="dhead" style="margin-top:4px">点 📌 盯站、点 🔔 设下车提醒；时间仅供参考</div>';
-    box.innerHTML = html;
-
-    var rows = box.children;
-    var nearestRow = null;
-    for (var i = 0; i < rows.length; i++) {
-      (function (rowEl) {
-        var order = parseInt(rowEl.getAttribute ? rowEl.getAttribute("data-order") : rowEl.dataset.order, 10);
-        if (Number(order) === Number(nearestOrder)) nearestRow = rowEl;
-        var pinEl = rowEl.querySelector ? rowEl.querySelector(".stpin") : null;
-        if (pinEl) {
-          pinEl.onclick = function (ev) {
-            if (ev && ev.stopPropagation) ev.stopPropagation();
-            watchStationByOrder(order);
-          };
-        }
-        var bellEl = rowEl.querySelector ? rowEl.querySelector(".bell") : null;
-        if (bellEl) {
-          bellEl.onclick = function (ev) {
-            if (ev && ev.stopPropagation) ev.stopPropagation();
-            startAlight(order);
-          };
-        }
-        /* 整行不再触发下车提醒 —— 之前点行内任意位置都会设提醒，误触太多。
-           现在只有 🔔 图标本身可点（它的 onclick 在上面已单独绑定）。 */
-        rowEl.onclick = null;
-      })(rows[i]);
-    }
-
-    /* 点车辆跳进来时，自动滚到离我最近的那一站 */
-    if (opts && opts.scroll && nearestRow) {
-      scrollElementIntoView(nearestRow, 120);
-    }
-  }
-
   /* ------------------------------------------------------------ 下车提醒 */
 
   var ALIGHT_KEY = "cdbus.alight";
@@ -4596,7 +4485,6 @@
     updateAlightUI();
     startAlightTimer();
     if (view.name === "detail" && view.data) renderTimes({ scroll: false });
-    if (view.name === "veh") renderVehicleTimes();
   }
 
   function stopAlight() {
@@ -4615,7 +4503,6 @@
     setStatus(alightDest ? "已取消下车提醒（" + alightDest.name + "）" : "已取消下车提醒");
     updateAlightUI();
     if (view.name === "detail" && view.data) renderTimes({ scroll: false });
-    if (view.name === "veh") renderVehicleTimes();
   }
 
   function startAlightTimer() {
@@ -4717,7 +4604,6 @@
     /* 站点行的 🔔 恢复成「可再次点开」——它依赖 alightRunning/alightDest 渲染，
        两个都已经清空，重画一次列表让按钮立刻变回来 */
     if (view.name === "detail" && view.data) renderTimes({ scroll: false });
-    if (view.name === "veh") renderVehicleTimes();
   }
 
   function alightStateText() {
@@ -4862,7 +4748,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.23";
+  var APP_FALLBACK_VERSION = "1.0.24";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -5601,11 +5487,6 @@
       setStatus("没有可刷新的线路", true);
       return Promise.resolve();
     });
-  };
-  $("vback").onclick = function () { backHandler(); };
-  $("vrefresh").onclick = function () {
-    // loadMatrix 末尾会在 veh 视图下自己重画车辆页，这里不用再画一遍
-    loadMatrix({ auto: true }).catch(function () {});
   };
   $("alightStop").onclick = function (ev) {
     if (ev && ev.stopPropagation) ev.stopPropagation();
