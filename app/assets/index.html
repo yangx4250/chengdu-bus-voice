@@ -156,6 +156,34 @@
   .armeta .armain-r2 { font-size: var(--fs-sm); color: var(--muted);
     word-break: break-all; line-height: 1.3; }
   .armeta .armain-r2:empty { display: none; }
+  /* 站点卡的线路列表：三列网格。每格「线路名 / 到站状态」，
+     这样一屏能看全这个站的所有线路，不用上下滚。 */
+  .gridlines {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .gcell {
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 7px 8px; border-radius: 10px;
+    background: rgba(255, 255, 255, .04);
+    border: 1px solid var(--line);
+    min-width: 0;
+    cursor: pointer;
+  }
+  .gcell:active { background: #22304a; }
+  .gcell.ended { opacity: .5; }
+  .gcell .gname { font-size: var(--fs); font-weight: 600; color: var(--text);
+    word-break: break-all; line-height: 1.25; }
+  .gcell .gtime { font-size: var(--fs-sm); color: var(--muted);
+    word-break: break-all; line-height: 1.25; }
+  .gcell .gtime.gnow { color: #ffce4a; }
+  .gcell.ended .gtime { font-size: 11px; }
+  .gcell .spk { align-self: flex-end; margin-top: 2px; padding: 1px 6px; font-size: 11px;
+    border: 1px solid var(--line); border-radius: 7px; color: #b9c6dd; line-height: 1.2; }
+  .gcell .spk:active { background: #22304a; color: #fff; }
+
   .armeta .arrow { flex: 0 0 auto; color: #56637d; }
   .armeta .spk { flex: 0 0 auto; padding: 2px 8px; border: 1px solid var(--line);
     border-radius: 8px; font-size: 12px; line-height: 1; color: #b9c6dd; }
@@ -1770,46 +1798,7 @@
     return null;
   }
 
-  /* 同一个方向可能有多辆车：补上「下一辆」 */
-  async function enrichRow(mainEl, arrival, groupName) {
-    try {
-      var detail = await getDetail(arrival.lineId);
-      var station = findStation(detail, arrival.stationId, groupName);
-      if (!station) return;
-      var buses = await rpc("arrivals", {
-        lineId: arrival.lineId,
-        station: { stationId: station.stationId, order: station.order, name: station.name,
-                   lat: station.lat || 0, lng: station.lng || 0 }
-      });
-      /* mainEl 是 .armain，它父节点才是整行 .armeta —— 状态画在行上 */
-      var rowEl = mainEl.parentNode;
-      if (!buses || !buses.length) {
-        // 没有在途车 → 显示起点站的预估发车时间（车来了的发车预测）
-        paintRowState(rowEl, null, false);
-        var short = departureShort(detail);
-        if (short) {
-          mainEl.innerHTML = "";
-          mainEl.appendChild(twoRowMain(arrival.lineName, arrival.toward, short));
-        }
-        return;
-      }
-      paintRowState(rowEl, buses[0], false);
-      var statusText = describe(buses[0]);
-      if (buses.length > 1) statusText += " · 下辆 " + buses[1].stationsAway + " 站";
-      mainEl.innerHTML = "";
-      mainEl.appendChild(twoRowMain(arrival.lineName, arrival.toward, statusText));
-    } catch (e) {
-      /* 拿不到就保留首页接口给的那一条 */
-    }
-  }
-
   var networkBudget = 18;
-
-  function takeBudget() {
-    if (networkBudget <= 0) return false;
-    networkBudget--;
-    return true;
-  }
 
   /* 两个名字有多像（编辑距离），用于合并「同一地点、写法略有差异」的站点 */
   function nameDistance(a, b) {
@@ -1827,103 +1816,6 @@
       prev = cur.slice();
     }
     return prev[b.length];
-  }
-
-  /* 附近接口没给这个站任何到站数据时，用「途经」里的线路名反查站点，尽量补出来 */
-  async function fillEmptyGroup(box, group) {
-    var names = String(group.lineNames || "").split("、").filter(function (n) { return n; }).slice(0, 4);
-    if (!names.length) return;
-
-    for (var i = 0; i < names.length; i++) {
-      if (networkBudget <= 0) break;
-      try {
-        networkBudget -= 2;
-        var directions = await getDirections(names[i]);
-        for (var k = 0; k < directions.length; k++) {
-          var dir = directions[k];
-          var detail = await getDetail(dir.lineId);
-          var station = null;
-          for (var m = 0; m < detail.stations.length; m++) {
-            if (detail.stations[m].name === group.name) { station = detail.stations[m]; break; }
-          }
-          if (!station) continue;
-
-          var ended = outsideService(dir.firstTime || detail.firstTime, dir.lastTime || detail.lastTime, null);
-          var row = document.createElement("div");
-          row.className = "armeta";
-          row.style.marginTop = "8px";
-
-          var text = dir.name + "路 往 " + (dir.endSn || detail.endSn || "") + "　";
-
-          if (ended) {
-            text += endedText(dir.firstTime || detail.firstTime, dir.lastTime || detail.lastTime);
-            row.style.opacity = ".5";
-          } else {
-            var buses = await rpc("arrivals", {
-              lineId: dir.lineId,
-              station: { stationId: station.stationId, order: station.order, name: station.name,
-                         lat: station.lat || 0, lng: station.lng || 0 }
-            });
-            if (!buses || !buses.length) {
-              var shortDep = departureShort(detail);
-              text += shortDep || "暂无实时车辆";
-            } else {
-              text += describe(buses[0]);
-              if (buses.length > 1) text += " · 下一辆 " + describe(buses[1]);
-            }
-          }
-          paintRowState(row, ended ? null : (buses && buses[0]), ended);
-
-          /* 双排：第一排线路 往 方向，第二排状态（从 text 里去掉前面的「线路 往 方向　」） */
-          var main = twoRowMain(dir.name, (dir.endSn || detail.endSn || ""),
-                                text.replace(/^.*?　/, ""));
-          var spk = document.createElement("span");
-          spk.className = "spk";
-          spk.textContent = "🔊";
-          spk.onclick = (function (dirLine, isEnded, spokenText) {
-            return function (ev) {
-              if (ev && ev.stopPropagation) ev.stopPropagation();
-              speak(spokenText, true);
-            };
-          })(dir, ended,
-            dir.name + "路往" + (dir.endSn || detail.endSn || "") + "，" + stationLabel(group.name) + "，" +
-            (ended ? "不在运营时段。" : text.replace(/^.*?　/, "").replace(/^暂无实时车辆$/, "暂无实时车辆") + "。"));
-
-          var arrow = document.createElement("span");
-          arrow.className = "arrow";
-          arrow.textContent = "›";
-
-          row.appendChild(main);
-          row.appendChild(spk);
-          row.appendChild(arrow);
-          row.onclick = (function (dirLine, st, isEnded) {
-            return function () {
-              if (isEnded) return;
-              openDetail({
-                lineId: dirLine.lineId,
-                lineName: dirLine.name,
-                stationId: st.stationId,
-                stationName: st.name,
-                fromOrder: st.order,
-                title: dirLine.name + "路 · " + st.name
-              });
-            };
-          })(dir, station, ended);
-
-          box.appendChild(row);
-        }
-      } catch (e) {
-        /* 这条线反查失败就算了 */
-      }
-    }
-
-    if (!box.children.length) {
-      var tip = document.createElement("div");
-      tip.className = "meta";
-      tip.style.marginTop = "6px";
-      tip.textContent = "暂无实时车辆";
-      box.appendChild(tip);
-    }
   }
 
   /* 某条线路在某个站名上的方向：优先匹配 arrival 自带的方向，
@@ -1950,129 +1842,138 @@
     return null;
   }
 
-  /* 往站点卡里加一行线路。一条线路只加一行：
-     同一条线的两个方向在同一个站点上只会命中其中一个（站名对得上的那个方向）。 */
-  async function appendLineRow(box, group, lineName, preferLineId) {
+  /* 网格卡里的第二排文案：尽量短（格子窄，三列） */
+  function gridTimeText(opts) {
+    if (opts.ended) {
+      /* 收班也要让用户知道什么时候有车（格子窄，省掉「不在运营时段」几个字） */
+      var parts = [];
+      if (opts.firstTime) parts.push("首班 " + opts.firstTime);
+      if (opts.lastTime) parts.push("末班 " + opts.lastTime);
+      return parts.length ? "不在运营时段（" + parts.join(" · ") + "）" : "不在运营时段";
+    }
+    if (opts.away === null || opts.away === undefined || opts.away < 0) {
+      return opts.preStart ? opts.preStart : "无车";
+    }
+    if (opts.away === 0) return "进站";
+    if (opts.away === 1) return "1 站";
+    return opts.away + " 站";
+  }
+
+  /* 往站点卡里加一个线路格子（三列网格里的一格）。
+     opts = { lineId, lineName, stationId, stationOrder, toward,
+              ended, away, eta, preStart, firstTime, lastTime } */
+  function appendGridCell(box, group, opts) {
+    var name = String(opts.lineName || "");
+    if (!name) return false;
+
+    var cell = document.createElement("div");
+    cell.className = "gcell" + (opts.ended ? " ended" : "");
+
+    var gname = document.createElement("div");
+    gname.className = "gname";
+    gname.textContent = name + "路";
+
+    var gtime = document.createElement("div");
+    gtime.className = "gtime" +
+      (opts.away !== null && opts.away !== undefined && opts.away >= 0 && opts.away <= 1 && !opts.ended ? " gnow" : "");
+    gtime.textContent = gridTimeText(opts);
+
+    /* 每格保留一个播报按钮（只念这一条，不影响其它） */
+    var spk = document.createElement("span");
+    spk.className = "spk";
+    spk.textContent = "🔊";
+    spk.onclick = function (ev) {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      var tail = opts.ended
+        ? endedText(opts.firstTime, opts.lastTime) + "。"
+        : (opts.away === null || opts.away === undefined || opts.away < 0)
+          ? (opts.preStart ? "待发车 " + opts.preStart + "。" : "暂无实时车辆。")
+          : describe({ arrived: opts.away === 0, stationsAway: opts.away, etaSeconds: opts.eta }) + "。";
+      speak(name + "路，" + stationLabel(group.name) + "，" + tail, true);
+      spk.textContent = "…";
+      setTimeout(function () { spk.textContent = "🔊"; }, 1200);
+    };
+
+    cell.appendChild(gname);
+    cell.appendChild(gtime);
+    cell.appendChild(spk);
+
+    cell.onclick = function () {
+      if (opts.ended || !opts.lineId) return;
+      openDetail({
+        lineId: opts.lineId,
+        lineName: name,
+        stationId: opts.stationId || group.stationId,
+        stationName: group.name,
+        fromOrder: opts.stationOrder || 0,
+        title: name + "路 · " + group.name
+      });
+    };
+
+    box.appendChild(cell);
+    return true;
+  }
+
+  /* 站点卡里有实时数据的那条线路 → 一个格子 */
+  function appendArrivalCell(box, group, a) {
+    var ended = outsideService(a.firstTime, a.lastTime, a);
+    var hasBus = a.stationsAway !== null && a.stationsAway >= 0 && a.etaSeconds !== null;
+    var preStart = a.preStartTime || a.preArrivalTime || "";
+    return appendGridCell(box, group, {
+      lineId: a.lineId,
+      lineName: a.lineName,
+      stationId: a.stationId,
+      stationOrder: a.stationOrder,
+      toward: a.toward,
+      ended: ended,
+      away: hasBus ? a.stationsAway : null,
+      eta: a.etaSeconds,
+      preStart: preStart,
+      firstTime: a.firstTime,
+      lastTime: a.lastTime
+    });
+  }
+
+  /* 站点卡里没有实时数据的线路：按站名反查方向和站点，再查一次到站 → 一个格子。
+     一条线路只加一格（同一条线的两个方向在同一个站名上只命中其中一个）。 */
+  async function appendLineCell(box, group, lineName) {
     if (!lineName) return false;
-    var hit = await findDirectionForStop(lineName, group.name, preferLineId);
+    var hit = await findDirectionForStop(lineName, group.name, null);
     if (!hit) return false;
     var dir = hit.dir, detail = hit.detail, station = hit.station;
 
     var firstTime = dir.firstTime || detail.firstTime;
     var lastTime = dir.lastTime || detail.lastTime;
     var ended = outsideService(firstTime, lastTime, null);
-    var toward = dir.endSn || detail.endSn || "";
-    var buses = null;
-    var statusText;
+    var away = null, eta = null, preStart = "";
 
-    if (ended) {
-      statusText = endedText(firstTime, lastTime);
-    } else {
-      buses = await rpc("arrivals", {
+    if (!ended) {
+      var buses = await rpc("arrivals", {
         lineId: dir.lineId,
         station: { stationId: station.stationId, order: station.order, name: station.name,
                    lat: station.lat || 0, lng: station.lng || 0 }
       });
-      if (!buses || !buses.length) {
-        statusText = departureShort(detail) || "暂无实时车辆";
+      if (buses && buses.length) {
+        away = buses[0].stationsAway;
+        eta = buses[0].etaSeconds;
       } else {
-        statusText = describe(buses[0]);
-        if (buses.length > 1) statusText += " · 下辆 " + buses[1].stationsAway + " 站";
+        preStart = departureShort(detail) || "";
       }
     }
 
-    var row = document.createElement("div");
-    row.className = "armeta";
-    row.style.marginTop = "8px";
-    paintRowState(row, ended ? null : (buses && buses[0]), ended);
-
-    var main = twoRowMain(dir.name || lineName, toward, statusText);
-
-    var spk = document.createElement("span");
-    spk.className = "spk";
-    spk.textContent = "🔊";
-    spk.onclick = function (ev) {
-      if (ev && ev.stopPropagation) ev.stopPropagation();
-      speak((dir.name || lineName) + "路往" + toward + "，" + stationLabel(group.name) + "，" +
-        (ended ? "不在运营时段。" : statusText + "。"), true);
-    };
-
-    var arrow = document.createElement("span");
-    arrow.className = "arrow";
-    arrow.textContent = "›";
-
-    row.appendChild(main);
-    row.appendChild(spk);
-    row.appendChild(arrow);
-    row.onclick = function () {
-      if (ended) return;
-      openDetail({
-        lineId: dir.lineId,
-        lineName: dir.name || lineName,
-        stationId: station.stationId,
-        stationName: station.name,
-        fromOrder: station.order,
-        title: (dir.name || lineName) + "路 · " + station.name
-      });
-    };
-    box.appendChild(row);
-    return true;
-  }
-
-  /* 站点卡里已经有实时数据的那几条线路走这里；一条线路只出一行。 */
-  function appendArrivalRow(box, group, a, budgetLeft) {
-    var ended = outsideService(a.firstTime, a.lastTime, a);
-    var hasBus = a.stationsAway !== null && a.stationsAway >= 0 && a.etaSeconds !== null;
-
-    var row = document.createElement("div");
-    row.className = "armeta";
-    row.style.marginTop = "8px";
-    paintRowState(row, hasBus ? a : null, ended);
-
-    var preStart = a.preStartTime || a.preArrivalTime || "";
-    var liveText = ended
-      ? endedText(a.firstTime, a.lastTime)
-      : hasBus ? describe(a)
-      : preStart ? ("待发车 " + preStart)
-      : "暂无实时车辆";
-
-    var main = twoRowMain(a.lineName, a.toward, liveText);
-
-    var spk = document.createElement("span");
-    spk.className = "spk";
-    spk.textContent = "🔊";
-    spk.onclick = function (ev) {
-      if (ev && ev.stopPropagation) ev.stopPropagation();
-      var speech = a.lineName + "路往" + (a.toward || "") + "，" + stationLabel(group.name) + "，" +
-        (ended ? "不在运营时段。" : (!hasBus ? "暂无实时车辆。" : describe(a) + "。"));
-      speak(speech, true);
-      spk.textContent = "…";
-      setTimeout(function () { spk.textContent = "🔊"; }, 1200);
-    };
-
-    var arrow = document.createElement("span");
-    arrow.className = "arrow";
-    arrow.textContent = "›";
-
-    row.appendChild(main);
-    row.appendChild(spk);
-    row.appendChild(arrow);
-    row.onclick = function () {
-      if (ended) return;
-      openDetail({
-        lineId: a.lineId,
-        lineName: a.lineName,
-        stationId: a.stationId,
-        stationName: group.name,
-        fromOrder: a.stationOrder,
-        title: a.lineName + "路 · " + group.name
-      });
-    };
-    box.appendChild(row);
-
-    var pendingDeparture = Boolean(a.preStartTime) && a.etaSeconds === null;
-    if (!ended && !pendingDeparture && takeBudget()) enrichRow(main, a, group.name);
-    return row;
+    return appendGridCell(box, group, {
+      lineId: dir.lineId,
+      lineName: dir.name || lineName,
+      stationId: station.stationId,
+      stationOrder: station.order,
+      toward: dir.endSn || detail.endSn || "",
+      ended: ended,
+      away: away,
+      eta: eta,
+      preStart: preStart,
+      firstTime: firstTime,
+      lastTime: lastTime
+    });
   }
 
   /* 线路名归一：lineNames 里是「P02路」，arrivals 里是「P02」，
@@ -2084,17 +1985,22 @@
   /* 站点卡里没有实时数据的那几条线路：按站名反查，一条线路一行。
      用户要的是「把这个站的所有线路都列出来」，所以不再渲染反方向。 */
   async function fillGroupLines(box, group, skipNames) {
-    var names = String(group.lineNames || "").split("、").filter(function (n) { return n; });
+    var names = (group.lineNameSet && group.lineNameSet.length)
+      ? group.lineNameSet.slice()
+      : String(group.lineNames || "").split("、").filter(function (n) { return n; });
     var skip = {};
     (skipNames || []).forEach(function (n) { skip[lineNameKey(n)] = true; });
-    for (var i = 0; i < names.length; i++) {
-      if (networkBudget <= 0) break;
-      if (skip[lineNameKey(names[i])]) continue;
-      networkBudget -= 2;
-      try {
-        await appendLineRow(box, group, names[i], null);
-      } catch (e) {
-        /* 这条线反查失败就算了 */
+    var missing = names.filter(function (n) { return !skip[lineNameKey(n)]; });
+    /* 预算不够时不要按顺序只补前几条 —— 那样「有的线路有格子、有的没有」，
+       用户看到的就是「只显示了几条线路」。要么补齐，要么一条都不补。 */
+    if (missing.length && networkBudget >= missing.length * 2) {
+      for (var i = 0; i < missing.length; i++) {
+        networkBudget -= 2;
+        try {
+          await appendLineCell(box, group, missing[i]);
+        } catch (e) {
+          /* 这条线反查失败就算了 */
+        }
       }
     }
     if (!box.children.length) {
@@ -2103,88 +2009,6 @@
       tip.style.marginTop = "6px";
       tip.textContent = "暂无实时车辆";
       box.appendChild(tip);
-    }
-  }
-
-  /* 旧的「反方向」行，已不再使用（首页改成一条线路只显示一行） */
-  async function addOppositeRow(block, groupName, arrival) {
-    try {
-      var directions = await getDirections(arrival.lineName);
-      var other = null;
-      for (var i = 0; i < directions.length; i++) {
-        if (directions[i].lineId !== arrival.lineId) { other = directions[i]; break; }
-      }
-      if (!other) return;
-
-      var detail = await getDetail(other.lineId);
-      var station = null;
-      for (var k = 0; k < detail.stations.length; k++) {
-        if (detail.stations[k].stationId === arrival.stationId) { station = detail.stations[k]; break; }
-      }
-      if (!station) {
-        for (var m = 0; m < detail.stations.length; m++) {
-          if (detail.stations[m].name === groupName) { station = detail.stations[m]; break; }
-        }
-      }
-      if (!station) return;
-
-      var ended = outsideService(other.firstTime || detail.firstTime, other.lastTime || detail.lastTime, null);
-      var text = arrival.lineName + "路 往 " + (other.endSn || detail.endSn || "") + "　";
-
-      if (ended) {
-        text += endedText(other.firstTime || detail.firstTime, other.lastTime || detail.lastTime);
-      } else {
-        var buses = await rpc("arrivals", {
-          lineId: other.lineId,
-          station: { stationId: station.stationId, order: station.order, name: station.name,
-                     lat: station.lat || 0, lng: station.lng || 0 }
-        });
-        if (!buses || !buses.length) {
-          text += "暂无实时车辆";
-        } else {
-          text += describe(buses[0]);
-          if (buses.length > 1) text += " · 下辆 " + buses[1].stationsAway + " 站";
-        }
-      }
-
-      var row = document.createElement("div");
-      row.className = "armeta";
-      row.style.marginTop = "8px";
-      paintRowState(row, ended ? null : (buses && buses[0]), ended);
-
-      var main = twoRowMain(arrival.lineName, (other.endSn || detail.endSn || ""),
-                            text.replace(/^.*?　/, ""));
-
-      var spk = document.createElement("span");
-      spk.className = "spk";
-      spk.textContent = "🔊";
-      spk.onclick = function (ev) {
-        if (ev && ev.stopPropagation) ev.stopPropagation();
-        speak(arrival.lineName + "路往" + (other.endSn || "") + "，" + stationLabel(groupName) + "，" +
-          (ended ? "不在运营时段。" : text.replace(/^.*?　/, "") + "。"), true);
-      };
-
-      var arrow = document.createElement("span");
-      arrow.className = "arrow";
-      arrow.textContent = "›";
-
-      row.appendChild(main);
-      row.appendChild(spk);
-      row.appendChild(arrow);
-      row.onclick = function () {
-        if (ended) return;
-        openDetail({
-          lineId: other.lineId,
-          lineName: arrival.lineName,
-          stationId: station.stationId,
-          stationName: station.name,
-          fromOrder: station.order,
-          title: arrival.lineName + "路 · " + station.name
-        });
-      };
-      block.appendChild(row);
-    } catch (e) {
-      /* 反方向拿不到就只显示已知方向，不打扰用户 */
     }
   }
 
@@ -2269,6 +2093,30 @@
     }
   }
 
+  /* 把一个站点的线路名并进分组（按归一化名字去重）。
+     合并同名站时两边都会贡献线路名，不去重会出现「16路、16路」。 */
+  function pushLineNames(group, stop) {
+    if (!group.lineNameSet) group.lineNameSet = [];
+    var add = [];
+    var list = (stop && stop.lineNameList) || null;
+    if (list && list.length) {
+      for (var i = 0; i < list.length; i++) add.push(list[i]);
+    } else if (stop && stop.lineNames) {
+      add = String(stop.lineNames).split("、");
+    }
+    var have = {};
+    group.lineNameSet.forEach(function (n) { have[lineNameKey(n)] = true; });
+    add.forEach(function (n) {
+      n = String(n || "").trim();
+      if (!n) return;
+      var k = lineNameKey(n);
+      if (have[k]) return;
+      have[k] = true;
+      group.lineNameSet.push(n);
+    });
+    group.lineNames = group.lineNameSet.join("、");
+  }
+
   /* 附近站点分组：同一地点（名称近似 + 距离接近）合成一张卡 */
   function buildGroups(stops) {
     var groups = [];
@@ -2279,24 +2127,23 @@
         var near = Math.abs(existing.distance - stop.distanceMeters) <= 30;
         if (same && near) {
           existing.distance = Math.min(existing.distance, stop.distanceMeters);
-          if (stop.lineNames) {
-            existing.lineNames = existing.lineNames
-              ? existing.lineNames + "、" + stop.lineNames
-              : stop.lineNames;
-          }
+          pushLineNames(existing, stop);
           existing.arrivals = existing.arrivals.concat(stop.arrivals || []);
           return;
         }
       }
-      groups.push({
+      var g0 = {
         name: stop.name || "",
         distance: stop.distanceMeters,
         stationId: stop.stationId,
         stationName: stop.name || "",
         lineNames: stop.lineNames,
         lineNameList: stop.lineNameList || null,
+        lineNameSet: [],
         arrivals: (stop.arrivals || []).slice()
-      });
+      };
+      pushLineNames(g0, stop);
+      groups.push(g0);
     });
     return groups;
   }
@@ -2342,12 +2189,13 @@
         '</span><span class="toward">' + group.distance + ' 米' +
         ' <span class="stopstar">' + (stopFav ? "★" : "☆") + '</span></span></div>';
 
+      /* 三列网格：一条线路一格，站点卡里把这个站的所有线路都列出来。
+         接口只给「有实时数据」的那几条，剩下的由 fillGroupLines 按站名反查补齐。 */
       var rowsBox = document.createElement("div");
+      rowsBox.className = "gridlines";
       card.appendChild(rowsBox);
 
-      /* 一条线路只显示一行（不再渲染反方向），站点卡里没实时数据的线路
-         由 fillGroupLines 按站名反查补齐，这样「这个站的所有线路」都能列出来。 */
-      rows.forEach(function (a) { appendArrivalRow(rowsBox, group, a); });
+      rows.forEach(function (a) { appendArrivalCell(rowsBox, group, a); });
       fillGroupLines(rowsBox, group, rows.map(function (a) { return a.lineName; }));
 
       if (group.lineNames) {
@@ -5115,7 +4963,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.20";
+  var APP_FALLBACK_VERSION = "1.0.21";
 
   function fillAbout() {
     var verEl = $("abVersion");

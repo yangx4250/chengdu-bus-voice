@@ -1318,10 +1318,10 @@ if (/往 /.test(cardsHtml)) {
 {
   const cards = document.getElementById('list').children;
   for (const card of cards) {
-    const rows = findByClass(card, 'armeta');
+    const rows = findByClass(card, 'gcell');
     const seen = {};
     for (const row of rows) {
-      const r1 = findByClass(row, 'armain-r1')[0];
+      const r1 = findByClass(row, 'gname')[0];
       const name = String(textOf(r1) || '').trim();
       if (!name) continue;
       seen[name] = (seen[name] || 0) + 1;
@@ -1334,25 +1334,43 @@ if (/往 /.test(cardsHtml)) {
   /* 花园永泉的 lineNames 有 P02/716/720/45 四条，arrivals 只给前三条，
      45 路要靠反查补齐 —— 一条线只出一行，所以四条都要在 */
   const firstCard = cards[0];
-  const firstNameRows = findByClass(firstCard, 'armain-r1').map((el) => String(textOf(el) || ''));
+  const firstNameRows = findByClass(firstCard, 'gname').map((el) => String(textOf(el) || ''));
   ['P02', '716', '720', '45'].forEach((n) => {
     const hit = firstNameRows.filter((t) => t.indexOf(n + '路') === 0);
     if (!hit.length) stage3.push('站点卡里缺少线路「' + n + '路」：' + firstNameRows.join(' | '));
   });
 }
-if (!/P36路[^›]*还有 3 站/.test(cardsHtml)) {
+if (!/P36路\s*3 站/.test(cardsHtml.replace(/🔊/g, ' '))) {
   stage3.push('近似站名没有合并/数据没带过来：' + cardsHtml.slice(0, 240));
 }
-if (!/下辆 \d+ 站/.test(cardsHtml)) stage3.push('同一方向多辆车时没有显示「下辆 N 站」：' + cardsHtml.slice(0, 240));
-if (!cardsHtml.includes('待发车 09:24')) stage3.push('起点站没有显示待发车时间：' + cardsHtml.slice(0, 240));
-if (!/720路[^›]*待发车 09:24/.test(cardsHtml.replace(/\n/g, ''))) {
-  stage3.push('720路起点站那一行不是「待发车 09:24」');
+/* 三列格子太窄，第二排只放「N 站 / 进站 / 待发车 / 收班」，
+   不再拼「下辆 N 站」这种长文案 */
+if (!/P02路\s*2 站/.test(cardsHtml.replace(/🔊/g, ' '))) {
+  stage3.push('三列格子没有显示到站站数：' + cardsHtml.slice(0, 240));
+}
+if (!cardsHtml.includes('09:24')) stage3.push('起点站没有显示待发车时间：' + cardsHtml.slice(0, 240));
+if (!/720路\s*09:24/.test(cardsHtml.replace(/🔊/g, ' '))) {
+  stage3.push('720路格子的第二排不是发车时间 09:24');
 }
 // 同名站点应该合并成一张卡片
 if (stopCards.length !== 4) stage3.push('站点卡片数不对：' + stopCards.length);
 if (!cardsHtml.includes('途经')) stage3.push('站点卡缺少途经线路');
+
+/* v1.0.21：线路列表改成三列网格 */
+if (!/\.gridlines\s*\{[^}]*grid-template-columns:\s*repeat\(3/.test(html)) {
+  stage3.push('缺少三列网格样式 .gridlines { grid-template-columns: repeat(3, ...) }');
+}
+{
+  const cards = document.getElementById('list').children;
+  for (const card of cards) {
+    if (!findByClass(card, 'gridlines').length) {
+      stage3.push('站点卡里的线路没有放进三列网格：' + textOf(card).slice(0, 40));
+      break;
+    }
+  }
+}
 if (!/🔊/.test(cardsHtml)) stage3.push('线路行没有单独的播报按钮');
-const allRows = findByClass(document.getElementById('list'), 'armeta');
+const allRows = findByClass(document.getElementById('list'), 'gcell');
 const rowsWithoutSpeaker = allRows.filter((row) => !findByClass(row, 'spk').length);
 // 双排布局后「线路」和「待发车」分属两排，允许中间夹着按钮文本
 if (!/P49路[\s\S]{0,120}?待发车 \d{2}:\d{2}/.test(cardsHtml)) {
@@ -1385,8 +1403,8 @@ if (/\.armeta\.live\s*\{/.test(html) || /\.armeta\.hot\s/.test(html)) {
 
 /* 收班行仍然要变淡（这是唯一保留的行状态） */
 const endedRow = rowOf('716路');
-if (endedRow && endedRow.style.opacity !== '.5') {
-  stage3.push('已收班的 716 行没有变淡');
+if (endedRow && !hasClass(endedRow, 'ended')) {
+  stage3.push('已收班的 716 格子没有标 ended（应收班变淡）');
 }
 
 // 点某一行的小喇叭：应该只念这一行（方向可选）

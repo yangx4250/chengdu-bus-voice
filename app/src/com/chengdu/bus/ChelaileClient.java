@@ -306,6 +306,13 @@ public final class ChelaileClient {
                 stop.put("name", st.optString("sn"));
                 stop.put("distanceMeters", st.optInt("distance"));
                 stop.put("lineNames", st.optString("lineNames"));
+                /* 该站全部线路名（含没有实时数据的那几条）：
+                   首页三列网格要靠它把「这个站的所有线路」都列出来。 */
+                JSONArray nameList = st.optJSONArray("lineNameList");
+                JSONArray names = new JSONArray();
+                if (nameList != null) {
+                    for (int q = 0; q < nameList.length(); q++) names.put(nameList.optString(q));
+                }
                 /* 站点经纬度：首页的 🧭 导航按钮要用（没有就点不了） */
                 stop.put("lat", st.optDouble("lat", 0));
                 stop.put("lng", st.optDouble("lng", 0));
@@ -315,6 +322,7 @@ public final class ChelaileClient {
                     if (st.optString("sId").equals(a.optString("stationId"))) own.put(a);
                 }
                 stop.put("arrivals", own);
+                stop.put("lineNameList", names);
                 stops.put(stop);
             }
         }
