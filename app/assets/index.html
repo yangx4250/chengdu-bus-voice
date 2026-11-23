@@ -1610,7 +1610,8 @@
       card.className = "bus tap";
       card.innerHTML = '<div class="head pickhead"><span class="line-name">' + lineLabel(line) + "</span></div>";
       card.onclick = function () {
-        run(function () { return applyLine(line, stopName, true); });
+        /* 从搜索结果进详情不播报：用户只是来挑线路的，进页面自己念会打断 */
+        run(function () { return applyLine(line, stopName, false); });
       };
       list.appendChild(card);
     });
@@ -3856,7 +3857,8 @@
     for (var i = 0; i < candidates.length; i++) {
       if (String(candidates[i].direction) === "0") { picked = candidates[i]; break; }
     }
-    await applyLine(picked, stopName, announce);
+    /* 搜索进详情只更新页面，不念出来（announce 留给首页点站点卡那种主动查询） */
+    await applyLine(picked, stopName, false);
   }
 
   async function locate(timeout) {
@@ -4699,7 +4701,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.26";
+  var APP_FALLBACK_VERSION = "1.0.27";
 
   function fillAbout() {
     var verEl = $("abVersion");

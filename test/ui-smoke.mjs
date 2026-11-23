@@ -2233,8 +2233,13 @@ if (pickerCards.length < 2) stage6.push('候选线路列表过少：' + pickerCa
 }
 
 if (pickerCards.length) {
+  /* v1.0.27：从搜索结果点进详情不许自动播报（只更新页面） */
+  const beforeSearchSpeak = speakLog.length;
   pickerCards[0].onclick();
   await new Promise((r) => setTimeout(r, 1200));
+  if (speakLog.length > beforeSearchSpeak) {
+    stage6.push('从搜索结果点进详情自动播报了：' + speakLog.slice(beforeSearchSpeak).join('|'));
+  }
   if (String(document.getElementById('pick').className).includes('hidden') === false) {
     stage6.push('选中候选线路后没有离开搜索结果页');
   }
