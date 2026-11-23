@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.0.10）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.0.11）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -164,6 +164,9 @@ chengdu-bus/build/成都公交.apk    (约 92 KB)
 界面是 WebView + 原生桥。
 
 **应用名「成都公交」（v1.0.1）**：桌面显示名、安装列表、系统标题栏统一改成「成都公交」；
+**v1.0.11 下半页一起刷**：线路页下半部分（选中站的到站卡）也跟着同一个 30 秒
+定时器一起刷新，不用手动点「刷新」。
+
 **v1.0.10 🚌 挂在站名头上**：线路页每个站名芯片的**上方**显示 🚌，一辆车一个图标，
 同一站有两辆车就并排两个。车还没进站时图标轻微呼吸。芯片行上方显示
 「🚌 N 辆在途 · HH:MM 更新」，每 30 秒刷新一次；离开线路页即停止。

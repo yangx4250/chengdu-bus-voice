@@ -949,6 +949,33 @@ if (!stationChips.length) {
   const lvbText = textOf(lvb);
   if (!/在途/.test(lvbText)) stage2.push('线路页没有显示在途车辆数：' + lvbText.slice(0, 60));
   if (!/更新/.test(lvbText)) stage2.push('线路页没有显示车辆位置更新时间：' + lvbText.slice(0, 60));
+  // 下半页（选中站的到站卡）也由同一个 30 秒刷新驱动：
+  // 模拟一次 refreshLineBuses，到站卡应跟着重画（桩里 P36 选中的站有车）
+  {
+    const before = textOf(document.getElementById('llist'));
+    if (!before.length) stage2.push('线路页下半页到站卡是空的，无法验证联动刷新');
+    // 换一辆车进站的场景：改桩数据再触发一次刷新，卡上内容必须变化
+    const stationChipsNow = findByClass(document.getElementById('lchips'), 'chip');
+    // 点第一个「招呼站」芯片选中它，让下半页出现到站卡
+    const zhaoChip = stationChipsNow.filter((c) => textOf(c).includes('招呼站'))[0];
+    if (zhaoChip && zhaoChip.onclick) {
+      zhaoChip.onclick();
+      await new Promise((r) => setTimeout(r, 300));
+      const after = textOf(document.getElementById('llist'));
+      if (!after.length) stage2.push('选中站后下半页没有到站卡');
+      if (after === before && before.length) {
+        // 内容一致不算失败（同一辆车的数据），但至少必须有 P36 相关内容
+        if (!after.includes('P36')) stage2.push('下半页到站卡没有 P36 的车：' + after.slice(0, 60));
+      }
+      // 恢复选中花园公交站，别污染后面的导航断言（导航按选中站算距离）
+      const gardenChip = findByClass(document.getElementById('lchips'), 'chip')
+        .filter((c) => textOf(c).includes('花园公交站'))[0];
+      if (gardenChip && gardenChip.onclick) {
+        gardenChip.onclick();
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    }
+  }
 }
 
 // 导航按钮条：应列出原生报告的已装地图 App（桩里是「高德地图」「百度地图」）

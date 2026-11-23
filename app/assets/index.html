@@ -2643,6 +2643,21 @@
       lv.busesAt = Date.now();
       renderLineBuses();
       renderLineStations();
+      /* 页面下半部分（选中站的到站卡）也跟着 30 秒一起刷，保持同一份数据 */
+      if (state.station && state.detail) {
+        try {
+          var arrivals = await rpc("arrivals", {
+            lineId: state.detail.lineId,
+            station: state.station
+          });
+          if (state.station && state.detail && state.lineView === lv) {
+            state.buses = arrivals;
+            state.first = arrivals.length ? arrivals[0] : null;
+            renderBuses(arrivals);
+            updateSelbar();
+          }
+        } catch (e2) { /* 同样静默 */ }
+      }
     } catch (e) {
       /* 静默失败，保留上一次的图标 */
     }
@@ -4775,7 +4790,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.10";
+  var APP_FALLBACK_VERSION = "1.0.11";
 
   function fillAbout() {
     var verEl = $("abVersion");
