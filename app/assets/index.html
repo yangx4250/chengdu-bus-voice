@@ -62,6 +62,26 @@
   .chip.dirchip.on .dirtime { color: #b9c6dd; }
   /* 站名条里「离我最近」的那一站 */
   .chip.nearest { border-color: var(--ok); background: #12302a; }
+  /* 实时车辆位置：🚌 挂在站名芯片上（绝对定位在右上角，不挤占站名）。
+     车在两站之间时用 .moving 加个轻微呼吸感，表示正在靠近。 */
+  .chip.hasbus { position: relative; }
+  .chip.hasbus .busmark {
+    position: absolute; top: -7px; right: -6px;
+    font-size: 13px; line-height: 1;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .7));
+    pointer-events: none;
+  }
+  .chip.hasbus.moving .busmark { animation: busPulse 2s ease-in-out infinite; }
+  @keyframes busPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.18); }
+  }
+  .lvbuses { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font-size: 12px; color: var(--muted); padding: 2px 4px 6px; }
+  .lvbuses .lvb-num { color: #ffce4a; font-weight: 600; }
+  .lvbuses .lvb-upd { margin-left: auto; opacity: .7; }
+  .lvbuses .lvb-none { color: var(--muted); }
+
   .chip.nearest .nbadge { font-style: normal; font-size: 10px; line-height: 1.5;
     background: var(--ok); color: #06130e; border-radius: 999px; padding: 0 5px;
     margin-left: 5px; }
@@ -804,6 +824,7 @@
       </div>
     </div>
     <div id="ldirs" class="chips"></div>
+    <div id="lvbuses" class="lvbuses hidden"></div>
     <div id="lchips" class="chips vertical"></div>
     <div id="lnav" class="navrow hidden"></div>
     <div id="lstationfav" class="navrow hidden"></div>
@@ -2274,6 +2295,7 @@
       };
       box.appendChild(chip);
     });
+    if (keepScroll !== null && keepScroll > 0) box.scrollLeft = keepScroll;
     centerActiveChip(box);
   }
 
@@ -2292,6 +2314,8 @@
     if ($("fabSpeak")) $("fabSpeak").classList.toggle("hidden", name !== "detail" && name !== "veh");
     // 详情和车辆页共用一份 30 秒刷新，其它页面停掉
     if (name !== "detail" && name !== "veh") stopDetailAutoRefresh();
+    // 线路页的车辆位置刷新只在停留在线路页时跑
+    if (name !== "lineview") stopLineBusTimer();
     view.name = name;
     view.open = name !== "home";
     if (name !== "detail") view.pickedStation = null;
@@ -2385,6 +2409,9 @@
     showView("lineview");
     /* 没指定站时，把「离我最近」那一站滚到横向中间，方便一眼看到 */
     renderLineStations({ scroll: !opts.stationId && !opts.stationName });
+    /* 车辆位置：先拉一次把 🚌 标出来，之后每 30 秒刷一次 */
+    refreshLineBuses();
+    startLineBusTimer();
     if (state.station) await refresh(false);
     else renderLineEmpty();
   }
@@ -2401,6 +2428,7 @@
         (state.station ? state.station.name : "点下面的站名查看实时到站");
     }
     renderLineDirections();
+    renderLineBuses();
     renderLineStations();
     renderLineNav();
     renderStationFavRow();
@@ -2565,6 +2593,106 @@
     }
   }
 
+  /* ------------------------------------------------- 线路实时车辆位置
+
+     数据来源：车来了只给「车在第几站（order）」+「离该站多少米（distanceMeters）」，
+     不给车辆 GPS。所以 🚌 只能挂在站名芯片上；车在两站之间时用 .moving 表示在动。
+     一次请求拿全线路：查终点站的到站，返回的就是这条线上所有在途车辆。 */
+
+  var lineBusTimer = null;
+
+  function stopLineBusTimer() {
+    if (lineBusTimer) clearInterval(lineBusTimer);
+    lineBusTimer = null;
+  }
+
+  /* 按当前线路页拉一次车辆位置，返回 [{order, distanceMeters, etaSeconds}] */
+  async function loadLineBuses() {
+    var lv = state.lineView;
+    if (!lv || !lv.stations || !lv.stations.length) return [];
+    var sorted = lv.stations.slice().sort(function (a, b) {
+      return Number(a.order) - Number(b.order);
+    });
+    var terminus = sorted[sorted.length - 1];
+    var buses = await rpc("arrivals", { lineId: lv.lineId, station: terminus });
+    return (buses || []).map(function (b) {
+      return {
+        order: Number(b.order),
+        distanceMeters: Number(b.distanceMeters),
+        etaSeconds: b.etaSeconds === null || b.etaSeconds === undefined ? null : Number(b.etaSeconds)
+      };
+    }).filter(function (b) { return isFinite(b.order) && b.order > 0; });
+  }
+
+  /* 拉一次并重画（失败静默：车辆位置是锦上添花，不能因此挡住线路页） */
+  async function refreshLineBuses() {
+    if (!state.lineView) return;
+    var lv = state.lineView;
+    try {
+      var buses = await loadLineBuses();
+      /* 期间可能已经切了线路/方向，旧结果丢掉 */
+      if (state.lineView !== lv) return;
+      lv.buses = buses;
+      lv.busesAt = Date.now();
+      renderLineBuses();
+      renderLineStations();
+    } catch (e) {
+      /* 静默失败，保留上一次的图标 */
+    }
+  }
+
+  function startLineBusTimer() {
+    stopLineBusTimer();
+    lineBusTimer = setInterval(function () {
+      if (document.hidden) return;
+      if (view.name !== "lineview") return;
+      if (state.busy) return;
+      refreshLineBuses();
+    }, 30000);
+  }
+
+  /* 站名芯片上挂 🚌：一个站有多辆车也只画一个，标出车辆数 */
+  function renderLineBuses() {
+    var box = $("lvbuses");
+    var lv = state.lineView;
+    if (!box) return;
+    if (!lv || !lv.buses || !lv.buses.length) {
+      box.classList.add("hidden");
+      box.innerHTML = "";
+      return;
+    }
+    box.classList.remove("hidden");
+    box.innerHTML = "";
+    var n = lv.buses.length;
+    var label = document.createElement("span");
+    label.className = "lvb-num";
+    label.textContent = "🚌 " + n + " 辆在途";
+    box.appendChild(label);
+    var upd = document.createElement("span");
+    upd.className = "lvb-upd";
+    upd.textContent = lv.busesAt
+      ? new Date(lv.busesAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) + " 更新"
+      : "";
+    box.appendChild(upd);
+  }
+
+  /* 某站上有几辆车、是否有车还没到站（给 renderLineStations 用）。
+     moving = 有车正朝这一站开（还没进站），用来做轻微呼吸动画。 */
+  function busInfoAt(order) {
+    var lv = state.lineView;
+    var info = { count: 0, moving: false };
+    if (!lv || !lv.buses) return info;
+    for (var i = 0; i < lv.buses.length; i++) {
+      var b = lv.buses[i];
+      if (Number(b.order) !== Number(order)) continue;
+      info.count++;
+      /* 距离 > 50 米或 ETA 还有 60 秒以上，就认为还在路上 */
+      if (isFinite(b.distanceMeters) && b.distanceMeters > 50) info.moving = true;
+      else if (isFinite(b.etaSeconds) && b.etaSeconds > 60) info.moving = true;
+    }
+    return info;
+  }
+
   function renderLineDirections() {
     var box = $("ldirs");
     if (!box) return;
@@ -2601,6 +2729,9 @@
   function renderLineStations(opts) {
     var box = $("lchips");
     if (!box) return;
+    /* 30 秒刷一次车辆位置会重画这一排，先记下横向滚动位置，画完还原，
+       否则用户正看着的站会被弹回开头 */
+    var keepScroll = !(opts && opts.scroll) && typeof box.scrollLeft === "number" ? box.scrollLeft : null;
     box.innerHTML = "";
     var lv = state.lineView;
     if (!lv) return;
@@ -2615,6 +2746,12 @@
       var classes = "chip";
       if (sameStation(state.station, station)) classes += " on";
       if (isNearest) classes += " nearest";
+      /* 这一站上有没有在途车辆：有就挂 🚌（一个站多辆车也只画一个，角标给数量） */
+      var busHere = busInfoAt(station.order);
+      if (busHere.count > 0) {
+        classes += " hasbus";
+        if (busHere.moving) classes += " moving";
+      }
       chip.className = classes;
       /* 站名单独一个 span：徽标是绝对定位的，不能被当成正文挤在一起 */
       var nameEl = document.createElement("span");
@@ -2626,6 +2763,12 @@
         nb.className = "nbadge";
         nb.textContent = "最近";
         chip.appendChild(nb);
+      }
+      if (busHere.count > 0) {
+        var bm = document.createElement("i");
+        bm.className = "busmark";
+        bm.textContent = busHere.count > 1 ? "🚌" + busHere.count : "🚌";
+        chip.appendChild(bm);
       }
       chip.onclick = function () {
         state.station = station;
@@ -2683,7 +2826,11 @@
     state.detail = detail;
     state.directions = lv.directions;
     state.station = keep ? findStation(detail, keep, null) : null;
+    /* 换方向 = 换了一整条线，旧的车辆位置全部作废，立刻重拉 */
+    lv.buses = [];
+    lv.busesAt = 0;
     renderLineView();
+    refreshLineBuses();
     if (state.station) await refresh(false);
     else renderLineEmpty();
   }
@@ -4615,7 +4762,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.8";
+  var APP_FALLBACK_VERSION = "1.0.9";
 
   function fillAbout() {
     var verEl = $("abVersion");

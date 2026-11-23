@@ -366,6 +366,17 @@ const bridge = {
       if (String(args.lineId || '').includes('p49')) {
         return JSON.stringify({ state: 'ok', data: [] });
       }
+      /* 线路页车辆位置：查终点站的到站能拿回全线路在途车辆。
+         P36 终点站是 order 9 的友爱公交站，返回两辆车（order 9 已到站、order 3 还在路上）。 */
+      if (String(args.lineId || '').includes('p36') &&
+          String((args.station && args.station.name) || '') === '友爱公交站') {
+        return JSON.stringify({ state: 'ok', data: [
+          { busId: 'p36a', plate: '42001', order: 9, stationsAway: 0,
+            distanceMeters: 20, etaSeconds: 0, arrivalAt: Date.now(), arrived: true },
+          { busId: 'p36b', plate: '42002', order: 3, stationsAway: 6,
+            distanceMeters: 3200, etaSeconds: 900, arrivalAt: Date.now() + 900000, arrived: false },
+        ] });
+      }
       /* 指定 ETA 的场景（验证播报用实际时间，不写死「10 分钟」） */
       if (arrivalsEta !== null) {
         return JSON.stringify({ state: 'ok', data: [
@@ -894,6 +905,40 @@ if (!stationChips.length) {
       stage2.push('线路页徽标不该显示米数：' + textOf(nearestChips[0]).slice(0, 60));
     }
   }
+}
+
+// 线路页车辆位置：🚌 挂在车所在站的芯片上（桩里 P36 有两辆车，order 9 和 order 3）
+// 数据源是查终点站的到站，一次拿回全线所有在途车辆。
+{
+  await new Promise((r) => setTimeout(r, 300));   // 等 refreshLineBuses 的 await 落地
+  const lchips = document.getElementById('lchips');
+  const withBus = findByClass(lchips, 'hasbus');
+  if (!withBus.length) {
+    stage2.push('线路页没有把 🚌 挂到任何站上');
+  } else {
+    const marks = findByClass(lchips, 'busmark');
+    if (!marks.length) stage2.push('有车的站没有 🚌 图标');
+    const texts = withBus.map((c) => textOf(c));
+    // 桩里两辆车分别在 order 9（友爱公交站）和 order 3（招呼站）
+    if (!texts.some((t) => t.includes('友爱公交站'))) {
+      stage2.push('🚌 没挂在 order 9 的友爱公交站上：' + texts.join(' | ').slice(0, 120));
+    }
+    if (!texts.some((t) => t.includes('招呼站'))) {
+      stage2.push('🚌 没挂在 order 3 的招呼站上：' + texts.join(' | ').slice(0, 120));
+    }
+    // 站名和图标不能混在一起（图标是绝对定位的徽标）
+    if (withBus.some((c) => {
+      const cn = findByClass(c, 'cname')[0];
+      return cn && textOf(cn).includes('🚌');
+    })) {
+      stage2.push('🚌 混进了站名文本里，应该是独立徽标');
+    }
+  }
+  // 摘要条：显示在途车辆数和更新时间
+  const lvb = document.getElementById('lvbuses');
+  const lvbText = textOf(lvb);
+  if (!/在途/.test(lvbText)) stage2.push('线路页没有显示在途车辆数：' + lvbText.slice(0, 60));
+  if (!/更新/.test(lvbText)) stage2.push('线路页没有显示车辆位置更新时间：' + lvbText.slice(0, 60));
 }
 
 // 导航按钮条：应列出原生报告的已装地图 App（桩里是「高德地图」「百度地图」）
