@@ -118,8 +118,10 @@ public final class Navigator {
             return openGeo(lat, lng, name);
         }
 
-        /* 一律步行导航：公交站通常就在步行范围内，之前超过 500 米会变成驾车，不合用。 */
-        boolean walk = true;
+        /* 一律步行导航。
+         * 坑（用户实测截图确认）：高德的 androidamap://navi 是「驾车导航」接口，
+         * t=2 会被直接忽略——所以之前传了步行参数仍进驾车导航。
+         * 步行必须走 route/plan（t=2）；百度的 navi 同理是驾车，步行要用 walknavi。 */
         int distance = distanceMeters(fromLat, fromLng, lat, lng);
 
         double[] c;
@@ -134,36 +136,37 @@ public final class Navigator {
         try {
             switch (target.id) {
                 case "amap":
-                    // 高德：t=0 驾车 / t=2 步行；坐标顺序是 经度,纬度
-                    uri = Uri.parse("androidamap://navi?sourceApplication=chengdubus&lat=" + c[0]
-                            + "&lon=" + c[1] + "&poiname=" + encName
-                            + "&dev=0&style=2&t=" + (walk ? 2 : 0));
+                    // 高德：navi 只支持驾车；步行用 route/plan + t=2，
+                    // 打开的是步行路线页，点「开始导航」即进入步行导航
+                    uri = Uri.parse("androidamap://route/plan/?sourceApplication=chengdubus"
+                            + "&dlat=" + c[0] + "&dlon=" + c[1] + "&dname=" + encName
+                            + "&dev=0&t=2");
                     break;
                 case "baidu":
-                    // 百度：location=纬度,经度（顺序与高德相反）；
-                    // mode=walking / driving，交通方式用 mode 指定
-                    uri = Uri.parse("baidumap://map/navi?location=" + c[0] + "," + c[1]
-                            + "&query=" + encName + "&src=chengdubus"
-                            + "&mode=" + (walk ? "walking" : "driving"));
+                    // 百度：walknavi 是步行导航专用 scheme（navi 是驾车）；
+                    // 传的是 BD09 坐标（target.coord == BD），coord_type 用 bd09ll
+                    uri = Uri.parse("baidumap://map/walknavi?destination=" + c[0] + "," + c[1]
+                            + "&coord_type=bd09ll&src=chengdubus");
                     break;
                 case "tencent":
-                    // 腾讯：coord_type=gcj02；type=drive / walk
-                    uri = Uri.parse("qqmap://map/routeplan?type=" + (walk ? "walk" : "drive")
+                    // 腾讯：routeplan type=walk 打开步行路线；coord_type=gcj02
+                    uri = Uri.parse("qqmap://map/routeplan?type=walk"
                             + "&to=" + encName
                             + "&tocoord=" + c[0] + "," + c[1] + "&referer=chengdubus&coord_type=gcj02");
                     break;
                 case "google":
                     // 谷歌：mode=w 步行 / d 驾车
                     uri = Uri.parse("google.navigation:q=" + c[0] + "," + c[1]
-                            + "&mode=" + (walk ? "w" : "d"));
+                            + "&mode=w");
                     break;
                 case "here":
                     uri = Uri.parse("here-destination://lat=" + c[0] + ";lon=" + c[1]
-                            + ";name=" + encName + ";mode=" + (walk ? "pedestrian" : "car"));
+                            + ";name=" + encName + ";mode=pedestrian");
                     break;
                 case "petal":
-                    uri = Uri.parse("androidamap://navi?sourceApplication=chengdubus&lat=" + c[0]
-                            + "&lon=" + c[1] + "&poiname=" + encName + "&dev=0&t=" + (walk ? 2 : 0));
+                    // 花瓣地图：petalmaps:// scheme（原来误写成高德的 scheme，永远调不起来）
+                    uri = Uri.parse("petalmaps://navigation?daddr=" + c[0] + "," + c[1]
+                            + "&dname=" + encName + "&type=walk");
                     break;
                 default:
                     return openGeo(lat, lng, name);
@@ -181,7 +184,7 @@ public final class Navigator {
                     .put("ok", true)
                     .put("app", target.id)
                     .put("label", target.label)
-                    .put("mode", walk ? "walk" : "drive")
+                    .put("mode", "walk")
                     .put("distance", distance);
         } catch (Exception e) {
             Log.w(TAG, "调起 " + target.id + " 失败：" + e.getMessage());

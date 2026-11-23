@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.0.33）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.0.34）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -166,6 +166,12 @@ chengdu-bus/build/成都公交.apk    (约 92 KB)
 **应用名「成都公交」（v1.0.1）**：桌面显示名、安装列表、系统标题栏统一改成「成都公交」；
 **v1.0.17 线路页直接盯站**：选中站点后，站名下方多一个「📌 盯站」按钮，
 不用先进详情页。再点一次「📌 已盯站」取消。
+
+**v1.0.34 修步行导航实际进驾车**：v1.0.33 只改了参数，但**高德的 `androidamap://navi` 是驾车专用接口**，
+`t=2` 被忽略，所以点「步行去」仍进驾车导航（用户截图确认）。现在换成真正的步行接口：
+高德 `androidamap://route/plan/?t=2`（dlat/dlon）、百度 `baidumap://map/walknavi`、
+腾讯 `qqmap://map/routeplan?type=walk`、谷歌 `mode=w`、Here `mode=pedestrian`。
+顺带修好花瓣地图（原来误用高德 scheme，永远调不起来）。
 
 **v1.0.33 导航一律步行**：去掉「500 米内步行、更远驾车」的规则，
 点导航按钮固定调起地图的**步行**路线（高德 `t=2`、百度 `mode=walking`、腾讯 `type=walk`、
