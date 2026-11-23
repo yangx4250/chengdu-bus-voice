@@ -523,7 +523,7 @@ const bridge = {
       fallback: false,
     });
   },
-  /* 导航桩：假装装了高德和百度；按 500 米规则回报 walk/drive */
+  /* 导航桩：假装装了高德和百度；v1.0.33 起原生侧一律步行 */
   navigate(appId, lat, lng, name, fromLat, fromLng) {
     const R = 6371000;
     let distance = -1;
@@ -536,7 +536,7 @@ const bridge = {
         * Math.sin(dLng / 2) ** 2;
       distance = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
     }
-    const mode = distance >= 0 && distance <= 500 ? 'walk' : 'drive';
+    const mode = 'walk';   // v1.0.33：去掉 500 米限制，导航一律步行
     navLog.push({ appId, lat, lng, name, fromLat, fromLng, mode, distance });
     return JSON.stringify({ ok: true, app: appId || 'amap', label: '高德地图', mode, distance });
   },
@@ -1187,12 +1187,10 @@ if (!stationChips.length) {
   }
 }
 
-// 500 米内 → 步行导航；超过 → 驾车。直接调 navToStation 验证两种距离。
+// v1.0.33：导航一律步行，不再按距离切成驾车。近处、远处都要是 walk。
 {
-  // 站点在 30.7,103.95；把定位挪到它附近 ~100 米 → 应 walk
   const nearFix = { lat: 30.7009, lng: 103.95, accuracy: 20, provider: 'gps', stale: false };
   const farFix = { lat: 30.657, lng: 104.065, accuracy: 30, provider: 'network', stale: false };
-  // 通过 window.cdBusTestNav 暴露的钩子设置定位（见 index.html）
   if (typeof window.cdBusSetFix !== 'function' || typeof window.cdBusNavToStation !== 'function') {
     stage2.push('没有暴露定位/导航测试钩子');
   } else {
@@ -1200,22 +1198,31 @@ if (!stationChips.length) {
     window.cdBusNavToStation('amap');
     const walkCall = navLog[navLog.length - 1];
     if (walkCall.mode !== 'walk') {
-      stage2.push('500 米内应走步行导航，实际：' + walkCall.mode + '（' + walkCall.distance + ' 米）');
+      stage2.push('近距离应走步行导航，实际：' + walkCall.mode + '（' + walkCall.distance + ' 米）');
     }
     if (!(walkCall.distance > 0 && walkCall.distance <= 500)) {
       stage2.push('近距离距离计算不对：' + walkCall.distance);
     }
 
+    /* 导航条标签固定「步行去」，不再出现「导航到」 */
+    const navRow = document.getElementById('lnav');
+    const navText = textOf(navRow);
+    if (!navText.includes('步行去')) {
+      stage2.push('导航条标签不是「步行去」：' + navText.slice(0, 60));
+    }
+    if (navText.includes('导航到')) {
+      stage2.push('导航条还残留「导航到」（应固定步行）：' + navText.slice(0, 60));
+    }
+
     window.cdBusSetFix(farFix);
     window.cdBusNavToStation('amap');
-    const driveCall = navLog[navLog.length - 1];
-    if (driveCall.mode !== 'drive') {
-      stage2.push('超过 500 米应走驾车导航，实际：' + driveCall.mode + '（' + driveCall.distance + ' 米）');
+    const farCall = navLog[navLog.length - 1];
+    if (farCall.mode !== 'walk') {
+      stage2.push('超过 500 米也必须走步行导航，实际：' + farCall.mode + '（' + farCall.distance + ' 米）');
     }
-    if (!(driveCall.distance > 500)) {
-      stage2.push('远距离距离计算不对：' + driveCall.distance);
+    if (!(farCall.distance > 500)) {
+      stage2.push('远距离距离计算不对：' + farCall.distance);
     }
-    // 恢复
     window.cdBusSetFix(farFix);
   }
 }

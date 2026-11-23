@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.0.32）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.0.33）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -166,6 +166,10 @@ chengdu-bus/build/成都公交.apk    (约 92 KB)
 **应用名「成都公交」（v1.0.1）**：桌面显示名、安装列表、系统标题栏统一改成「成都公交」；
 **v1.0.17 线路页直接盯站**：选中站点后，站名下方多一个「📌 盯站」按钮，
 不用先进详情页。再点一次「📌 已盯站」取消。
+
+**v1.0.33 导航一律步行**：去掉「500 米内步行、更远驾车」的规则，
+点导航按钮固定调起地图的**步行**路线（高德 `t=2`、百度 `mode=walking`、腾讯 `type=walk`、
+谷歌 `mode=w`、Here `mode=pedestrian`），按钮标签固定「步行去」。
 
 **v1.0.32 使用说明对齐现状 + 清理死代码**：使用说明删掉已经不存在的功能描述
 （行内 📌 盯站、首页 footer 自动播报开关、线路页），补上「字体大小」「使用说明」两个二级菜单，

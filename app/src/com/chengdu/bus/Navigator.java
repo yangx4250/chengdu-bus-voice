@@ -45,8 +45,7 @@ public final class Navigator {
 
     private static final int GCJ = 0, BD = 1, WGS = 2;
 
-    /** 这个距离以内走过去就行，调起地图时直接给步行导航。 */
-    private static final int WALK_LIMIT_M = 500;
+    /** v1.0.33 起导航一律走步行，不再按距离切换驾车（原来 500 米内步行、更远驾车）。 */
 
     /** 按优先级排列：越靠前越优先（国内用户更可能装高德/百度）。 */
     private static final Target[] TARGETS = new Target[]{
@@ -119,8 +118,8 @@ public final class Navigator {
             return openGeo(lat, lng, name);
         }
 
-        /* 500 米内走路，更远开车。算不出来（没定位）就按驾车。 */
-        boolean walk = shouldWalk(fromLat, fromLng, lat, lng);
+        /* 一律步行导航：公交站通常就在步行范围内，之前超过 500 米会变成驾车，不合用。 */
+        boolean walk = true;
         int distance = distanceMeters(fromLat, fromLng, lat, lng);
 
         double[] c;
@@ -191,12 +190,6 @@ public final class Navigator {
             fallback.put("fallbackFrom", target.id);
             return fallback;
         }
-    }
-
-    /** 500 米内建议步行。不知道我的位置时按驾车。 */
-    private boolean shouldWalk(double fromLat, double fromLng, double lat, double lng) {
-        int d = distanceMeters(fromLat, fromLng, lat, lng);
-        return d >= 0 && d <= WALK_LIMIT_M;
     }
 
     /** 两点距离（米）；没有有效起点时返回 -1。 */

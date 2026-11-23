@@ -2266,7 +2266,7 @@
     if (!bridge || !bridge.navigate) { setStatus("导航需要在 App 里用", true); return; }
     var res = null;
     try {
-      /* 带上我的位置：原生侧据此决定 500 米内走步行导航、更远走驾车 */
+      /* 带上我的位置：原生侧用来算距离（导航一律步行，v1.0.33 起不再切换驾车） */
       var fromLat = NaN, fromLng = NaN;
       if (state.fix && typeof state.fix.lat === "number" && typeof state.fix.lng === "number") {
         fromLat = state.fix.lat;
@@ -2276,7 +2276,7 @@
     } catch (e) { res = null; }
     if (!res) { setStatus("导航失败", true); return; }
     if (res.ok) {
-      var modeText = res.mode === "walk" ? "步行" : "驾车";
+      var modeText = res.mode === "walk" ? "步行" : "驾车";   // 正常情况下恒为步行
       var distText = res.distance >= 0 ? "（约 " + res.distance + " 米）" : "";
       setStatus("正在用" + (res.label || "地图") + modeText + "导航到 " + target.name + distText);
     } else {
@@ -2284,15 +2284,6 @@
     }
   }
 
-
-  /* 当前该用步行还是驾车：500 米内步行（与原生侧规则一致，用于按钮提示） */
-  function navModeFor(station) {
-    if (!station || !state.fix) return "drive";
-    var lat = Number(station.lat), lng = Number(station.lng);
-    if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) return "drive";
-    var d = geoDistanceMeters(state.fix.lat, state.fix.lng, lat, lng);
-    return d <= 500 ? "walk" : "drive";
-  }
 
   /* 线路页的导航按钮条：每个已装的地图 App 一个按钮 */
   /* 详情页的「收藏站点」按钮行：与导航条并列，收藏当前选中的站 */
@@ -2386,9 +2377,8 @@
 
     var label = document.createElement("span");
     label.className = "navlabel";
-    /* 500 米内直接说「步行去」，让用户知道会进步行导航 */
-    var mode = navModeFor(target);
-    label.textContent = mode === "walk" ? "步行去" : "导航到";
+    /* 导航一律步行，标签固定「步行去」 */
+    label.textContent = "步行去";
     box.appendChild(label);
 
     var btns = document.createElement("div");
@@ -4635,7 +4625,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.32";
+  var APP_FALLBACK_VERSION = "1.0.33";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -4655,7 +4645,7 @@
     }
   }
 
-  /* 测试钩子：注入定位、直接触发导航（ui-smoke 用来验证 500 米步行/驾车分界） */
+  /* 测试钩子：注入定位、直接触发导航（ui-smoke 用来验证导航一律步行） */
   window.cdBusSetFix = function (fix) { state.fix = fix || null; };
   window.cdBusNavToStation = navToStation;
 
@@ -4715,7 +4705,7 @@
         desc: "在站名下方。收藏时会记住你在哪条线、哪一站，首页收藏卡点进去直接回到「这条线 · 这一站」。",
         demo: "☆ 收藏站点 → ★ 已收藏站点\n首页卡片：P02路 · 这一站" },
       { icon: "🧭", name: "导航",
-        desc: "一键唤起高德/百度/腾讯等地图，500 米内直接步行导航。",
+        desc: "一键唤起高德/百度/腾讯等地图，固定走步行导航（不会切成驾车）。",
         demo: "导航到  [🧭 高德地图] [🗺 百度地图] …" }
     ]},
     { title: "提醒按钮", items: [
