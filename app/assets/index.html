@@ -87,7 +87,6 @@
     font-size: 12px; color: var(--muted); padding: 2px 4px 6px; }
   .lvbuses .lvb-num { color: #ffce4a; font-weight: 600; }
   .lvbuses .lvb-upd { margin-left: auto; opacity: .7; }
-  .lvbuses .lvb-none { color: var(--muted); }
 
   .chip.nearest .nbadge { font-style: normal; font-size: 10px; line-height: 1.5;
     background: var(--ok); color: #06130e; border-radius: 999px; padding: 0 5px;
@@ -192,13 +191,6 @@
   .refreshnote { margin-left: auto; font-size: 11px; color: #5f6f8c; white-space: nowrap; }
   .locbar.err .dot { background: var(--hot); }
 
-  footer {
-    position: fixed; left: 0; right: 0; bottom: 0; background: rgba(11,18,32,.94);
-    border-top: 1px solid var(--line); padding: 12px 10px 14px; display: flex;
-    align-items: center; gap: 8px; font-size: 13px; backdrop-filter: blur(8px);
-  }
-  footer .switch { flex: 1 1 0; justify-content: center; gap: 8px; padding: 6px 0; }
-  footer .switch .lbl { font-size: 13px; white-space: nowrap; }
   .switch { display: flex; align-items: center; gap: 6px; color: #b9c6dd; }
   .switch input { width: 0; height: 0; opacity: 0; position: absolute; }
   .knob { width: 42px; height: 24px; border-radius: 999px; background: #2a3550; position: relative; transition: .18s; }
@@ -287,7 +279,7 @@
     line-height: 1; opacity: .85; }
   .fav .pin:active { opacity: 1; }
 
-  #dtop, #ltop { position: sticky; top: 0; z-index: 20; background: var(--bg);
+  #dtop { position: sticky; top: 0; z-index: 20; background: var(--bg);
     margin: 0 -14px; padding: 2px 14px 8px; }
   .detail-head { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
   .detail-head .dh-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -500,14 +492,13 @@
   .watchcard .wc-title { font-size: var(--fs); }
   .watchcard .wc-sub { font-size: var(--fs-sm); }
 
-  #dtop, #ltop { margin: 0 calc(-1 * var(--pad)); padding: 2px var(--pad) 6px; }
+  #dtop { margin: 0 calc(-1 * var(--pad)); padding: 2px var(--pad) 6px; }
   #dtop #ddirs, #dtop #dbuses { margin-bottom: 8px; }
   #depbar { margin: 0 2px 8px; }
   #deptext { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .srow .spk { flex: 0 0 auto; }
   .detail-head .titles div:first-child { font-size: var(--fs-lg); }
   .detail-head .titles div:last-child { font-size: var(--fs-sm); }
-  footer .switch .lbl { font-size: var(--fs-sm); }
 
   /* 极窄屏（<360dp）：进一步压缩间距，主按钮占满整行 */
   @media (max-width: 360px) {
@@ -968,11 +959,6 @@
   var currentAudio = null;
   var speechCache = {};
 
-  function ttsInfo() {
-    try { return bridge && bridge.status ? JSON.parse(bridge.status()) : {}; } catch (e) { return {}; }
-  }
-
-
   /* 默认策略：**走系统 TTS**。
      实测（用户反馈确认）：系统 TTS 有声音，打开「语音走 WebView」反而没声音。
      所以默认 false；只有用户显式打开开关（存 "1"）才走 WebView。 */
@@ -1184,16 +1170,6 @@
     var r = half % 2;
     return "大约 " + (r ? m + " 分 30 秒" : m + " 分钟");
   }
-
-  var DIGITS = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
-
-  /* 车牌、线路号要逐位念，否则 TTS 会读成「四万二千五百一十六」 */
-  function speakDigits(value) {
-    return String(value).split("").map(function (ch) {
-      return /[0-9]/.test(ch) ? DIGITS[Number(ch)] : ch;
-    }).join("");
-  }
-
 
   function nearbyText(groups) {
     var lines = [];
@@ -1570,7 +1546,6 @@
     if (pool.length) cacheSet(cacheKey, { at: Date.now(), list: matches });
     return matches;
   }
-  window.cdBusSearchStations = searchStationsFuzzy;
 
   window.cdBusSearchLines = searchLinesFuzzy;   /* 测试/调试用 */
   window.cdBusNaturalCompare = naturalCompare;
@@ -2767,46 +2742,6 @@
   }
 
   /* 收藏站点页的刷新：按保存的坐标再查一次这一站（不重新定位，省电） */
-  function refreshFavStopPage() {
-    var fav = state.favView;
-    if (!fav) return Promise.resolve();
-    var lat = fav.lat !== undefined && fav.lat !== null ? fav.lat
-      : (state.fix ? state.fix.lat : DEFAULT_LAT);
-    var lng = fav.lng !== undefined && fav.lng !== null ? fav.lng
-      : (state.fix ? state.fix.lng : DEFAULT_LNG);
-    return rpc("nearby", { lat: lat, lng: lng, limit: 8 }).then(function (data) {
-      var stops = (data && data.stops) || [];
-      var hit = null;
-      for (var i = 0; i < stops.length; i++) {
-        if (String(stops[i].stationId) === String(fav.stationId)) { hit = stops[i]; break; }
-      }
-      if (hit) {
-        state.favView = { stationId: hit.stationId, name: hit.name, lat: lat, lng: lng };
-        renderFavStopPage([hit]);
-        setStatus("已刷新站点 " + hit.name);
-      } else {
-        setStatus("这一站暂时没查到", true);
-      }
-    });
-  }
-
-  /* 点车辆 → 进详情页并选中这一辆。
-     v1.0.24 起搜索页、线路页、首页都进同一个详情页，不再有单独的「车辆页」。 */
-  async function openVehicleForBus(bus) {
-    var station = state.station;
-    var detail = state.detail;
-    if (!station || !detail || !bus) return;
-    await openDetail({
-      lineId: detail.lineId,
-      lineName: detail.name,
-      stationId: station.stationId,
-      stationName: station.name,
-      fromOrder: station.order,
-      busId: bus.busId,
-      scroll: true
-    });
-  }
-
   /* 唯一的车辆/到站详情页。所有入口（搜索、线路页、首页、收藏）都走这里。
      opts.busId  —— 指定选中哪一辆（点车辆时传）
      opts.scroll —— 进来后自动滚到离我最近的那一站并标注 */
@@ -3746,7 +3681,6 @@
 
   window.cdBusNearbyText = nearbyText;        // 供 ui-smoke 测试断言
   window.cdBusBuildGroups = buildGroups;
-  window.cdBusGetDirections = getDirections;   /* 测试/调试用 */
   window.cdBusShouldAutoRefresh = shouldAutoRefreshHome;
   window.cdBusBack = function () { return backHandler(); };
 
@@ -4701,7 +4635,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.31";
+  var APP_FALLBACK_VERSION = "1.0.32";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -4721,7 +4655,6 @@
     }
   }
 
-  window.cdBusViewName = function () { return view.name; };
   /* 测试钩子：注入定位、直接触发导航（ui-smoke 用来验证 500 米步行/驾车分界） */
   window.cdBusSetFix = function (fix) { state.fix = fix || null; };
   window.cdBusNavToStation = navToStation;
@@ -4768,7 +4701,7 @@
         desc: "每个站用三列格子把停靠线路全部列出来，一格只有线路名，一屏看全。点格子进详情页看方向、首末班和沿途各站。",
         demo: "┌────┬────┬────┐\n│ 716路 │ P36路 │ 720路 │\n│ 45路 │ 801路 │ P02路 │\n└────┴────┴────┘" }
     ]},
-    { title: "线路页 / 详情页", items: [
+    { title: "详情页（线路 + 车辆合并）", items: [
       { icon: "⇄", name: "方向切换",
         desc: "顶部芯片切换上行/下行，站序和到站都会跟着变。",
         demo: "[往 龙溪村村委会] [往 李冰广场]" },
@@ -4776,11 +4709,11 @@
         desc: "点任意站名，查看这一站的实时到站。",
         demo: "[李冰广场] [花园场口] [龙溪村]" },
       { icon: "🚗", name: "车辆芯片",
-        desc: "点车辆切换看这一辆车到各站的时间。带「最近」徽标的是离你最近的那辆。",
+        desc: "点车辆原地切换到这一辆，下方到站表跟着变。带「最近」徽标的是离你最近的那辆。",
         demo: "[10001 最近] [10002] [10003]" },
       { icon: "☆", name: "收藏站点",
-        desc: "在站名下方，收藏后首页收藏区会多一张卡，点进去看这一站所有线路。",
-        demo: "☆ 收藏站点   →   ★ 已收藏站点" },
+        desc: "在站名下方。收藏时会记住你在哪条线、哪一站，首页收藏卡点进去直接回到「这条线 · 这一站」。",
+        demo: "☆ 收藏站点 → ★ 已收藏站点\n首页卡片：P02路 · 这一站" },
       { icon: "🧭", name: "导航",
         desc: "一键唤起高德/百度/腾讯等地图，500 米内直接步行导航。",
         demo: "导航到  [🧭 高德地图] [🗺 百度地图] …" }
@@ -4788,8 +4721,8 @@
     { title: "提醒按钮", items: [
       { icon: "📌", name: "盯站",
         desc: "这一站的车快到时会在四个节点各播一次：约 10 分钟、约 5 分钟、还有 2 站、已到站。到站后自动取消。" +
-          "线路页的「📌 盯站」按钮盯的是当前选中的站，不用先进详情页。",
-        demo: "线路页：  📌 盯站   →   📌 已盯站" },
+          "「📌 盯站」盯的是当前选中的那一站。",
+        demo: "☆ 收藏站点   📌 盯站   →   📌 已盯站" },
       { icon: "🔔", name: "下车提醒",
         desc: "设为目标站，每 5 秒看一次定位，快到站时提醒你下车。",
         demo: "花园永泉   12 分 30 秒   🔔(亮)" },
@@ -4798,6 +4731,12 @@
         demo: "📌 已盯站 → 再点取消；🔔(亮) → 再点取消" }
     ]},
     { title: "设置", items: [
+      { icon: "📖", name: "使用说明",
+        desc: "就是这一页，随时可以回来查按钮怎么用。",
+        demo: "使用说明  ›" },
+      { icon: "🔤", name: "字体大小",
+        desc: "六档字号（特小～超大），只影响本 App，不跟随系统字体。",
+        demo: "标准 100%   →   特大 125%" },
       { icon: "🔊", name: "语音与播报",
         desc: "测试音量、扬声器、语音合成。",
         demo: "语音与播报  ›" },
@@ -4832,7 +4771,6 @@
 
   /* 首次弹窗：只放关键几条 */
   window.cdBusOpenGuideModal = function () { openGuideModal(); };
-  window.cdBusGuideSeen = function () { return guideSeen(); };
   function openGuideModal() {
     var box = $("guideModalList");
     if (!box) return;
