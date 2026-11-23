@@ -353,6 +353,7 @@
   .navrow .navbtn:active { background: #1b2b46; }
   /* 已收藏的站点按钮：高亮 */
   .navrow .navbtn.stationfav.on { border-color: #ffce4a; color: #ffce4a; background: #2a2413; }
+  .navrow .navbtn.stationwatch.on { border-color: var(--ok); color: var(--ok); background: #12302a; }
 
   /* ------------------------------------------------------------ 使用说明 */
   /* 首次打开弹窗 */
@@ -2512,6 +2513,42 @@
       renderStationFavRow();   // 重新渲染本行按钮状态
     };
     box.appendChild(btn);
+
+    /* v1.0.17：线路页也能直接盯站（原来只有详情页/车辆页的 📌 行内按钮）。
+       和行内 📌 完全等价：再点一次取消。 */
+    box.appendChild(renderLineWatchBtn(target));
+  }
+
+  /* 线路页的盯站按钮：当前盯的就是这一站时显示「📌 已盯站」并可点取消 */
+  function renderLineWatchBtn(target) {
+    var btn = document.createElement("span");
+    var on = Boolean(watch.on && watch.target &&
+      String(watch.target.lineId) === String(state.lineView.lineId) &&
+      String(watch.target.stationId) === String(target.stationId) &&
+      Number(watch.target.order) === Number(target.order));
+    btn.className = "navbtn stationwatch" + (on ? " on" : "");
+    btn.textContent = on ? "📌 已盯站" : "📌 盯站";
+    btn.onclick = function () {
+      if (on) {
+        stopWatch();
+        setStatus("已取消盯站");
+      } else {
+        startWatch({
+          lineId: state.lineView.lineId,
+          lineName: state.lineView.name,
+          stationId: target.stationId,
+          stationName: target.name,
+          order: target.order,
+          lat: target.lat || 0,
+          lng: target.lng || 0,
+          toward: state.lineView.endSn || "",
+          firstTime: state.lineView.firstTime || "",
+          lastTime: state.lineView.lastTime || ""
+        });
+      }
+      renderStationFavRow();   // 重画本行，按钮状态跟着变
+    };
+    return btn;
   }
 
   function renderLineNav() {
@@ -4873,7 +4910,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.16";
+  var APP_FALLBACK_VERSION = "1.0.17";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -4965,8 +5002,9 @@
     ]},
     { title: "提醒按钮", items: [
       { icon: "📌", name: "盯站",
-        desc: "这一站的车快到时会在四个节点各播一次：约 10 分钟、约 5 分钟、还有 2 站、已到站。到站后自动取消。",
-        demo: "花园永泉   还有 3 站   📌(灰) 🔔" },
+        desc: "这一站的车快到时会在四个节点各播一次：约 10 分钟、约 5 分钟、还有 2 站、已到站。到站后自动取消。" +
+          "线路页的「📌 盯站」按钮盯的是当前选中的站，不用先进详情页。",
+        demo: "线路页：  📌 盯站   →   📌 已盯站" },
       { icon: "🔔", name: "下车提醒",
         desc: "设为目标站，每 5 秒看一次定位，快到站时提醒你下车。",
         demo: "花园永泉   12 分 30 秒   📌 🔔(亮)" },

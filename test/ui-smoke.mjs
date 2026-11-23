@@ -1547,6 +1547,51 @@ else {
   }
 }
 
+/* v1.0.17：线路页也能盯站（不用先进详情页） */
+{
+  /* 走「搜索 P36 → 线路页」这条路，确保真的停在线路页上 */
+  document.getElementById('line').value = 'P36';
+  document.getElementById('go').onclick();
+  await new Promise((r) => setTimeout(r, 900));
+
+  {
+    const chips1 = findByClass(document.getElementById('lchips'), 'chip');
+    if (!chips1.length) {
+      stage4.push('线路页没有站名芯片，无法测盯站按钮');
+    } else {
+      chips1[0].onclick();
+      await new Promise((r) => setTimeout(r, 400));
+
+      const wBtn = findByClass(document.getElementById('lstationfav'), 'stationwatch');
+      if (!wBtn.length) {
+        stage4.push('线路页没有「盯站」按钮');
+      } else if (String(wBtn[0].textContent).indexOf('盯站') < 0) {
+        stage4.push('线路页盯站按钮文案不对：' + textOf(wBtn[0]));
+      } else {
+        const before = watchServiceLog.filter((x) => x[0] === 'start').length;
+        wBtn[0].onclick();
+        await new Promise((r) => setTimeout(r, 300));
+        const after = watchServiceLog.filter((x) => x[0] === 'start').length;
+        if (after <= before) {
+          stage4.push('点线路页「盯站」没有启动后台服务');
+        }
+        const wBtn2 = findByClass(document.getElementById('lstationfav'), 'stationwatch');
+        if (!wBtn2.length || String(wBtn2[0].textContent).indexOf('已盯站') < 0) {
+          stage4.push('盯站后按钮没有变成「已盯站」：' + (wBtn2[0] ? textOf(wBtn2[0]) : '找不到按钮'));
+        } else {
+          const stopBefore = watchServiceLog.filter((x) => x[0] === 'stop').length;
+          wBtn2[0].onclick();
+          await new Promise((r) => setTimeout(r, 300));
+          const stopAfter = watchServiceLog.filter((x) => x[0] === 'stop').length;
+          if (stopAfter <= stopBefore) stage4.push('再点「已盯站」没有取消盯站');
+        }
+      }
+    }
+    window.cdBusBackView && window.cdBusBackView();
+    await new Promise((r) => setTimeout(r, 300));
+  }
+}
+
 /* 📌 点击后图标要立刻变灰（不等 30 秒轮询） */
 {
   // 先确保处于未盯站状态
