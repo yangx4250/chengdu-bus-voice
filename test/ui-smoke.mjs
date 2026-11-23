@@ -261,7 +261,7 @@ const bridge = {
         return JSON.stringify({ state: 'ok', data: rows });
       }
       if (/^\d/.test(key)) {
-        const names = ['2', '20', '20快', '21', '201', '106', '1060', 'P106', 'T106']
+        const names = ['2', '20', '20快', '21', '201', '106', '1060', 'P106', 'T106', '45']
           .filter((n) => n.toUpperCase().includes(key));
         /* 真实接口每条线都返回上下行两个 direction，
            搜索结果页要按线路名去重，这里按真实形态造数据 */
@@ -283,6 +283,9 @@ const bridge = {
         { lineId: '028-p02-1', name: 'P02', endSn: '郫都区客运中心', startSn: '花园公交站', direction: 1, firstTime: '00:00', lastTime: '23:59' },
         { lineId: '028-p49-0', name: 'P49', endSn: '友爱公交站', startSn: '花园永泉', direction: 0, firstTime: '00:00', lastTime: '23:59' },
         /* 「花园永泉」作为线路名出现两个方向，模拟真实数据（站点名与线路名同名） */
+        /* 45 路：附近接口的 arrivals 里没有它，只能靠 lineNames 反查补出来 */
+        { lineId: '028-45-0', name: '45', endSn: '双楠小区', startSn: '花园公交站', direction: 0, firstTime: '06:00', lastTime: '22:30' },
+        { lineId: '028-45-1', name: '45', endSn: '花园公交站', startSn: '双楠小区', direction: 1, firstTime: '06:00', lastTime: '22:30' },
         { lineId: '028-hyyq-0', name: '花园永泉', endSn: '郫都区客运中心', startSn: '花园公交站', direction: 0, firstTime: '00:00', lastTime: '23:59' },
         { lineId: '028-hyyq-1', name: '花园永泉', endSn: '花园公交站', startSn: '郫都区客运中心', direction: 1, firstTime: '00:00', lastTime: '23:59' },
       ];
@@ -337,6 +340,16 @@ const bridge = {
           stations: [
             { stationId: '028-1', order: 5, name: '花园永泉',
               lat: isDir1 ? 30.7004 : 30.7, lng: isDir1 ? 103.9506 : 103.95 },
+          ],
+        } });
+      }
+      if (lineId.includes('028-45-')) {
+        return JSON.stringify({ state: 'ok', data: {
+          lineId: lineId, name: '45', startSn: '花园公交站', endSn: '双楠小区',
+          firstTime: '06:00', lastTime: '22:30',
+          stations: [
+            { stationId: '028-9', order: 1, name: '花园公交站', lat: 30.8, lng: 103.9 },
+            { stationId: '028-1', order: 4, name: '花园永泉', lat: 30.7, lng: 103.95 },
           ],
         } });
       }
@@ -1296,7 +1309,34 @@ const stage3 = [];
 
 if (/⇄/.test(cardsHtml)) stage3.push('首页还残留 ⇄ 换向按钮');
 if (!cardsHtml.includes('往 花园公交站')) stage3.push('没有显示正向：' + cardsHtml.slice(0, 200));
-if (!cardsHtml.includes('往 郫都区客运中心')) stage3.push('没有补出反方向：' + cardsHtml.slice(0, 200));
+
+/* v1.0.19：一条线路只显示一行，不再显示双向 ——
+   这样站点卡里能把这个站的所有线路都列出来。 */
+{
+  const cards = document.getElementById('list').children;
+  for (const card of cards) {
+    const rows = findByClass(card, 'armeta');
+    const seen = {};
+    for (const row of rows) {
+      const r1 = findByClass(row, 'armain-r1')[0];
+      const name = String(textOf(r1) || '').split('往')[0].trim();
+      if (!name) continue;
+      seen[name] = (seen[name] || 0) + 1;
+    }
+    const dup = Object.keys(seen).filter((n) => seen[n] > 1);
+    if (dup.length) {
+      stage3.push('站点卡里有重复线路行（应一条线只显示一行）：' + dup.join('、'));
+    }
+  }
+  /* 花园永泉的 lineNames 有 P02/716/720/45 四条，arrivals 只给前三条，
+     45 路要靠反查补齐 —— 一条线只出一行，所以四条都要在 */
+  const firstCard = cards[0];
+  const firstNameRows = findByClass(firstCard, 'armain-r1').map((el) => String(textOf(el) || ''));
+  ['P02', '716', '720', '45'].forEach((n) => {
+    const hit = firstNameRows.filter((t) => t.indexOf(n + '路') === 0);
+    if (!hit.length) stage3.push('站点卡里缺少线路「' + n + '路」：' + firstNameRows.join(' | '));
+  });
+}
 if (!/P36路 往 花园公交站[^›]*还有 3 站/.test(cardsHtml)) {
   stage3.push('近似站名没有合并/数据没带过来：' + cardsHtml.slice(0, 240));
 }
