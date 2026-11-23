@@ -1799,7 +1799,8 @@
     cell.appendChild(gname);
 
     cell.onclick = function () {
-      if (opts.ended || !opts.lineId) return;
+      /* 不在运营时段（灰色）也能点进去看：详情页照样有方向、首末班和沿途站点 */
+      if (!opts.lineId) return;
       openDetail({
         lineId: opts.lineId,
         lineName: name,
@@ -4698,7 +4699,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.25";
+  var APP_FALLBACK_VERSION = "1.0.26";
 
   function fillAbout() {
     var verEl = $("abVersion");

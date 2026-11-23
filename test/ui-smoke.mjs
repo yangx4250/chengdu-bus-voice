@@ -1433,6 +1433,19 @@ if (endedRow && !hasClass(endedRow, 'ended')) {
   stage3.push('已收班的 716 格子没有标 ended（应收班变淡）');
 }
 
+/* v1.0.26：灰色（不在运营时段）的格子也要能点进去看。
+   这里必须真的点一下——守卫写在 onclick 函数体里，只看有没有函数抓不到回归。 */
+const endedCell = rowOf('716路');
+if (endedCell && typeof endedCell.onclick === 'function') {
+  endedCell.onclick();
+  await new Promise((r) => setTimeout(r, 900));
+  if (String(document.getElementById('detail').className).includes('hidden')) {
+    stage3.push('点已收班的 716 格子没有进入详情页（灰色线路也应能点进去看）');
+  }
+  window.cdBusBackView();
+  await new Promise((r) => setTimeout(r, 400));
+}
+
 // 用户要求取消格子里的播报按钮：一行格子都不应该挂小喇叭
 const spkButtons = findByClass(document.getElementById('list'), 'spk');
 if (spkButtons.length) {
