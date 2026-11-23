@@ -834,6 +834,16 @@ if (!favsHtml.includes('16路')) failures.push('收藏区域没有渲染线路�
 if (!favsHtml.includes('天府广场南')) failures.push('收藏区域没有渲染站点名');
 if (!/还有 \d+ 站/.test(favsHtml)) failures.push('收藏卡没有拉到实时到站：' + favsHtml.slice(0, 120));
 
+/* v1.0.29：站点收藏卡不再显示「xx路 还有 N 站」——只有线路收藏卡才显示到站 */
+{
+  const allFavCards = findByClass(document.getElementById('favs'), 'fav');
+  const stationFav = allFavCards.find((c) => textOf(c).includes('站点收藏'));
+  if (stationFav && /还有 \d+ 站/.test(textOf(stationFav))) {
+    failures.push('站点收藏卡还在显示「xx路 还有 N 站」：' + textOf(stationFav).slice(0, 80));
+  }
+  if (!stationFav) failures.push('没有找到站点收藏卡，无法验证');
+}
+
 // 播报文案也要过筛：收班的线路不能被念成「还有 N 站」
 const spoken = typeof window.cdBusNearbyText === 'function'
   ? window.cdBusNearbyText(window.cdBusBuildGroups ? window.cdBusBuildGroups(nearbyPayload.stops) : nearbyPayload.stops)
