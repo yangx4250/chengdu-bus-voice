@@ -720,7 +720,7 @@ const settingsBtn = document.getElementById('settingsBtn');
 if (!settingsBtn) failures.push('顶部没有设置按钮');
 if (!String(html).includes('setPageAbout')) failures.push('设置里没有「关于」区块');
 if (/实时到站/.test(html.split('</header>')[0])) failures.push('顶部仍有「实时到站」标签');
-if (html.indexOf('id="loctext"') > html.indexOf('<div class="row">')) {
+if (html.indexOf('id="loctext"') > html.indexOf('<div class="row searchrow">')) {
   failures.push('定位信息没有移到标题后面');
 }
 if (!/class="homehead"/.test(html)) failures.push('头部布局标记丢失');
@@ -868,6 +868,24 @@ if (/43 站/.test(spoken)) failures.push('播报念了收班线路的陈旧站�
 if (!/往花园公交站/.test(spoken)) failures.push('播报没有念方向：' + spoken);
 if (!/待发车 09:24/.test(spoken)) failures.push('播报没有念待发车时间：' + spoken);
 if (!/暂无实时车辆/.test(spoken)) failures.push('播报没有说明无车：' + spoken);
+
+/* v1.0.49：首页去掉「查询并播报」「当前位置」两个按钮——
+   查询变成搜索框右边的 🔍，刷新变成标题栏设置左边的 🔄。 */
+if (/id="near"/.test(html)) failures.push('首页还留着「当前位置」按钮');
+if (/>查询并播报</.test(html)) failures.push('首页还留着「查询并播报」按钮');
+if (/<button id="go"[^>]*>查询并播报/.test(html)) failures.push('查询按钮还是文字，不是 🔍');
+if (!/<input id="line"[\s\S]{0,200}?<button id="go" class="searchgo"[^>]*>🔍<\/button>/.test(html)) {
+  failures.push('搜索框右边没有 🔍 查询按钮');
+}
+if (!/id="refreshHome" class="iconbtn"[^>]*>🔄</.test(html)) {
+  failures.push('刷新按钮没有变成 🔄 图标');
+}
+if (html.indexOf('id="refreshHome"') > html.indexOf('id="settingsBtn"')) {
+  failures.push('刷新按钮没放在设置按钮左边');
+}
+if (!/\.searchgo\s*\{[^}]*width:\s*46px/.test(html)) {
+  failures.push('🔍 按钮没有单独的图标尺寸样式');
+}
 
 if (failures.length) {
   console.error('✗ UI 冒烟失败：');
@@ -1435,7 +1453,10 @@ if (stage2.length) {
 // ---------------------------------------------------- 第三阶段：同一站点两个方向分开显示
 
 // 第二阶段把列表切成了线路查询视图，先回到附近站点
-document.getElementById('near').onclick();
+// v1.0.49：首页「当前位置」按钮已删除，用标题栏的「刷新」按钮回首页
+window.cdBusBackView();
+await new Promise((r) => setTimeout(r, 300));
+document.getElementById('refreshHome').onclick();
 await new Promise((r) => setTimeout(r, 1800));
 
 const stopCards = document.getElementById('list').children;

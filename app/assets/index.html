@@ -31,6 +31,12 @@
     padding: 14px; margin-bottom: 12px; }
   .row { display: flex; gap: 10px; }
   .row + .row { margin-top: 10px; }
+  /* 搜索行：输入框 + 右侧放大镜按钮 */
+  .searchrow { align-items: center; gap: 8px; }
+  .searchrow input { flex: 1; min-width: 0; }
+  .searchgo { flex: 0 0 auto; width: 46px; padding: 0; font-size: 19px;
+    line-height: 1; border-radius: 12px; background: var(--accent);
+    border-color: var(--accent); color: #fff; }
   input {
     flex: 1; min-width: 0; background: #0e1626; border: 1px solid var(--line);
     border-radius: 12px; padding: 13px 14px; color: var(--text); font-size: 16px; outline: none;
@@ -553,6 +559,7 @@
     <div class="topline">
       <h1>成都公交</h1>
       <span id="refreshNote" class="refreshnote"></span>
+      <button id="refreshHome" class="iconbtn" title="刷新">🔄</button>
       <button id="settingsBtn" class="iconbtn" title="设置">⚙</button>
     </div>
     <div class="locline">
@@ -563,15 +570,11 @@
 
 
   <section class="card">
-    <div class="row">
+    <div class="row searchrow">
       <input id="line" placeholder="线路号，如 16 或 2" autocomplete="off">
+      <button id="go" class="searchgo" title="查询">🔍</button>
     </div>
     <div id="history" class="chips hidden"></div>
-    <div class="row">
-      <button id="go" class="primary">查询并播报</button>
-      <button id="near">当前位置</button>
-      <button id="refreshHome" style="padding:13px 14px">↻</button>
-    </div>
   </section>
 
   <div id="metroEntry" class="selbar">
@@ -4134,7 +4137,7 @@
     state.favView = null;
     state.fix = fix;
     /* v1.0.15：进 App 不再自动念附近站点（原来一打开就播一串，太吵）。
-       想听的时候点「当前位置」或点站点卡，仍会照常播报。 */
+       想听的时候点站点卡，仍会照常播报。 */
     await refreshHome({ announce: false, budget: 18 });
     startHomeAutoRefresh();
     startCountdown();
@@ -4803,7 +4806,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.48";
+  var APP_FALLBACK_VERSION = "1.0.49";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -4832,8 +4835,8 @@
   /* 首次打开时弹窗里只放最关键的几条，避免一上来就信息过载 */
   var GUIDE_QUICK = [
     { icon: "🔍", name: "搜索线路",
-      desc: "在上面的输入框填线路号（如 16），点「查询并播报」。也可以写「16 天府广场南」直接定位到站。",
-      demo: "┌─────────────────────────┐\n│ [16            ]        │\n│ [查询并播报] [当前位置] [↻] │\n└─────────────────────────┘" },
+      desc: "在上面的输入框填线路号（如 16），点右边的 🔍。也可以写「16 天府广场南」直接定位到站。",
+      demo: "┌──────────────────────────┐\n│ [16            ] [🔍]     │\n└──────────────────────────┘" },
     { icon: "📌", name: "盯站",
       desc: "线路页/详情页里「☆ 收藏站点」旁的「📌 盯站」按钮，这一站的车快到时会在四个节点各播报一次。再点一次取消。",
       demo: "☆ 收藏站点   📌 盯站   →   📌 已盯站" },
@@ -4851,15 +4854,12 @@
       { icon: "🔍", name: "线路输入框",
         desc: "填线路号，如 16、2、P36。只填数字会列出所有匹配的线路让你选。",
         demo: "[16            ]" },
-      { icon: "▶️", name: "查询并播报",
-        desc: "查到线路后进入线路页，显示方向和全部站点。",
-        demo: "[查询并播报]" },
-      { icon: "📍", name: "当前位置",
-        desc: "重新定位并刷新附近站点。定位失败时会用天府广场兜底。",
-        demo: "[当前位置]" },
-      { icon: "↻", name: "刷新",
-        desc: "手动刷新首页的附近站点和到站信息。",
-        demo: "[↻]" },
+      { icon: "🔍", name: "查询",
+        desc: "搜索框右边的放大镜。查到线路后进入详情页，显示方向和全部站点。",
+        demo: "[16            ] [🔍]" },
+      { icon: "🔄", name: "刷新",
+        desc: "标题栏设置按钮左边的刷新图标，手动刷新首页的附近站点和到站信息。定位会自动跟着更新。",
+        demo: "成都公交   🔄  ⚙" },
       { icon: "🚇", name: "地铁 / 有轨电车",
         desc: "查看地铁站和线路（静态数据，不含实时到站）。",
         demo: "🚇 地铁 / 有轨电车 · 站点查询    [查看]" }
@@ -5236,7 +5236,6 @@
   }
 
   $("go").onclick = runSearchFromInput;
-  $("near").onclick = function () { startAuto(true); };
   $("refreshHome").onclick = function () {
     run(function () {
       // 搜索页：只刷当前选中的站点 / 线路，不拉回首页
