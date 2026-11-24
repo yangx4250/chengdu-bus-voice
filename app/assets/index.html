@@ -2979,11 +2979,11 @@
       if (!lv.busesAt) lv.busesAt = 0;
       state.lineView = lv;
       renderLineView();
-      /* 首次进来：滚到离我最近的那一站（点车辆进入时才算，定时刷新不滚）；
-         之后定时刷新滚到车当前所在站 */
-      var wantScroll = auto ? true : view.scrollOnLoad;
+      /* 只有首次进入（从首页/搜索点进详情）滚到当前站这一次；
+         之后无论手动刷新还是定时/回前台自动刷新，都保持用户当前浏览位置不动 */
+      var wantScroll = view.scrollOnLoad;
       view.scrollOnLoad = false;
-      renderTimes({ scroll: wantScroll, nearest: !auto });
+      renderTimes({ scroll: wantScroll, nearest: wantScroll });
     } catch (err) {
       $("dsub").textContent = "";
       $("dlist").innerHTML = '<div class="empty">' + (err.message || "加载失败") + "</div>";
@@ -3497,8 +3497,8 @@
       })(rows[i]);
     }
 
-    /* 刚进来滚到「当前站」——就是用户点进来的那一站（state.station），
-       没有选中站时退回「离我最近」的站；之后定时刷新滚到车当前所在的那一站。 */
+    /* 仅首次进入时滚到「当前站」（state.station），没有选中站时退回离我最近的站；
+       之后的手动/自动刷新都不滚，保持用户当前浏览位置。 */
     var scrollRow = (scrollNearest && (selectedRow || nearestRow)) || currentRow;
     /* 调试/测试钩子：记录这次渲染要不要滚、滚到哪一行（DOM 桩里 children 为空，测不到真实滚动） */
     window.cdBusLastTimes = {
@@ -4805,7 +4805,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.53";
+  var APP_FALLBACK_VERSION = "1.0.54";
 
   function fillAbout() {
     var verEl = $("abVersion");

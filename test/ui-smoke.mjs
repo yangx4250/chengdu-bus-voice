@@ -2032,6 +2032,23 @@ else {
     else if (t.scroll !== true) stage5.push('从首页进详情后到站表没有要求滚动到当前站：' + JSON.stringify(t));
     else if (t.nearest !== true) stage5.push('进详情时应滚到当前站而不是车所在站：' + JSON.stringify(t));
   }
+  /* v1.0.54：手动刷新 / 回前台自动刷新都不要再滚回车辆所在站，
+     保持用户当前浏览位置（首次进入那一次滚动除外）。 */
+  {
+    globalThis.__scrollLog.length = 0;
+    document.getElementById('drefresh').onclick();          // 手动刷新
+    await new Promise((r) => setTimeout(r, 500));
+    const tm = window.cdBusLastTimes;
+    if (!tm || tm.scroll !== false) stage5.push('手动刷新后到站表又自动滚动了：' + JSON.stringify(tm));
+    if (globalThis.__scrollLog.length) stage5.push('手动刷新触发了 scrollTo，页面会跳回车辆站：' + JSON.stringify(globalThis.__scrollLog));
+
+    globalThis.__scrollLog.length = 0;
+    window.cdBusResume && window.cdBusResume();             // 回前台自动刷新
+    await new Promise((r) => setTimeout(r, 600));
+    const ta = window.cdBusLastTimes;
+    if (!ta || ta.scroll !== false) stage5.push('回前台自动刷新后到站表又自动滚动了：' + JSON.stringify(ta));
+    if (globalThis.__scrollLog.length) stage5.push('回前台自动刷新触发了 scrollTo：' + JSON.stringify(globalThis.__scrollLog));
+  }
   const chipsHtml = textOf(document.getElementById('dbuses'));
   const chipEls = findByClass(document.getElementById('dbuses'), 'chip');
   if (chipEls.length < 3) stage5.push('车辆芯片未渲染完整：' + chipEls.length);
