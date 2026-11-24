@@ -1361,6 +1361,24 @@ if (!String(document.getElementById('selbar').className).includes('hidden')) {
   }
 }
 
+/* 静态检查：代码里引用的所有 id 都必须在 HTML 里存在，
+   否则 $("xxx").className 会抛 TypeError，把整条链路打断（v1.0.41 的教训）。 */
+{
+  const ids = new Set();
+  const re = /\$\("([a-zA-Z0-9_-]+)"\)/g;
+  let m;
+  while ((m = re.exec(html))) ids.add(m[1]);
+  const missing = [];
+  for (const id of ids) {
+    if (!new RegExp('id="' + id + '"').test(html)) missing.push(id);
+  }
+  /* status 是 setStatus 里的可选元素（`if (el)` 保护），不算问题 */
+  const realMissing = missing.filter((id) => id !== 'status');
+  if (realMissing.length) {
+    stage2.push('代码引用了不存在的 id（$() 会抛异常）：' + realMissing.join(', '));
+  }
+}
+
 if (stage2.length) {
   console.error('✗ UI 冒烟失败（收藏链路）：');
   for (const f of stage2) console.error('  - ' + f);

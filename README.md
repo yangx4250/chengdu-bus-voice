@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.0.41）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.0.42）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -166,6 +166,12 @@ chengdu-bus/build/成都公交.apk    (约 92 KB)
 **应用名「成都公交」（v1.0.1）**：桌面显示名、安装列表、系统标题栏统一改成「成都公交」；
 **v1.0.17 线路页直接盯站**：选中站点后，站名下方多一个「📌 盯站」按钮，
 不用先进详情页。再点一次「📌 已盯站」取消。
+
+**v1.0.42 修首页车辆点不开**：v1.0.41 删掉了 `#lstationfav` 元素，但 `openDetail()` 和
+`renderFavStopPage()` 里还各有一行 `$("lstationfav").className = ...`，
+`$()` 返回 null 后 `.className` 抛 TypeError，把 `showView("detail")` 之前的整段打断，
+于是点车辆、点站名都没反应。现在这两行已删除，并加了一条静态测试：
+代码里所有 `$("xxx")` 引用的 id 必须在 HTML 里存在。
 
 **v1.0.41 导航/收藏/盯站并排一行**：「收藏站点」「📌 盯站」从原来单独一行并到导航行里，
 三个按钮从左到右依次是「🧭 导航」「☆ 收藏站点」「📌 盯站」，横向可滚动。
