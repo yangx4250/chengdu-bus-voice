@@ -1817,33 +1817,14 @@
 
     var firstTime = dir.firstTime || detail.firstTime;
     var lastTime = dir.lastTime || detail.lastTime;
-    var ended = outsideService(firstTime, lastTime, null);
-    var away = null, eta = null, preStart = "";
-
-    if (!ended) {
-      var buses = await rpc("arrivals", {
-        lineId: dir.lineId,
-        station: { stationId: station.stationId, order: station.order, name: station.name,
-                   lat: station.lat || 0, lng: station.lng || 0 }
-      });
-      if (buses && buses.length) {
-        away = buses[0].stationsAway;
-        eta = buses[0].etaSeconds;
-      } else {
-        preStart = departureShort(detail) || "";
-      }
-    }
-
+    /* 格子只显示线路名，到站状态早就取消了 —— 这里不用再查 arrivals，
+       省下的请求让「补齐所有线路」能覆盖更大的站点（郫都区客运中心有 23 条线）。 */
     return appendGridCell(box, group, {
       lineId: dir.lineId,
       lineName: dir.name || lineName,
       stationId: station.stationId,
       stationOrder: station.order,
-      toward: dir.endSn || detail.endSn || "",
-      ended: ended,
-      away: away,
-      eta: eta,
-      preStart: preStart,
+      ended: outsideService(firstTime, lastTime, null),
       firstTime: firstTime,
       lastTime: lastTime
     });
@@ -1864,16 +1845,15 @@
     var skip = {};
     (skipNames || []).forEach(function (n) { skip[lineNameKey(n)] = true; });
     var missing = names.filter(function (n) { return !skip[lineNameKey(n)]; });
-    /* 预算不够时不要按顺序只补前几条 —— 那样「有的线路有格子、有的没有」，
-       用户看到的就是「只显示了几条线路」。要么补齐，要么一条都不补。 */
-    if (missing.length && networkBudget >= missing.length * 2) {
-      for (var i = 0; i < missing.length; i++) {
-        networkBudget -= 2;
-        try {
-          await appendLineCell(box, group, missing[i]);
-        } catch (e) {
-          /* 这条线反查失败就算了 */
-        }
+    /* 一条线反查 = 1 次搜索 + 1~2 次详情，不再额外查到站。
+       预算够就全补；不够也照样补 —— 站点卡的线路名是静态信息，
+       少显示几条比「只显示 3 条」更糟（用户实测郫都区客运中心 23 条线只出 3 条）。 */
+    for (var i = 0; i < missing.length; i++) {
+      networkBudget -= 1;
+      try {
+        await appendLineCell(box, group, missing[i]);
+      } catch (e) {
+        /* 这条线反查失败就算了 */
       }
     }
     if (!box.children.length) {
@@ -4642,7 +4622,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.37";
+  var APP_FALLBACK_VERSION = "1.0.38";
 
   function fillAbout() {
     var verEl = $("abVersion");
