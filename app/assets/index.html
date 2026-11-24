@@ -103,6 +103,10 @@
   #history .chip { font-size: var(--fs-sm); padding: 6px 10px; }
   #history .hclear { color: #6b7c99; border-style: dashed; }
 
+  #dnavpickList { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    margin: 4px 0 14px; }
+  #dnavpickList .navbtn { justify-content: center; padding: 10px 6px; }
+
   #dothers { display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
     overflow: visible; padding-bottom: 2px; }
   #dothers .others-label { grid-column: 1 / -1; display: flex; align-items: center;
@@ -803,6 +807,21 @@
     <div id="lvbuses" class="lvbuses hidden"></div>
     <div id="lchips" class="chips vertical"></div>
     <div id="lnav" class="navrow hidden"></div>
+    <div id="dnavpick" class="guidemodal hidden">
+      <div class="gmbox">
+        <div class="gmhead">
+          <span class="gmicon">🧭</span>
+          <div>
+            <div class="gmtitle" id="dnavpickTitle">导航到公交站</div>
+            <div class="gmsub">选一个地图 App，步行导航</div>
+          </div>
+        </div>
+        <div id="dnavpickList" class="gmlist"></div>
+        <div class="gmbtns">
+          <button id="dnavpickCancel" class="gmghost">取消</button>
+        </div>
+      </div>
+    </div>
     <div id="lstationfav" class="navrow hidden"></div>
   </div>
   <div id="dbuses" class="chips"></div>
@@ -2151,6 +2170,8 @@
   }
 
   function backHandler() {
+    /* 地图选择弹层开着时先关掉它 */
+    if (navPickOpen) { closeNavPick(); return true; }
     /* 设置页有内部层级：先退回设置主页，再退回上一级视图 */
     if (view.name === "diag" && backFromDiag()) return true;
     if (goBack()) return true;
@@ -2361,28 +2382,59 @@
 
     var label = document.createElement("span");
     label.className = "navlabel";
-    /* 导航一律步行，标签固定「步行去」 */
-    label.textContent = "步行去";
+    /* 导航一律步行；地图 App 由用户在弹层里自己选 */
+    label.textContent = "导航";
     box.appendChild(label);
 
     var btns = document.createElement("div");
     btns.className = "navbtns";
     box.appendChild(btns);
 
+    var btn = document.createElement("span");
+    btn.className = "navbtn";
+    btn.setAttribute("data-nav", "open");
+    var ico = document.createElement("span");
+    ico.className = "navico";
+    ico.textContent = "🧭";
+    btn.appendChild(ico);
+    var txt = document.createElement("span");
+    txt.textContent = target.name;
+    btn.appendChild(txt);
+    btn.title = "选择地图导航到 " + target.name;
+    btn.onclick = function (ev) {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      openNavPick(target.name);
+    };
+    btns.appendChild(btn);
+  }
+
+  /* 地图选择弹层：列出已装的地图 App + 系统地图兜底，点谁就用谁导航 */
+  var navPickOpen = false;
+  function openNavPick(stationName) {
+    var lv = state.lineView;
+    var target = state.station;
+    if (!lv || !target) { setStatus("先选一个站再导航", true); return; }
+    var box = $("dnavpick");
+    if (!box) return;
     loadNavApps().then(function (info) {
-      btns.innerHTML = "";
-      var apps = info.apps || [];
-      if (!apps.length) {
-        /* 一个地图 App 都没装：给一个走系统 geo: 的按钮 */
-        btns.appendChild(makeNavBtn("geo", "系统地图", target.name));
-        return;
-      }
+      var apps = (info.apps || []).slice();
+      var list = $("dnavpickList");
+      if (!list) return;
+      list.innerHTML = "";
+      var total = apps.length + 1;
+      list.style.gridTemplateRows = "repeat(" + Math.ceil(total / 3) + ", auto)";
       apps.forEach(function (app) {
-        btns.appendChild(makeNavBtn(app.id, app.label, target.name));
+        list.appendChild(makeNavPickBtn(app.id, app.label));
       });
+      /* 一个都没装或想用系统选择器：始终给「系统地图」兜底 */
+      list.appendChild(makeNavPickBtn("geo", "系统地图"));
+      var title = $("dnavpickTitle");
+      if (title) title.textContent = "导航到 " + (stationName || target.name || "公交站");
+      box.className = "guidemodal";
+      navPickOpen = true;
     });
 
-    function makeNavBtn(id, text, stationName) {
+    function makeNavPickBtn(id, text) {
       var btn = document.createElement("span");
       btn.className = "navbtn";
       btn.setAttribute("data-nav", id);
@@ -2393,13 +2445,18 @@
       var txt = document.createElement("span");
       txt.textContent = text;
       btn.appendChild(txt);
-      btn.title = "用" + text + "导航到 " + stationName;
-      btn.onclick = function (ev) {
-        if (ev && ev.stopPropagation) ev.stopPropagation();
+      btn.onclick = function () {
+        closeNavPick();
         navToStation(id === "geo" ? "" : id);
       };
       return btn;
     }
+  }
+
+  function closeNavPick() {
+    var box = $("dnavpick");
+    if (box) box.className = "guidemodal hidden";
+    navPickOpen = false;
   }
 
   /* ------------------------------------------------- 线路实时车辆位置
@@ -4705,7 +4762,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.39";
+  var APP_FALLBACK_VERSION = "1.0.40";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -5176,6 +5233,7 @@
   /* 首次打开：进入首页后弹一次使用说明 */
   $("guideOk").onclick = function () { closeGuideModal(true); };
   $("guideLater").onclick = function () { closeGuideModal(false); };
+  $("dnavpickCancel").onclick = function () { closeNavPick(); };
   $("guideModal").onclick = function (ev) {
     if (ev && ev.target === this) closeGuideModal(false);
   };

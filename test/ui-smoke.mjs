@@ -1162,13 +1162,22 @@ if (!stationChips.length) {
     await new Promise((r) => setTimeout(r, 200));   // loadNavApps 是异步的
     const navBtns = findByClass(lnav, 'navbtn');
     if (!navBtns.length) stage2.push('导航按钮条没有按钮');
-    else {
-      const names = navBtns.map((b) => textOf(b)).join('|');
-      if (!/高德地图/.test(names)) stage2.push('导航按钮缺少高德：' + names);
-      if (!/百度地图/.test(names)) stage2.push('导航按钮缺少百度：' + names);
-      // 点第一个导航按钮 → 应调用 bridge.navigate，且带上站点坐标、站名和我的位置
+    else if (navBtns.length !== 1) {
+      stage2.push('导航条应只有一个「导航」按钮（地图在弹层里选），实际 ' + navBtns.length + ' 个');
+    } else {
+      /* 点「导航」→ 弹出地图选择层，里面列出已装的地图 App */
       const beforeNav = navLog.length;
       navBtns[0].onclick({ stopPropagation() {} });
+      await new Promise((r) => setTimeout(r, 200));
+      const pickList = document.getElementById('dnavpickList');
+      const pickText = textOf(pickList);
+      if (!/高德地图/.test(pickText)) stage2.push('地图选择层缺少高德：' + pickText);
+      if (!/百度地图/.test(pickText)) stage2.push('地图选择层缺少百度：' + pickText);
+      if (!/系统地图/.test(pickText)) stage2.push('地图选择层缺少系统地图兜底：' + pickText);
+      if (navLog.length !== beforeNav) stage2.push('只是打开选择层就调起了导航');
+      const pickBtns = findByClass(pickList, 'navbtn');
+      if (!pickBtns.length) stage2.push('地图选择层没有按钮');
+      else pickBtns[0].onclick();
       await new Promise((r) => setTimeout(r, 100));
       if (navLog.length !== beforeNav + 1) stage2.push('点导航按钮没有调起导航');
       else {
@@ -1204,11 +1213,11 @@ if (!stationChips.length) {
       stage2.push('近距离距离计算不对：' + walkCall.distance);
     }
 
-    /* 导航条标签固定「步行去」，不再出现「导航到」 */
+    /* 导航条：地图 App 收进选择层，行上只有一个「导航」入口 */
     const navRow = document.getElementById('lnav');
     const navText = textOf(navRow);
-    if (!navText.includes('步行去')) {
-      stage2.push('导航条标签不是「步行去」：' + navText.slice(0, 60));
+    if (!navText.includes('导航')) {
+      stage2.push('导航条没有「导航」入口：' + navText.slice(0, 60));
     }
     if (navText.includes('导航到')) {
       stage2.push('导航条还残留「导航到」（应固定步行）：' + navText.slice(0, 60));
