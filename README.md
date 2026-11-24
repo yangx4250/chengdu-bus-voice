@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.0.50）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.0.51）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -166,6 +166,19 @@ chengdu-bus/build/成都公交.apk    (约 92 KB)
 **应用名「成都公交」（v1.0.1）**：桌面显示名、安装列表、系统标题栏统一改成「成都公交」；
 **v1.0.17 线路页直接盯站**：选中站点后，站名下方多一个「📌 盯站」按钮，
 不用先进详情页。再点一次「📌 已盯站」取消。
+
+**v1.0.51 加固**：
+构建从 `d8` 换成 `r8 --release`——代码混淆 + 死代码裁剪，dex 从 163 KB 降到 **80 KB**，
+`ChelaileClient`/`Locator`/`Navigator`/`Geo` 这些内部类在 dex 里已查不到原名（反编译难度大幅上升）。
+规则见 `proguard-rules.pro`：Manifest 注册的四个组件、`BusBridge`（JS 桥）全部保留原名，
+33 个 `@JavascriptInterface` 方法名一个都不能改（网页按字符串调用）。
+清单加固：`allowBackup="false"`（收藏/设置不再备份到云）、`debuggable="false"` 显式声明、
+去掉 `usesCleartextTraffic` 改用 `network_security_config.xml`（只允许 HTTPS，代码里本来就没有明文 http）。
+WebView 加固：关掉 `AllowFileAccessFromFileURLs`/`AllowUniversalAccessFromFileURLs`/`AllowContentAccess`
+（页面被注入也读不到 /data 私有文件），`shouldOverrideUrlLoading` 只放行 `file:///android_asset/`，
+其它 URL 交给系统浏览器——避免 WebView 被导航到外部页面后 JS 桥还活着。
+`build-apk.sh` 加了产物自检：组件类名、33 个桥方法名必须还在 dex 里，内部类名必须已被混淆，
+任何一条不满足就构建失败。
 
 **v1.0.50 使用说明按当前版本重写**：
 首次打开弹窗 5 条（查线路 / 首页格子 / 选站看车 / 盯站与下车提醒 / 设置），

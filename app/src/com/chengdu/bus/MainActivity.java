@@ -9,6 +9,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
+import android.util.Log;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -55,6 +56,13 @@ public final class MainActivity extends Activity {
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(true);
+        /* 页面本身就是 file:///android_asset/index.html，所以 AllowFileAccess 必须开；
+           但下面两个「file:// 页面能不能跨源读本地文件」的开关必须关——
+           万一页面被替换/注入，也没法把 /data 下的私有文件读出来。
+           （setAllowUniversalAccessFromFileURLs 默认是 true，是个已知的坑） */
+        settings.setAllowFileAccessFromFileURLs(false);
+        settings.setAllowUniversalAccessFromFileURLs(false);
+        settings.setAllowContentAccess(false);
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
         settings.setSupportZoom(false);
@@ -75,7 +83,24 @@ public final class MainActivity extends Activity {
             }
         });
 
-        web.setWebViewClient(new WebViewClient());
+        /* 只允许留在本地页面里。任何 http(s)/其它 scheme 的跳转一律交给系统处理，
+           避免 WebView 被导航到外部页面后仍然带着 JS 桥（AndroidBus）活着。 */
+        web.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                if (url != null && url.startsWith("file:///android_asset/")) {
+                    return false;
+                }
+                try {
+                    Intent it = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(it);
+                } catch (Exception e) {
+                    Log.w("CdBus", "无法处理跳转: " + url, e);
+                }
+                return true;
+            }
+        });
 
         bridge = new BusBridge(this, speech);
         web.addJavascriptInterface(bridge, "AndroidBus");

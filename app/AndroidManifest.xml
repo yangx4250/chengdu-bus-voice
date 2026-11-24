@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.chengdu.bus"
-    android:versionCode="150"
-    android:versionName="1.0.50">
+    android:versionCode="151"
+    android:versionName="1.0.51">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="33" />
 
@@ -46,7 +46,9 @@
         android:icon="@drawable/ic_launcher"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
         android:supportsRtl="true"
-        android:usesCleartextTraffic="true">
+        android:allowBackup="false"
+        android:debuggable="false"
+        android:networkSecurityConfig="@xml/network_security_config">
 
         <activity
             android:name=".MainActivity"
