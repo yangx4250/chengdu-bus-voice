@@ -541,7 +541,7 @@
       <div class="gmicon">👋</div>
       <div class="gmtext">
         <div class="gmtitle">欢迎使用成都公交</div>
-        <div class="gmsub">花一分钟认识这几个按钮</div>
+        <div class="gmsub">和「设置 → 使用说明」内容一致</div>
       </div>
     </div>
     <div class="gmlist" id="guideModalList"></div>
@@ -4805,7 +4805,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.52";
+  var APP_FALLBACK_VERSION = "1.0.53";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -4833,24 +4833,6 @@
 
   /* 首次打开时弹窗里只放最关键的几条，避免一上来就信息过载 */
   /* 首次打开弹窗：只放最关键的几步 */
-  var GUIDE_QUICK = [
-    { icon: "🔍", name: "查线路",
-      desc: "搜索框填线路号（如 16、P36），点右边的 🔍 或按回车。只填数字会列出所有匹配的线路让你挑。",
-      demo: "┌────────────────────────────┐\n│ [16              ] [🔍]    │\n└────────────────────────────┘" },
-    { icon: "▦", name: "首页站点格子",
-      desc: "首页按你当前位置列出附近的公交站，每个站用三列格子把停靠的线路全列出来。点任意一格进详情页。",
-      demo: "天府广场南            146 米  ☆\n┌──────┬──────┬──────┐\n│ 16路  │ 26路  │ 45路  │\n│ 61路  │ 78路  │ G67  │\n└──────┴──────┴──────┘" },
-    { icon: "🚏", name: "选站看车",
-      desc: "进详情页后点任意站名，看这一站的车还有几站到。点车辆芯片切换成别的车。",
-      demo: "往 郫都区客运中心  往 花园公交站\n[李冰广场] [花园场口] [龙溪村]\n[10001 最近] [10002] [10003]" },
-    { icon: "📌", name: "盯站 / 🔔 下车提醒",
-      desc: "「📌 盯站」盯当前选中的站，车快到时在四个节点各播一次；「🔔」设为目标站，快到站时提醒你下车。再点一次取消。",
-      demo: "🧭 导航   ☆ 收藏站点   📌 盯站" },
-    { icon: "⚙", name: "设置",
-      desc: "右上角齿轮：使用说明、字体大小、语音测试、后台诊断（含锁屏通知）。",
-      demo: "成都公交                 🔄  ⚙" }
-  ];
-
   /* 设置里「使用说明」页：完整版，分章节 */
   var GUIDE_FULL = [
     { title: "首页 · 顶栏", items: [
@@ -4981,12 +4963,24 @@
     return html + '</div></div>';
   }
 
-  /* 首次弹窗：只放关键几条 */
+  /* 生成「使用说明」正文：首次弹窗和设置页共用同一份，
+     以设置页的 GUIDE_FULL 为准，避免两处各写一份导致不一致。 */
+  function guideSectionsHtml() {
+    var html = "";
+    GUIDE_FULL.forEach(function (section) {
+      html += '<div class="setcard"><div class="setcardtitle">' + section.title + '</div>';
+      html += section.items.map(guideItemHtml).join("");
+      html += '</div>';
+    });
+    return html;
+  }
+
+  /* 首次弹窗：内容与「设置 → 使用说明」完全一致 */
   window.cdBusOpenGuideModal = function () { openGuideModal(); };
   function openGuideModal() {
     var box = $("guideModalList");
     if (!box) return;
-    box.innerHTML = GUIDE_QUICK.map(guideItemHtml).join("");
+    box.innerHTML = guideSectionsHtml();
     $("guideModal").classList.remove("hidden");
   }
 
@@ -5000,14 +4994,8 @@
   function renderGuide() {
     var box = $("guideBody");
     if (!box) return;
-    var html = "";
-    GUIDE_FULL.forEach(function (section) {
-      html += '<div class="setcard"><div class="setcardtitle">' + section.title + '</div>';
-      html += section.items.map(guideItemHtml).join("");
-      html += '</div>';
-    });
-    html += '<div class="dhead">说明可以随时在「设置 → 使用说明」里再看。</div>';
-    box.innerHTML = html;
+    box.innerHTML = guideSectionsHtml() +
+      '<div class="dhead">说明可以随时在「设置 → 使用说明」里再看。</div>';
   }
 
   /* ---------------------------------------------------------- 字体大小
