@@ -591,6 +591,7 @@ const builtins = new Set([
   'setTimeout', 'setInterval', 'clearInterval', 'clearTimeout', 'requestAnimationFrame', 'parseInt', 'parseFloat', 'isNaN', 'isFinite',
   'encodeURIComponent', 'decodeURIComponent', 'btoa', 'atob', 'Uint8Array', 'ArrayBuffer',
   'DataView', 'Audio', 'localStorage', 'document', 'window', 'console', 'fetch', 'rpc', 'speak',
+  'ResizeObserver',
 ]);
 
 // 静态检查前先去掉字符串字面量，避免 "play()" 这种文本被当成调用
@@ -883,17 +884,36 @@ const stage2 = [];
 // ------------------------------------------- v1.0.46：详情页吸顶区不随页面滚动
 
 {
-  /* 吸顶区（#dtop）要自己滚动，页面其余部分正常滚动；
-     车牌行在吸顶区里、不在滚动区（#dlist）里。 */
+  /* v1.0.48：从「同站其他」往上全部吸顶不动，只有它下面的发车预测 + 到站表滚动。
+     #dtop 必须 sticky，而且**不能**有 overflow-y/max-height（否则车牌会跟着内部滚动滚走）。 */
   const dtopRule = html.match(/#dtop\s*\{([^}]*)\}/);
   const rule = dtopRule ? dtopRule[1] : '';
   if (!/position:\s*sticky/.test(rule)) stage2.push('#dtop 不是 sticky，滚动时会跟着页面走');
-  if (!/overflow-y:\s*auto/.test(rule)) stage2.push('#dtop 没有内部滚动，上面一块会跟着页面滚走');
-  if (!/max-height/.test(rule)) stage2.push('#dtop 没有高度上限，内部滚动不会生效');
+  if (/overflow-y:\s*auto/.test(rule)) stage2.push('#dtop 又有内部滚动了，车牌会跟着滚走');
+  if (/max-height/.test(rule)) stage2.push('#dtop 又有高度上限了，吸顶区会被截断');
 
-  /* 车牌行必须在 #dtop 里（吸顶区），不能在 #dlist（滚动区）里 */
-  const dtopHtml = html.slice(html.indexOf('id="dtop"'), html.indexOf('id="dbuses"'));
-  if (!/id="dbusinfo"/.test(dtopHtml)) stage2.push('车牌行 #dbusinfo 不在吸顶区 #dtop 里');
+  /* 吸顶区必须包含「同站其他」及其以上：车牌行、同站其他 */
+  const dtopStart = html.indexOf('id="dtop"');
+  const scrollStart = html.indexOf('id="dscroll"');
+  if (dtopStart < 0 || scrollStart < 0) {
+    stage2.push('详情页缺少 #dtop 或 #dscroll 容器');
+  } else {
+    const dtopHtml = html.slice(dtopStart, scrollStart);
+    ['dbusinfo', 'dbuses', 'dothers', 'lchips', 'ddirs', 'lnav'].forEach(function (id) {
+      if (!new RegExp('id="' + id + '"').test(dtopHtml)) {
+        stage2.push('#' + id + ' 应该吸顶（在 #dtop 里），实际不在');
+      }
+    });
+    /* 滚动区里只能有发车预测和到站表 */
+    const scrollHtml = html.slice(scrollStart, scrollStart + 600);
+    if (!/id="depbar"/.test(scrollHtml)) stage2.push('#depbar 应该在滚动区 #dscroll 里');
+    if (!/id="dlist"/.test(scrollHtml)) stage2.push('#dlist 应该在滚动区 #dscroll 里');
+    ['dbuses', 'dothers', 'lchips'].forEach(function (id) {
+      if (new RegExp('id="' + id + '"').test(scrollHtml)) {
+        stage2.push('#' + id + ' 不该在滚动区 #dscroll 里（应该吸顶）');
+      }
+    });
+  }
 }
 
 

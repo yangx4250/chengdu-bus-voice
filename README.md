@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.0.46）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.0.48）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -166,6 +166,12 @@ chengdu-bus/build/成都公交.apk    (约 92 KB)
 **应用名「成都公交」（v1.0.1）**：桌面显示名、安装列表、系统标题栏统一改成「成都公交」；
 **v1.0.17 线路页直接盯站**：选中站点后，站名下方多一个「📌 盯站」按钮，
 不用先进详情页。再点一次「📌 已盯站」取消。
+
+**v1.0.48 详情页：「同站其他」以上全部吸顶**：
+`#dtop` 只做 `position: sticky`，**不再**给高度上限和内部滚动（v1.0.46/47 那样做会让车牌跟着滚走）。
+顶栏、方向芯片、站名芯片、导航行、车辆芯片、车牌、「同站其他」全部钉在屏幕上方不动；
+只有它下面的**发车预测 + 到站表**跟着页面滚动（包在 `#dscroll` 里）。
+吸顶区高度变化时用 `ResizeObserver` 重算 `--top-h`，到站表的滚动定位才准。
 
 **v1.0.46 详情页上下两段分开滚动 + 盯站改蓝色高亮**：
 上面一块（顶栏 / 方向 / 站名芯片 / 导航行 / 车牌）固定在屏幕上方，**自己内部滚动**
