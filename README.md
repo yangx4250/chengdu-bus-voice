@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.0.42）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.0.43）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -166,6 +166,10 @@ chengdu-bus/build/成都公交.apk    (约 92 KB)
 **应用名「成都公交」（v1.0.1）**：桌面显示名、安装列表、系统标题栏统一改成「成都公交」；
 **v1.0.17 线路页直接盯站**：选中站点后，站名下方多一个「📌 盯站」按钮，
 不用先进详情页。再点一次「📌 已盯站」取消。
+
+**v1.0.43 进详情页自动滚到当前站**：从首页的线路格子里点进来时，下方到站表
+会直接滚到你点的那一站（以前是停在顶部，得自己往下翻）。滚动目标是「你选中的那一站」，
+没有选中站时退回「离我最近」的站；之后的 30 秒定时刷新仍滚到车当前所在站。
 
 **v1.0.42 修首页车辆点不开**：v1.0.41 删掉了 `#lstationfav` 元素，但 `openDetail()` 和
 `renderFavStopPage()` 里还各有一行 `$("lstationfav").className = ...`，

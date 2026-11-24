@@ -2785,7 +2785,9 @@
     view.data = null;
     view.index = 0;
     view.selectedBusId = opts.busId || null;
-    view.scrollOnLoad = Boolean(opts.scroll);
+    /* 进页时把到站表滚到「当前站」：从首页车辆点进来时 scroll 为 true，
+       其它入口（站名芯片、收藏卡）也都希望直接看到自己那一站。 */
+    view.scrollOnLoad = opts.scroll === undefined ? true : Boolean(opts.scroll);
     view.directions = [];
     state.lineView = null;
     $("dtitle").textContent = opts.title || "线路详情";
@@ -3434,11 +3436,15 @@
     var rows = list.children;
     var currentRow = null;
     var nearestRow = null;
+    var selectedRow = null;
+    var selectedOrder = state.station && state.station.order !== undefined
+      ? Number(state.station.order) : null;
     for (var i = 0; i < rows.length; i++) {
       (function (rowEl) {
         var order = parseInt(rowEl.getAttribute ? rowEl.getAttribute("data-order") : rowEl.dataset.order, 10);
         if (order === currentOrder) currentRow = rowEl;
         if (nearestOrder !== null && Number(order) === Number(nearestOrder)) nearestRow = rowEl;
+        if (selectedOrder !== null && Number(order) === selectedOrder) selectedRow = rowEl;
         rowEl.onclick = function () { pickStation(order, rowEl); };
         var bellEl = rowEl.querySelector ? rowEl.querySelector(".bell") : null;
         if (bellEl) {
@@ -3450,8 +3456,16 @@
       })(rows[i]);
     }
 
-    /* 刚进来滚到离我最近的站；之后刷新滚到车当前所在的那一站 */
-    var scrollRow = (scrollNearest && nearestRow) || currentRow;
+    /* 刚进来滚到「当前站」——就是用户点进来的那一站（state.station），
+       没有选中站时退回「离我最近」的站；之后定时刷新滚到车当前所在的那一站。 */
+    var scrollRow = (scrollNearest && (selectedRow || nearestRow)) || currentRow;
+    /* 调试/测试钩子：记录这次渲染要不要滚、滚到哪一行（DOM 桩里 children 为空，测不到真实滚动） */
+    window.cdBusLastTimes = {
+      scroll: doScroll,
+      nearest: scrollNearest,
+      hasRow: Boolean(scrollRow),
+      order: scrollRow && scrollRow.getAttribute ? scrollRow.getAttribute("data-order") : null
+    };
     if (doScroll && scrollRow) {
       scrollElementIntoView(scrollRow, 60);
     }
@@ -4755,7 +4769,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.42";
+  var APP_FALLBACK_VERSION = "1.0.43";
 
   function fillAbout() {
     var verEl = $("abVersion");

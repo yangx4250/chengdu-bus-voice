@@ -544,6 +544,7 @@ const bridge = {
   location() { return '30.657,104.065'; },
 };
 
+globalThis.__scrollLog = [];
 const window = {
   AndroidBus: bridge,
   /* 布局桩：页面里的滚动定位会用 window.innerHeight / scrollY / scrollTo */
@@ -551,7 +552,8 @@ const window = {
   innerWidth: 400,
   scrollY: 0,
   pageYOffset: 0,
-  scrollTo() {},
+  scrollLog: globalThis.__scrollLog,
+  scrollTo(a, b) { globalThis.__scrollLog.push(typeof a === 'object' ? a.top : b); },
   addEventListener() {},
   requestAnimationFrame(fn) { return setTimeout(fn, 0); },
 };
@@ -1916,8 +1918,16 @@ const favCard16 = favCards.find((c) => /16路/.test(textOf(c))) || favCards[0];
 const stage5 = [];
 if (!favCards.length) stage5.push('没有线路收藏卡');
 else {
+  globalThis.__scrollLog.length = 0;
   favCard16.onclick();
   await new Promise((r) => setTimeout(r, 900));
+  /* v1.0.43：从首页点进来时，到站表要自动滚到当前站（不是停在顶部） */
+  {
+    const t = window.cdBusLastTimes;
+    if (!t) stage5.push('renderTimes 没有执行，无法判断是否自动滚动');
+    else if (t.scroll !== true) stage5.push('从首页进详情后到站表没有要求滚动到当前站：' + JSON.stringify(t));
+    else if (t.nearest !== true) stage5.push('进详情时应滚到当前站而不是车所在站：' + JSON.stringify(t));
+  }
   const chipsHtml = textOf(document.getElementById('dbuses'));
   const chipEls = findByClass(document.getElementById('dbuses'), 'chip');
   if (chipEls.length < 3) stage5.push('车辆芯片未渲染完整：' + chipEls.length);
