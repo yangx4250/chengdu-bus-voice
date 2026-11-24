@@ -502,6 +502,8 @@ const bridge = {
   setLockNotify(on) { lockNotifyLog.push(['set', Boolean(on)]); lockNotifyOn = Boolean(on); },
   lockNotifyOn() { return lockNotifyOn; },
   testLockNotify() { lockNotifyLog.push(['test', true]); },
+  lockNotifyDiag() { return '开关：开；通知权限：已授权；通道重要度：4；锁屏可见性：1；系统通知总开关：正常'; },
+  askNotificationPermission() { lockNotifyLog.push(['perm', true]); },
   heartbeatStatus() {
     return JSON.stringify({ running: heartbeatRunning, count: heartbeatRunning ? 1 : 3,
       lastAt: Date.now(), lastText: '后台心跳第 1 次', lastResult: '✅ 系统 TTS' });
@@ -2700,6 +2702,18 @@ await new Promise((r) => setTimeout(r, 150));
 document.getElementById('setDiag').onclick();
 await new Promise((r) => setTimeout(r, 200));
 if (lockBox && lockBox.checked !== true) stage10.push('重进设置页后开关状态没有跟随 lockNotifyOn()');
+
+// 自检按钮：要把诊断文字写进 #lockNotifyInfo，并请求通知权限
+const permBtn = document.getElementById('lockNotifyPerm');
+if (!permBtn) stage10.push('缺少「检查通知权限」按钮');
+else if (typeof permBtn.onclick !== 'function') stage10.push('检查通知权限按钮没有绑定点击事件');
+else {
+  permBtn.onclick();
+  await new Promise((r) => setTimeout(r, 150));
+  const infoText = textOf(document.getElementById('lockNotifyInfo'));
+  if (!infoText.includes('通知权限')) stage10.push('自检信息没有写进页面：' + infoText.slice(0, 80));
+  if (!lockNotifyLog.some((x) => x[0] === 'perm')) stage10.push('自检没有请求通知权限');
+}
 
 if (stage10.length) {
   console.error('✗ UI 冒烟失败（锁屏通知）：');

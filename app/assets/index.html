@@ -713,7 +713,8 @@
           <label class="switch"><input type="checkbox" id="lockNotify"><span class="knob"></span></label>
         </div>
         <div class="btns"><button id="lockNotifyTest">发一条测试通知</button></div>
-        <div class="dhead">关掉后只在后台念，不弹锁屏。测试时先锁屏再点。</div>
+        <div class="btns"><button id="lockNotifyPerm">检查通知权限 / 去开启</button></div>
+        <div id="lockNotifyInfo" class="dhead">关掉后只在后台念，不弹锁屏。测试时先锁屏再点。</div>
       </div>
       <div class="setcard">
         <div class="setcardtitle">后台心跳</div>
@@ -4782,7 +4783,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.44";
+  var APP_FALLBACK_VERSION = "1.0.45";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -5340,6 +5341,14 @@
       if (bridge && bridge.lockNotifyOn) on = bridge.lockNotifyOn() !== false;
     } catch (e) { on = true; }
     box.checked = on;
+    /* 顺手把自检信息刷出来，进页面就知道权限有没有给 */
+    var info = $("lockNotifyInfo");
+    if (info && bridge && bridge.lockNotifyDiag) {
+      try {
+        var t = String(bridge.lockNotifyDiag() || "");
+        if (t) info.textContent = t;
+      } catch (e) { /* 忽略 */ }
+    }
   }
 
   $("lockNotify").onchange = function () {
@@ -5359,6 +5368,25 @@
     }
     try { bridge.testLockNotify(); } catch (e) { /* 忽略 */ }
     setStatus("已发送测试通知，锁屏看一下", false);
+  };
+
+  /* 通知自检：把「开关 / 权限 / 通道重要度 / 锁屏可见性」直接显示出来。
+     Android 13+ 没有通知权限时，系统会把通知静默丢弃，这是锁屏看不到的头号原因。 */
+  $("lockNotifyPerm").onclick = function () {
+    if (!bridge) {
+      setStatus("要在 App 里才能用", true);
+      return;
+    }
+    var text = "";
+    try {
+      if (bridge.lockNotifyDiag) text = String(bridge.lockNotifyDiag() || "");
+    } catch (e) { text = ""; }
+    var info = $("lockNotifyInfo");
+    if (info && text) info.textContent = text;
+    if (bridge.askNotificationPermission) {
+      try { bridge.askNotificationPermission(); } catch (e) { /* 忽略 */ }
+    }
+    setStatus(text || "已请求通知权限", false);
   };
 
   $("dWatchDiag").onclick = function () {

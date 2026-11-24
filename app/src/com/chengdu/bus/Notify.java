@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.util.Log;
 
@@ -53,6 +54,18 @@ final class Notify {
         }
     }
 
+    /** Android 13+ 没给通知权限的话，notify() 会被系统直接丢弃且不报错。 */
+    static boolean canPost(Context context) {
+        if (context == null) return false;
+        if (Build.VERSION.SDK_INT < 33) return true;
+        try {
+            return context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                    == PackageManager.PERMISSION_GRANTED;
+        } catch (Throwable e) {
+            return false;
+        }
+    }
+
     private static void ensureChannel(Context context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
         NotificationManager manager =
@@ -78,6 +91,10 @@ final class Notify {
      */
     static void post(Context context, String title, String text) {
         if (context == null || !enabled(context)) return;
+        if (!canPost(context)) {
+            Log.w(TAG, "没有通知权限（Android 13+ 需手动授权），锁屏通知发不出去");
+            return;
+        }
         try {
             ensureChannel(context);
             NotificationManager manager =
@@ -126,5 +143,40 @@ final class Notify {
             if (manager != null) manager.cancel(ID);
         } catch (Throwable ignored) {
         }
+    }
+
+    /**
+     * 自检：把「为什么锁屏上看不到」需要判断的东西一次说清楚。
+     * 设置页会把这段文字直接显示出来，免得用户猜。
+     */
+    static String diagnose(Context context) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("开关：").append(enabled(context) ? "开" : "关");
+        sb.append("；通知权限：").append(canPost(context) ? "已授权" : "未授权");
+        try {
+            NotificationManager manager =
+                    (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (manager == null) {
+                sb.append("；通知服务：不可用");
+                return sb.toString();
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel ch = manager.getNotificationChannel(CHANNEL_ID);
+                if (ch == null) {
+                    sb.append("；通道：还没创建（发出第一条通知时创建）");
+                } else {
+                    sb.append("；通道重要度：").append(ch.getImportance());
+                    sb.append("；锁屏可见性：").append(ch.getLockscreenVisibility());
+                    if (ch.getImportance() < NotificationManager.IMPORTANCE_HIGH) {
+                        sb.append("（被系统降级了，锁屏可能不弹）");
+                    }
+                }
+            }
+            boolean blocked = !manager.areNotificationsEnabled();
+            sb.append("；系统通知总开关：").append(blocked ? "已关闭" : "正常");
+        } catch (Throwable e) {
+            sb.append("；读取通道信息失败：").append(e.getClass().getSimpleName());
+        }
+        return sb.toString();
     }
 }

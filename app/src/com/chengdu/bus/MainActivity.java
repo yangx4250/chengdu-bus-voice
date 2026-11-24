@@ -99,6 +99,35 @@ public final class MainActivity extends Activity {
     }
 
     /**
+     * 补申请通知权限。
+     *
+     * <p>Android 13+ 的 POST_NOTIFICATIONS 如果被拒绝过两次，系统不会再弹窗，
+     * 只能跳设置页手动开。这里先尝试直接申请（刚装的机器一般还能弹），
+     * 拿不到就把 App 的通知设置页打开。</p>
+     */
+    void askNotificationPermission() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT < 33) return;
+            if (hasNotificationPermission()) {
+                toastOnUi("通知权限已经有了");
+                return;
+            }
+            if (shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1002);
+            } else {
+                Intent intent = new Intent(
+                        android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                intent.putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, getPackageName());
+                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(intent);
+                toastOnUi("请在系统设置里打开「允许通知」");
+            }
+        } catch (Throwable e) {
+            android.util.Log.w("CdBusMain", "申请通知权限失败", e);
+        }
+    }
+
+    /**
      * 引导用户把本应用加入「电池优化白名单」。
      *
      * 国产 ROM（HyperOS/EMUI/ColorOS…）默认会在息屏后清理后台，

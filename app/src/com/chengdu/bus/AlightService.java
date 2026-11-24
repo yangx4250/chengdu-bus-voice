@@ -425,6 +425,8 @@ public final class AlightService extends Service implements LocationListener {
         channel.setDescription("下车提醒时在后台持续定位并播报");
         channel.enableVibration(false);
         channel.setSound(null, null);
+        /* 锁屏可见（v1.0.45） */
+        channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
         manager.createNotificationChannel(channel);
     }
 
@@ -448,6 +450,8 @@ public final class AlightService extends Service implements LocationListener {
                 .setOngoing(true)
                 .setContentIntent(pending)
                 .setOnlyAlertOnce(true)
+                /* 锁屏上也要能看见（v1.0.45） */
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .build();
     }
 

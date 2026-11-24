@@ -222,6 +222,9 @@ public final class WatchService extends Service {
         channel.setDescription("盯站时在后台刷新到站并播报");
         channel.enableVibration(false);
         channel.setSound(null, null);
+        /* 锁屏可见（v1.0.45）：重要度保持 LOW（常驻通知不该响），
+           但内容允许在锁屏上显示 —— 两个是独立的设置。 */
+        channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
         manager.createNotificationChannel(channel);
     }
 
@@ -245,6 +248,9 @@ public final class WatchService extends Service {
                 .setOngoing(true)
                 .setContentIntent(pending)
                 .setOnlyAlertOnce(true)
+                /* 锁屏上也要能看见（v1.0.45）：国产 ROM 对前台服务通知的锁屏可见性
+                   默认按「私密」处理，不设 PUBLIC 的话锁屏上只显示「已隐藏内容」。 */
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .build();
     }
 

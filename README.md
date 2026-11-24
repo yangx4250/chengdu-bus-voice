@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.0.44）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.0.45）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -166,6 +166,13 @@ chengdu-bus/build/成都公交.apk    (约 92 KB)
 **应用名「成都公交」（v1.0.1）**：桌面显示名、安装列表、系统标题栏统一改成「成都公交」；
 **v1.0.17 线路页直接盯站**：选中站点后，站名下方多一个「📌 盯站」按钮，
 不用先进详情页。再点一次「📌 已盯站」取消。
+
+**v1.0.45 锁屏通知修不到位的三个原因**：①**Android 13+ 没有通知权限时，系统会把通知静默丢弃**，
+`notify()` 不报错也不显示 —— 现在发通知前先检查权限，设置页加「检查通知权限 / 去开启」按钮，
+会把「开关 / 权限 / 通道重要度 / 锁屏可见性 / 系统总开关」一次列出来。②盯站和下车提醒的**常驻前台服务通知**
+没有设 `VISIBILITY_PUBLIC`，锁屏上只显示「已隐藏内容」—— 两条都补上了，通道也补了
+`setLockscreenVisibility(VISIBILITY_PUBLIC)`。③通道一旦创建，重要度就改不了（系统不允许），
+所以高优先级通道 `cdbus_alert` 必须独立存在，不能指望把 `cdbus_watch` 改成 HIGH。
 
 **v1.0.44 增加锁屏通知**：盯站和下车提醒原来只有一条 IMPORTANCE_LOW 的常驻通知，
 锁屏上只会折成一行灰字。现在另开一条高优先级通知通道（`cdbus_alert`，VISIBILITY_PUBLIC），

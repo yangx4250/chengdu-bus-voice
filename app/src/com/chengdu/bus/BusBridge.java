@@ -213,6 +213,22 @@ public final class BusBridge {
         Notify.post(activity, "成都公交 · 锁屏通知测试", "如果你在锁屏上看到这条，说明锁屏通知可用");
     }
 
+    /** 锁屏通知自检：把开关、权限、通道重要度、锁屏可见性一次返回，便于排查「锁屏看不到」。 */
+    @JavascriptInterface
+    public String lockNotifyDiag() {
+        return Notify.diagnose(activity);
+    }
+
+    /** 补申请通知权限（Android 13+ 之前拒绝过的话，只能引导到系统设置）。 */
+    @JavascriptInterface
+    public void askNotificationPermission() {
+        try {
+            activity.askNotificationPermission();
+        } catch (Throwable e) {
+            Log.w(TAG, "补申请通知权限失败", e);
+        }
+    }
+
     /** 申请「忽略电池优化」，让息屏后后台服务不被系统清掉。 */
     @JavascriptInterface
     public void requestIgnoreBatteryOptimization() {
