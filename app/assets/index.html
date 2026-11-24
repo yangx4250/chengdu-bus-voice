@@ -755,7 +755,6 @@
           <div class="kv"><span>版本</span><span id="abVersion">—</span></div>
           <div class="kv"><span>运行环境</span><span id="abEnv">—</span></div>
           <div class="kv"><span>数据来源</span><span>车来了（公交实时）· OpenStreetMap</span></div>
-          <div class="kv"><span>签名</span><span>b5c11b4d…（自签名，仅供个人使用）</span></div>
           <div class="kv" style="border:none"><span>说明</span><span>到站时间为预测，仅供参考。</span></div>
         </div>
       </div>
@@ -4806,7 +4805,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.51";
+  var APP_FALLBACK_VERSION = "1.0.52";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -4957,7 +4956,7 @@
         desc: "锁屏通知、后台心跳、盯站诊断、电池白名单——息屏不播报时来这里排查。",
         demo: "后台诊断  ›" },
       { icon: "ℹ️", name: "关于",
-        desc: "版本号、数据来源、签名信息。",
+        desc: "版本号、运行环境、数据来源。",
         demo: "关于  ›" }
     ]}
   ];

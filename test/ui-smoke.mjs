@@ -904,6 +904,13 @@ const fullLen = (html.match(/var GUIDE_FULL = \[([\s\S]*?)\n  \];/) || [])[1] ||
 const secCount = (fullLen.match(/\{ title:/g) || []).length;
 if (secCount < 7) failures.push('完整说明章节太少，实际 ' + secCount + ' 章');
 
+/* 关于页不该暴露签名指纹（v1.0.52） */
+{
+  const about = html.slice(html.indexOf('id="setPageAbout"'), html.indexOf('id="setPageAbout"') + 1400);
+  if (/<span>签名<\/span>/.test(about)) failures.push('关于页还在显示签名');
+  if (/b5c11b4d/.test(html)) failures.push('代码里还留着签名指纹 b5c11b4d');
+}
+
 if (failures.length) {
   console.error('✗ UI 冒烟失败：');
   for (const f of failures) console.error('  - ' + f);
