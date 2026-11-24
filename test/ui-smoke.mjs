@@ -880,6 +880,23 @@ if (failures.length) {
 
 const stage2 = [];
 
+// ------------------------------------------- v1.0.46：详情页吸顶区不随页面滚动
+
+{
+  /* 吸顶区（#dtop）要自己滚动，页面其余部分正常滚动；
+     车牌行在吸顶区里、不在滚动区（#dlist）里。 */
+  const dtopRule = html.match(/#dtop\s*\{([^}]*)\}/);
+  const rule = dtopRule ? dtopRule[1] : '';
+  if (!/position:\s*sticky/.test(rule)) stage2.push('#dtop 不是 sticky，滚动时会跟着页面走');
+  if (!/overflow-y:\s*auto/.test(rule)) stage2.push('#dtop 没有内部滚动，上面一块会跟着页面滚走');
+  if (!/max-height/.test(rule)) stage2.push('#dtop 没有高度上限，内部滚动不会生效');
+
+  /* 车牌行必须在 #dtop 里（吸顶区），不能在 #dlist（滚动区）里 */
+  const dtopHtml = html.slice(html.indexOf('id="dtop"'), html.indexOf('id="dbuses"'));
+  if (!/id="dbusinfo"/.test(dtopHtml)) stage2.push('车牌行 #dbusinfo 不在吸顶区 #dtop 里');
+}
+
+
 
 /* v1.0.16：首页刷新要重新定位，不能一直用启动时那一个坐标。
    把 location 桩换成「已经走到别处」的坐标，再触发一次回前台刷新，
@@ -1794,20 +1811,31 @@ else {
           if (stopAfter <= stopBefore) stage4.push('再点「已盯站」没有取消盯站');
         }
 
-        /* v1.0.28：点顶部盯站条上的「停止」后，下面那个「📌 已盯站」按钮
-           必须立刻变回「📌 盯站」，不能等下一次重画。 */
+        /* v1.0.46：盯站通知条取消，改为站名芯片蓝色高亮（.watched）。
+           盯站后必须有一个芯片带 watched，取消后一个都不能剩。 */
         wBtn[0].onclick();                        // 先重新盯上
-        await new Promise((r) => setTimeout(r, 300));
-        const stopEl = document.getElementById('dwatchStop');
-        if (!stopEl || typeof stopEl.onclick !== 'function') {
-          stage4.push('盯站条上没有「停止」按钮');
-        } else {
-          stopEl.onclick();
-          await new Promise((r) => setTimeout(r, 300));
-          const wBtn3 = findByClass(document.getElementById('lnav'), 'stationwatch');
-          const label3 = wBtn3.length ? String(wBtn3[0].textContent) : '';
-          if (label3.indexOf('已盯站') >= 0) {
-            stage4.push('点盯站条的「停止」后按钮还是「已盯站」，没有立刻刷新：' + label3);
+        await new Promise((r) => setTimeout(r, 400));
+        const chipsWatched = findByClass(document.getElementById('lchips'), 'watched');
+        if (chipsWatched.length !== 1) {
+          stage4.push('盯站后站名芯片没有蓝色高亮（.watched 数量 ' + chipsWatched.length + '）');
+        }
+        /* 顶部盯站通知条整个元素都已删除（v1.0.46 改成站名蓝色高亮） */
+        if (/id="dwatchbar"/.test(html)) {
+          stage4.push('盯站通知条元素还在（v1.0.46 已删除，改为站名高亮）');
+        }
+        /* 取消盯站：点导航行里的「📌 已盯站」 */
+        const wBtn3s = findByClass(document.getElementById('lnav'), 'stationwatch');
+        if (wBtn3s.length) {
+          wBtn3s[0].onclick();
+          await new Promise((r) => setTimeout(r, 400));
+          const chipsAfter = findByClass(document.getElementById('lchips'), 'watched');
+          if (chipsAfter.length !== 0) {
+            stage4.push('取消盯站后站名芯片还有蓝色高亮（.watched 数量 ' + chipsAfter.length + '）');
+          }
+          const wBtn4 = findByClass(document.getElementById('lnav'), 'stationwatch');
+          const label4 = wBtn4.length ? String(wBtn4[0].textContent) : '';
+          if (label4.indexOf('已盯站') >= 0) {
+            stage4.push('取消盯站后按钮还是「已盯站」，没有立刻刷新：' + label4);
           }
         }
       }
@@ -1955,17 +1983,17 @@ else {
   /* v1.0.31：行内 📌 已取消——盯站入口是「📌 盯站」按钮和顶部盯站条 */
   if (/class="spk stpin/.test(dlistHtml)) stage5.push('详情页站点行还残留 📌 盯站按钮（已取消）');
 
-  // 点某一站盯站（走导出的接口）：应进入盯站、盯站条显示信息
+  // 点某一站盯站（走导出的接口）：站名芯片应蓝色高亮（v1.0.46 取代盯站条）
   if (typeof window.cdBusWatchStation === 'function') {
     window.cdBusWatchStation(9);
-    await new Promise((r) => setTimeout(r, 300));
-    const bar = document.getElementById('dwatchbar');
-    if (String(bar.className).includes('hidden')) stage5.push('盯站后盯站条没有显示');
-    const barText = String(document.getElementById('dwatchtext').textContent || '');
-    if (!/盯站：/.test(barText)) stage5.push('盯站条没有显示目标：' + barText);
-    if (!document.getElementById('dwatchStop')) stage5.push('盯站条没有「停止」入口');
+    await new Promise((r) => setTimeout(r, 400));
+    const watched = findByClass(document.getElementById('lchips'), 'watched');
+    if (watched.length !== 1) stage5.push('盯站后站名芯片没有蓝色高亮（.watched 数量 ' + watched.length + '）');
+    else if (String(watched[0].getAttribute ? watched[0].getAttribute('data-order') : '') !== '9') {
+      /* 桩里没存 data-order 也允许，主要看数量 */
+    }
     // 清理：停掉盯站，别影响后面
-    document.getElementById('dwatchStop').onclick();
+    window.cdBusStopWatch ? window.cdBusStopWatch() : null;
     await new Promise((r) => setTimeout(r, 300));
   }
   if (!dlistHtml.includes('srow')) stage5.push('详情页没有渲染站点行');
@@ -2106,9 +2134,16 @@ console.log('✓ 收藏进详情通过：芯片显示「已过收藏站 · 距�
       if (String(document.getElementById('detail').className).includes('hidden')) {
         stage5b.push('点车辆芯片后详情页消失了');
       }
-      // 到站表要更新成选中那辆车的（dlist 里有车牌行）
+      /* v1.0.46：车牌行从到站表里挪到了吸顶区 #dbusinfo（不随页面滚动），
+         到站表本身只剩站行。 */
+      const busInfoText = textOf(document.getElementById('dbusinfo'));
+      if (!/车牌/.test(busInfoText)) {
+        stage5b.push('吸顶区没有车牌行：' + busInfoText.slice(0, 80));
+      }
       const dlistText = textOf(document.getElementById('dlist'));
-      if (!/车牌/.test(dlistText)) stage5b.push('到站表没有车牌行：' + dlistText.slice(0, 80));
+      if (/车牌/.test(dlistText)) {
+        stage5b.push('车牌行还在滚动区里（应移到吸顶区）：' + dlistText.slice(0, 80));
+      }
 
       /* v1.0.24：只有详情页一个车辆页，且进来时要标出「离我最近」的站。
          假 DOM 不解析 innerHTML，只能对原始 HTML 文本做正则统计。 */

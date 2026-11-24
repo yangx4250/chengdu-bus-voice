@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.0.45）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.0.46）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -166,6 +166,13 @@ chengdu-bus/build/成都公交.apk    (约 92 KB)
 **应用名「成都公交」（v1.0.1）**：桌面显示名、安装列表、系统标题栏统一改成「成都公交」；
 **v1.0.17 线路页直接盯站**：选中站点后，站名下方多一个「📌 盯站」按钮，
 不用先进详情页。再点一次「📌 已盯站」取消。
+
+**v1.0.46 详情页上下两段分开滚动 + 盯站改蓝色高亮**：
+上面一块（顶栏 / 方向 / 站名芯片 / 导航行 / 车牌）固定在屏幕上方，**自己内部滚动**
+（`#dtop` 加了 `max-height: 62vh; overflow-y: auto`）；下面的到站表照常跟着页面滚。
+车牌行从到站表里挪到了吸顶区（`#dbusinfo`），滚到站表深处也一直看得到是哪辆车。
+盯站不再弹顶部那条通知条，改成**站名芯片蓝色高亮**（`.chip.watched`，蓝框 + 蓝字加粗），
+再点「📌 已盯站」或等车到站就自动消失。
 
 **v1.0.45 锁屏通知修不到位的三个原因**：①**Android 13+ 没有通知权限时，系统会把通知静默丢弃**，
 `notify()` 不报错也不显示 —— 现在发通知前先检查权限，设置页加「检查通知权限 / 去开启」按钮，

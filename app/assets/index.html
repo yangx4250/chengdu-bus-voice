@@ -64,6 +64,9 @@
   .chip.nearest { border-color: var(--ok); background: #12302a; }
   /* 实时车辆位置：🚌 挂在站名芯片「头上」（站名上方、芯片内部）。
      注意 .chips.vertical .chip 有 overflow: hidden，图标放在芯片外会被裁掉看不见。 */
+  /* 盯站中的站名：蓝色高亮（v1.0.46 取消盯站通知条，改为站名高亮） */
+  .chips.vertical .chip.watched { border-color: #4f8cff; background: #16233d; }
+  .chips.vertical .chip.watched .cname { color: #6ea8ff; font-weight: 600; }
   .chip.hasbus { position: relative; padding-top: 20px; }
   .chip.hasbus .busmark {
     writing-mode: horizontal-tb; text-orientation: mixed;
@@ -231,7 +234,7 @@
   .selbar .seltext { flex: 1; min-width: 0; font-size: var(--fs-sm); color: #b9c6dd;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .selbar button { padding: 8px 12px; font-size: 13px; white-space: nowrap; }
-  #dwatchbar { cursor: pointer; }
+  /* 盯站状态条（v1.0.46）：不再用通知样式的横条，改为顶部一条蓝色高亮文字 */
   .dwatchstop { font-size: 12px; color: #6b7c99; padding: 4px 8px; border-radius: 8px;
     border: 1px solid var(--line); white-space: nowrap; }
   .dwatchstop:active { background: #22304a; color: #fff; }
@@ -286,8 +289,13 @@
     line-height: 1; opacity: .85; }
   .fav .pin:active { opacity: 1; }
 
+  /* 详情页：上面一块（#dtop）固定不动、自己内部滚动，下面到站表（#dlist）正常滚动。
+     sticky 只能让一块「跟着滚」，不能把整页变成两段独立滚动区，
+     所以这里给 #dtop 一个高度上限 + 内部 overflow-y:auto。 */
   #dtop { position: sticky; top: 0; z-index: 20; background: var(--bg);
-    margin: 0 -14px; padding: 2px 14px 8px; }
+    margin: 0 -14px; padding: 2px 14px 8px;
+    max-height: 62vh; overflow-y: auto; overscroll-behavior: contain;
+    border-bottom: 1px solid var(--line); }
   .detail-head { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
   .detail-head .dh-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .detail-head .dh-actions { display: flex; gap: 8px; }
@@ -808,10 +816,6 @@
         <div id="dsub"></div>
       </div>
     </div>
-    <div id="dwatchbar" class="selbar hidden">
-      <span class="seltext" id="dwatchtext"></span>
-      <span id="dwatchStop" class="dwatchstop">停止</span>
-    </div>
     <div id="alightbar" class="selbar hidden">
       <span class="dot3"></span>
       <span class="seltext" id="alighttext"></span>
@@ -836,6 +840,7 @@
         </div>
       </div>
     </div>
+    <div id="dbusinfo" class="dhead" style="display:none"></div>
   </div>
   <div id="dbuses" class="chips"></div>
   <div id="dothers" class="chips hidden"></div>
@@ -2621,6 +2626,12 @@
       var classes = "chip";
       if (sameStation(state.station, station)) classes += " on";
       if (isNearest) classes += " nearest";
+      /* 盯站中的那一站：站名蓝色高亮（v1.0.46，替代原来的盯站通知条） */
+      if (watch.on && watch.target &&
+          String(watch.target.lineId) === String(lv.lineId) &&
+          Number(watch.target.order) === Number(station.order)) {
+        classes += " watched";
+      }
       /* 这一站上有没有在途车辆：有就挂 🚌（一个站多辆车也只画一个，角标给数量） */
       var busHere = busInfoAt(station.order);
       if (busHere.count > 0) {
@@ -2968,6 +2979,7 @@
     } catch (err) {
       $("dsub").textContent = "";
       $("dlist").innerHTML = '<div class="empty">' + (err.message || "加载失败") + "</div>";
+      var bi = $("dbusinfo"); if (bi) bi.style.display = "none";
     }
   }
 
@@ -3367,7 +3379,9 @@
     }
     if (!st) return;
     startWatch({
-      lineId: view.lineId,
+      /* 用页面实际显示的线路（state.lineView），它来自 matrix 返回的 lineId；
+         view.lineId 是「请求的线路」，换方向/别名时可能和显示的不一致 */
+      lineId: (state.lineView && state.lineView.lineId) || view.lineId,
       lineName: view.lineName,
       stationId: st.stationId,
       stationName: st.name,
@@ -3404,8 +3418,12 @@
     var nearSt = nearestStation(stations);
     var nearestOrder = nearSt ? nearSt.order : null;
 
-    var html = '<div class="dhead">车牌 ' + (bus.plate || "未知") +
-      " · 当前在第 " + bus.order + " 站 · 全程 " + stations.length + " 站</div>";
+    var busInfo = $("dbusinfo");
+    if (busInfo) {
+      busInfo.textContent = "车牌 " + (bus.plate || "未知") +
+        " · 当前在第 " + bus.order + " 站 · 全程 " + stations.length + " 站";
+    }
+    var html = "";
     /* 车所在那一站（没有对应行时取第一个未过的站） */
     var currentOrder = bus.order;
     var hasCurrent = false;
@@ -3446,6 +3464,7 @@
     });
     html += '<div class="dhead" style="margin-top:4px">点任一站名看该站其它线路；时间为预测，仅供参考</div>';
     list.innerHTML = html;
+    if (busInfo) busInfo.style.display = "";
 
     var rows = list.children;
     var currentRow = null;
@@ -4199,16 +4218,8 @@
   }
 
   function updateWatchUI() {
-    var bar = $("dwatchbar");
-    if (!bar) return;
-    if (watch.on && watch.target) {
-      var text = "盯站：" + watchLabel(watch.target);
-      if (watch.liveText) text += " · " + watch.liveText;
-      $("dwatchtext").textContent = text;
-      bar.className = "selbar";
-    } else {
-      bar.className = "selbar hidden";
-    }
+    /* v1.0.46：详情页顶部的盯站通知条已取消，改成站名芯片蓝色高亮。
+       盯站的实时进度仍在首页「当前盯站」卡片里，取消入口是导航行的「📌 已盯站」。 */
     renderWatchCard();
     renderFavsOffset();
   }
@@ -4239,6 +4250,7 @@
   window.cdBusStartBackgroundWatch = startBackgroundWatch;
   window.cdBusWatchTick = watchTick;   // 测试钩子：直接跑一次盯站刷新
   window.cdBusStartWatch = startWatch;  // 测试钩子：直接开启盯站（跳过 UI 点击）
+  window.cdBusStopWatch = stopWatch;    // 测试钩子：直接停止盯站
 
   /* 回到前台也不停服务：播报统一由服务负责，避免前后台两套逻辑抢占，
      也避免 WebView 在退后台时来不及时机（之前后台不播就是这个问题）。 */
@@ -4260,16 +4272,18 @@
     /* 先刷 UI 再调原生服务：startWatchService 是跨 JNI 的同步调用，
        放在前面会让图标「点了过一会儿才变灰」。 */
     setStatus("盯站中 · " + watchLabel(target) + " · 每 30 秒");
-    repaintWatchState();      // 盯站条、「📌 已盯站」按钮立即更新，不等轮询
+    repaintWatchState();      // 站名高亮、「📌 已盯站」按钮立即更新，不等轮询
     startBackgroundWatch();   // 交给前台服务，后台也能播
   }
 
   /* 立即重画当前页面的站点行（详情页/车辆页），用于图标状态即时反馈 */
   function repaintStationRows() {
     if (view.name === "detail" && view.data) renderTimes({ scroll: false });
+    /* 站名芯片上的 .watched 蓝色高亮也要跟着变（v1.0.46） */
+    if (view.name === "detail" && state.lineView) renderLineStations();
   }
 
-  /* 盯站状态变了：盯站条、站名芯片下方的「📌 已盯站」按钮一起刷新。
+  /* 盯站状态变了：站名芯片蓝色高亮、「📌 已盯站」按钮一起刷新。
      （v1.0.28 修：停止盯站时只刷了盯站条和行内图标，导航条下面那个
       「📌 已盯站」按钮要等下一次重画才恢复，看起来像卡住了。） */
   function repaintWatchState() {
@@ -4286,7 +4300,7 @@
     watch.lastUrgent = false;
     setStatus("已停止盯站");
     stopBackgroundWatch();
-    repaintWatchState();   // 盯站条、「📌 已盯站」按钮一起恢复
+    repaintWatchState();   // 站名高亮、「📌 已盯站」按钮一起恢复
   }
 
   /* 30 秒一刷；同一辆车只在 10 分钟 / 5 分钟 / 2 站 各播一次 */
@@ -4783,7 +4797,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.45";
+  var APP_FALLBACK_VERSION = "1.0.46";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -5543,28 +5557,6 @@
       lastTime: view.lastTime || "",
       addedAt: Date.now()
     });
-  };
-
-  $("dwatchbar").onclick = function (ev) {
-    if (ev && ev.target && ev.target.id === "dwatchStop") return;
-    if (!watch.target) return;
-    var rows = document.querySelectorAll ? document.querySelectorAll("#dlist .srow") : [];
-    for (var i = 0; i < rows.length; i++) {
-      if (Number(rows[i].getAttribute("data-order")) === Number(watch.target.order)) {
-        if (typeof rows[i].scrollIntoView === "function") {
-          rows[i].scrollIntoView({ block: "center", behavior: "smooth" });
-        }
-        rows[i].classList.add("current");
-        setStatus("已定位到盯站：" + watch.target.stationName);
-        return;
-      }
-    }
-    setStatus("盯站的是「" + watch.target.stationName + "」，当前方向列表里没有", true);
-  };
-
-  $("dwatchStop").onclick = function (ev) {
-    if (ev && ev.stopPropagation) ev.stopPropagation();
-    stopWatch();
   };
 
   /* 二级页面的返回 / 刷新 */
