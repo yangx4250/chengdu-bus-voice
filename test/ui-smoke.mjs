@@ -219,6 +219,7 @@ const watchServiceLog = [];
 const alightServiceLog = [];
 const exitLog = [];
 const navLog = [];
+const transitCalls = [];
 const batteryLog = [];
 const notes = [];
 /* 让 arrivals 桩返回「已到站」的车（盯站到站播报测试用） */
@@ -473,6 +474,27 @@ const bridge = {
     }
     if (method === 'city') return JSON.stringify({ state: 'ok', data: { city: '成都' } });
     if (method === 'nearby') return JSON.stringify({ state: 'ok', data: nearbyPayload });
+    if (method === 'pois') {
+      const key = String(args.key || '');
+      return JSON.stringify({ state: 'ok', data: [
+        { name: '成都武侯祠博物馆（' + key + '）', address: '武侯区武侯祠大街 231 号', lat: 30.6469, lng: 104.0481 },
+        { name: '春熙路步行街（' + key + '）', address: '锦江区春熙路', lat: 30.6546, lng: 104.0791 },
+      ] });
+    }
+    if (method === 'transit') {
+      transitCalls.push(args);
+      return JSON.stringify({ state: 'ok', data: { transits: [
+        { duration: 1800, walkingDistance: 600, transferCount: 1, tag: '推荐', segments: [
+          { mode: 'walk', walkDistance: 300 },
+          { mode: 'bus', name: '98路', lineId: '028-98-1', lineType: 0, from: '顺城大街南', to: '春熙路', viaNum: 5, duration: 900 },
+          { mode: 'metro', name: '地铁2号线', lineId: '', lineType: 1, from: '天府广场', to: '春熙路', viaNum: 1, duration: 240 },
+          { mode: 'walk', walkDistance: 300 },
+        ] },
+        { duration: 2400, walkingDistance: 100, transferCount: 0, tag: '直达', segments: [
+          { mode: 'bus', name: '48路', lineId: '028-48-0', lineType: 0, from: '盐市口', to: '春熙路', viaNum: 8, duration: 1200 },
+        ] },
+      ] } });
+    }
     return JSON.stringify({ state: 'ok', data: [] });
   },
   speak(text) { speakLog.push(String(text)); },
@@ -831,7 +853,7 @@ if (html.includes('id="watch"')) failures.push('底部还残留盯站开关');
 if (/<div id="veh"/.test(html)) failures.push('还残留独立的车辆页 #veh');
 if (/function renderVehicleTimes/.test(html)) failures.push('还残留车辆页渲染函数 renderVehicleTimes');
 if (/function openVehicleView/.test(html)) failures.push('还残留车辆页入口 openVehicleView');
-if (!/VIEWS = \["home", "detail", "metro", "diag", "pick"\]/.test(html)) {
+if (!/VIEWS = \["home", "detail", "metro", "diag", "pick", "route"\]/.test(html)) {
   failures.push('VIEWS 里还留着 veh');
 }
 if (!/function voiceOn\(\) \{ return true; \}/.test(html)) {
@@ -2871,6 +2893,62 @@ if (stage10.length) {
   process.exit(1);
 }
 console.log('✓ 锁屏通知通过：默认开、可关闭、测试通知可用、状态跟随原生');
+
+// ---------------------------------------------------------------- 第十一阶段：去哪儿（路线规划）
+const stage11 = [];
+if (!/VIEWS = \["home", "detail", "metro", "diag", "pick", "route"\]/.test(html)) {
+  stage11.push('VIEWS 里没有 route（去哪儿页未注册）');
+}
+if (!document.getElementById('routeEntry') || !document.getElementById('openRoute')) {
+  stage11.push('首页缺少「去哪儿」入口');
+}
+if (typeof window.cdBusOpenRoute !== 'function' || typeof window.cdBusPlanRoute !== 'function') {
+  stage11.push('没有暴露路线规划调试钩子');
+}
+// 静态：Java 侧必须有换乘 + POI 方法，且起点做 WGS84→GCJ02
+const ccSrc = readFileSync(path.join(here, '..', 'app', 'src', 'com', 'chengdu', 'bus', 'ChelaileClient.java'), 'utf-8');
+if (!/public JSONObject transit\(/.test(ccSrc)) stage11.push('ChelaileClient 缺少 transit() 换乘方法');
+if (!/public JSONArray searchPois\(/.test(ccSrc)) stage11.push('ChelaileClient 缺少 searchPois() 方法');
+if (!/Geo\.wgsToGcj\(/.test(ccSrc)) stage11.push('换乘起点没有做 WGS84→GCJ02 转换');
+if (!/\/api\/transfer\//.test(ccSrc)) stage11.push('换乘端点路径不是 /api/transfer/');
+const bbSrc = readFileSync(path.join(here, '..', 'app', 'src', 'com', 'chengdu', 'bus', 'BusBridge.java'), 'utf-8');
+if (!/case "transit"/.test(bbSrc) || !/case "pois"/.test(bbSrc)) stage11.push('BusBridge 缺少 transit/pois 分派');
+
+// 真实触发：进入去哪儿 → 搜目的地 → 选第一个 POI → 自动规划 → 检查公交/地铁标注与跳转
+window.cdBusOpenRoute();
+await new Promise((r) => setTimeout(r, 100));
+if (document.getElementById('route').className.includes('hidden')) stage11.push('点「去哪儿」没有进入路线规划页');
+const destIn = document.getElementById('destInput');
+destIn.value = '武侯祠';
+window.cdBusSearchDestination();
+await new Promise((r) => setTimeout(r, 300));
+const poiBox = document.getElementById('poiBox');
+const pois = findByClass(poiBox, 'poiitem');
+if (pois.length < 1) stage11.push('搜目的地没有列出 POI');
+else {
+  // 选第一个 POI（onclick 真触发，会调 planRoute）
+  pois[0].onclick();
+  await new Promise((r) => setTimeout(r, 400));
+  const routeHtml = textOf(document.getElementById('routeBox'));
+  if (!/98路/.test(routeHtml)) stage11.push('方案里没有显示公交线路 98路');
+  if (!/地铁2号线/.test(routeHtml)) stage11.push('方案里没有显示地铁 地铁2号线');
+  if (!/公交/.test(routeHtml) || !/地铁/.test(routeHtml)) stage11.push('方案没有标注公交/地铁类别');
+  if (!/分钟/.test(routeHtml)) stage11.push('方案没有显示用时');
+  if (!transitCalls.length) stage11.push('没有调用 transit 换乘接口');
+  else {
+    const c = transitCalls[transitCalls.length - 1];
+    if (!c.from || !isFinite(c.from.lat) || !c.dest || !isFinite(c.dest.lat)) {
+      stage11.push('transit 没传起点/终点坐标：' + JSON.stringify(c));
+    }
+  }
+}
+
+if (stage11.length) {
+  console.error('✗ UI 冒烟失败（去哪儿路线规划）：');
+  for (const f of stage11) console.error('  - ' + f);
+  process.exit(1);
+}
+console.log('✓ 去哪儿通过：入口、POI 搜索、公交/地铁方案、坐标传参、跳转钩子');
 
 // 首页有 30 秒自动刷新定时器，测试用完直接退出
 process.exit(0);

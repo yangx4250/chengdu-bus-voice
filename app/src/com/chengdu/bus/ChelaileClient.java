@@ -43,6 +43,8 @@ public final class ChelaileClient {
     private static final String[][] SUPPORTED = { {"007", "成都"}, {"271", "都江堰"} };
 
     private static final String BASE = "https://web.chelaile.net.cn/api/bus/";
+    /** 换乘规划在独立的 /api/transfer/ 路径下，签名协议相同但路径不同。 */
+    private static final String TRANSIT_BASE = "https://web.chelaile.net.cn/api/transfer/";
     private static final String SALT = "qwihrnbtmj";
     private static final String AES_KEY = "FF32AE65FBFD19414EAAFF6291A54B42";
     private static final String UA =
@@ -151,6 +153,122 @@ public final class ChelaileClient {
             out.put(item);
         }
         return out;
+    }
+
+    /** 目的地（POI）搜索：query!nSearch 的 result.pois（服务端最多给 3 条）。
+     *  POI 名称在 sn / sn1，坐标是 GCJ-02。 */
+    public JSONArray searchPois(String keyword) throws Exception {
+        LinkedHashMap<String, String> extra = new LinkedHashMap<>();
+        extra.put("key", keyword);
+        extra.put("supportPhyStn", "true");
+        JSONObject data = call("query!nSearch.action", extra);
+        JSONObject result = data.optJSONObject("result");
+        JSONArray out = new JSONArray();
+        if (result == null) return out;
+        JSONArray pois = result.optJSONArray("pois");
+        if (pois == null) return out;
+        for (int i = 0; i < pois.length(); i++) {
+            JSONObject p = pois.getJSONObject(i);
+            String name = p.optString("sn1");
+            if (name == null || name.length() == 0) name = p.optString("sn");
+            if (name == null || name.length() == 0) continue;
+            JSONObject item = new JSONObject();
+            item.put("name", name);
+            item.put("address", p.optString("sn1Address", p.optString("address", "")));
+            item.put("lat", p.optDouble("lat", 0));
+            item.put("lng", p.optDouble("lng", 0));
+            out.put(item);
+        }
+        return out;
+    }
+
+    /** 公交/地铁换乘规划。起点是 WGS84（state.fix），内部转 GCJ-02；终点已是 GCJ-02。
+     *  返回 { transits:[{ duration,walkingDistance,transferCount,tag,
+     *                     segments:[{mode,name,lineId,lineType,from,to,viaNum,duration,walkDistance}] }] }
+     *  公交段 lineId 可直接进详情页；地铁段 lineId 为空、只有 name。 */
+    public JSONObject transit(double fromLat, double fromLng, String fromName,
+                              double destLat, double destLng, String destName,
+                              String strategy) throws Exception {
+        // 起点 WGS84 → GCJ-02（换乘接口要求 gcj），终点 POI 已是 GCJ
+        double[] fromGcj = Geo.wgsToGcj(fromLat, fromLng);
+        LinkedHashMap<String, String> extra = new LinkedHashMap<>();
+        extra.put("origin_name", fromName == null ? "我的位置" : fromName);
+        extra.put("origin_lat", fmt(fromGcj[0]));
+        extra.put("origin_lng", fmt(fromGcj[1]));
+        extra.put("dest_name", destName == null ? "目的地" : destName);
+        extra.put("dest_lat", fmt(destLat));
+        extra.put("dest_lng", fmt(destLng));
+        extra.put("gpstype", "gcj");
+        extra.put("geo_type", "gcj");
+        extra.put("strategy", strategy == null ? "0" : strategy);
+        extra.put("isSelectTime", "0");
+        extra.put("departure_time", String.valueOf(System.currentTimeMillis()));
+
+        JSONObject data = call(TRANSIT_BASE, "transit!integrate.action", extra);
+        JSONObject route = data.optJSONObject("route");
+        JSONArray out = new JSONArray();
+        if (route != null) {
+            JSONArray transits = route.optJSONArray("transits");
+            if (transits != null) {
+                for (int t = 0; t < transits.length(); t++) {
+                    JSONObject tr = transits.getJSONObject(t);
+                    JSONObject plan = new JSONObject();
+                    plan.put("duration", tr.optInt("duration", 0));
+                    plan.put("walkingDistance", tr.optInt("walking_distance", 0));
+                    plan.put("transferCount", tr.optInt("cc", 0));
+                    plan.put("tag", tr.optString("tag", ""));
+                    JSONArray segsOut = new JSONArray();
+                    JSONArray segs = tr.optJSONArray("segments");
+                    if (segs != null) {
+                        for (int s = 0; s < segs.length(); s++) {
+                            JSONObject seg = segs.getJSONObject(s);
+                            // 步行段（进入站台/出站到目的地）
+                            JSONObject walk = seg.optJSONObject("walking");
+                            if (walk == null) walk = seg.optJSONObject("walk");
+                            if (walk != null) {
+                                int wd = walk.optInt("distance", 0);
+                                if (wd > 0) {
+                                    JSONObject ws = new JSONObject();
+                                    ws.put("mode", "walk");
+                                    ws.put("walkDistance", wd);
+                                    segsOut.put(ws);
+                                }
+                            }
+                            // 乘车段（公交 / 地铁）
+                            JSONObject bus = seg.optJSONObject("bus");
+                            if (bus != null) {
+                                JSONArray lines = bus.optJSONArray("buslines");
+                                if (lines != null && lines.length() > 0) {
+                                    JSONObject ln = lines.getJSONObject(0);
+                                    JSONObject rs = new JSONObject();
+                                    int lineType = ln.optInt("lineType", 0);
+                                    rs.put("mode", lineType == 1 ? "metro" : "bus");
+                                    rs.put("name", ln.optString("name", ""));
+                                    rs.put("lineId", ln.optString("lineId", ""));
+                                    rs.put("lineType", lineType);
+                                    JSONObject from = ln.optJSONObject("departure_stop");
+                                    JSONObject to = ln.optJSONObject("arrival_stop");
+                                    rs.put("from", from == null ? "" : from.optString("name", ""));
+                                    rs.put("to", to == null ? "" : to.optString("name", ""));
+                                    rs.put("viaNum", ln.optInt("via_num", 0));
+                                    rs.put("duration", ln.optInt("duration", 0));
+                                    segsOut.put(rs);
+                                }
+                            }
+                        }
+                    }
+                    plan.put("segments", segsOut);
+                    out.put(plan);
+                }
+            }
+        }
+        JSONObject result = new JSONObject();
+        result.put("transits", out);
+        return result;
+    }
+
+    private static String fmt(double v) {
+        return String.format(java.util.Locale.US, "%.6f", v);
     }
 
     /** 线路详情 + 站点表。 */
@@ -495,13 +613,18 @@ public final class ChelaileClient {
     // ---------------------------------------------------------------- 协议底层
 
     private JSONObject call(String endpoint, LinkedHashMap<String, String> extra) throws Exception {
+        return call(BASE, endpoint, extra);
+    }
+
+    /** 支持自定义域名前缀（换乘规划在 /api/transfer/ 下）。 */
+    private JSONObject call(String base, String endpoint, LinkedHashMap<String, String> extra) throws Exception {
         LinkedHashMap<String, String> params = new LinkedHashMap<>(BASE_PARAMS);
         params.put("cityId", CITY_ID);
         params.put("localCityId", CITY_ID);
         if (extra != null) params.putAll(extra);
         params.put("cryptoSign", sign(params));
 
-        String raw = httpGet(BASE + endpoint + "?" + buildQuery(params));
+        String raw = httpGet(base + endpoint + "?" + buildQuery(params));
         JSONObject envelope = extractJson(raw);
         JSONObject jsonr = envelope.optJSONObject("jsonr");
         if (jsonr == null) throw new ApiException("接口返回异常");

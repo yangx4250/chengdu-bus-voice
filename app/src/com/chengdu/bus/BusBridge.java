@@ -453,6 +453,17 @@ public final class BusBridge {
                 return client.searchLines(args.optString("key"));
             case "stations":
                 return client.searchStations(args.optString("key"));
+            case "pois":
+                return client.searchPois(args.optString("key"));
+            case "transit": {
+                JSONObject from = args.optJSONObject("from");
+                JSONObject dest = args.optJSONObject("dest");
+                if (from == null || dest == null) throw new IllegalArgumentException("缺少起点或终点");
+                return client.transit(
+                        from.optDouble("lat"), from.optDouble("lng"), from.optString("name"),
+                        dest.optDouble("lat"), dest.optDouble("lng"), dest.optString("name"),
+                        args.optString("strategy", "0"));
+            }
             case "detail":
                 return client.lineDetail(args.optString("lineId"));
             case "arrivals":

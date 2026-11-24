@@ -157,6 +157,34 @@
   .pickgroup { font-size: var(--fs-sm); color: var(--muted); padding: 14px 4px 6px;
     letter-spacing: .04em; }
   .pickgroup:first-child { padding-top: 4px; }
+  /* 去哪儿（路线规划）页 */
+  #rtop { position: sticky; top: 0; z-index: 15; background: var(--bg);
+    margin: 0 -14px; padding: 2px 14px 8px; border-bottom: 1px solid var(--line); }
+  #strategyRow { flex-wrap: wrap; }
+  #strategyRow .chip { font-size: 12px; padding: 5px 10px; }
+  .poiitem, .plan, .seg {
+    display: flex; align-items: center; gap: 10px; padding: 12px;
+    border: 1px solid var(--line); border-radius: 12px; margin: 8px 2px;
+    background: var(--card); cursor: pointer;
+  }
+  .poiitem:active, .seg.tappable:active { background: #1a2336; }
+  .poiitem .pname { font-weight: 600; flex: 0 0 auto; max-width: 60%; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .poiitem .paddr { color: var(--muted); font-size: 12px; flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .plan { flex-direction: column; align-items: stretch; gap: 6px; }
+  .plan .planhead { display: flex; align-items: baseline; gap: 10px; }
+  .plan .plantime { font-size: 22px; font-weight: 700; color: var(--accent); }
+  .plan .planmeta { color: var(--muted); font-size: 13px; }
+  .plan .plantag { color: var(--ok); font-size: 12px; }
+  .plan .segs { display: flex; flex-direction: column; gap: 4px; }
+  .segreq { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+  .segmode { font-size: 11px; padding: 1px 6px; border-radius: 6px; flex: 0 0 auto; }
+  .segmode.bus { background: #16233d; color: #9dc0ff; }
+  .segmode.metro { background: #12302a; color: #38d39f; }
+  .segmode.walk { background: #2a2413; color: #ffce4a; }
+  .segb { color: #9dc0ff; cursor: pointer; }
+  .segb::after { content: " ›"; color: var(--muted); }
   .bus .pickhead .line-name { display: block; overflow: visible;
     text-overflow: clip; }
   .bus .eta { font-size: 26px; font-weight: 700; margin-top: 8px; color: var(--accent); }
@@ -577,6 +605,11 @@
     <div id="history" class="chips hidden"></div>
   </section>
 
+  <div id="routeEntry" class="selbar">
+    <span class="seltext">🧭 去哪儿 · 搜目的地，自动规划公交/地铁路线</span>
+    <button id="openRoute">规划</button>
+  </div>
+
   <div id="metroEntry" class="selbar">
     <span class="seltext">🚇 地铁 / 有轨电车 · 站点查询（静态）</span>
     <button id="openMetro">查看</button>
@@ -781,6 +814,34 @@
   </div>
   <div id="mstation"></div>
   <div id="mlist"><div class="empty">选一条线路查看站点</div></div>
+</div>
+
+<div id="route" class="hidden">
+  <div id="rtop">
+    <div class="detail-head">
+      <div class="dh-row">
+        <button id="rback">← 返回</button>
+        <div class="dh-actions">
+          <button id="rgo">规划</button>
+        </div>
+      </div>
+      <div class="titles">
+        <div id="rtitle">去哪儿</div>
+        <div id="rsub">从我的位置出发，搜目的地规划路线</div>
+      </div>
+    </div>
+    <div class="row searchrow" style="margin-top:8px">
+      <input id="destInput" placeholder="目的地，如 武侯祠 / 春熙路" autocomplete="off">
+    </div>
+    <div id="strategyRow" class="chips" style="margin-top:8px">
+      <span class="chip on" data-st="0">推荐</span>
+      <span class="chip" data-st="1">少换乘</span>
+      <span class="chip" data-st="2">少步行</span>
+      <span class="chip" data-st="3">公交优先</span>
+    </div>
+  </div>
+  <div id="poiBox" class="hidden"></div>
+  <div id="routeBox"><div class="empty">输入目的地，点「规划」搜索地点</div></div>
 </div>
 
 <div id="pick" class="hidden">
@@ -2160,7 +2221,7 @@
   /* ------------------------------------------------------------ 详情页 */
 
   /* 视图栈：每进一层记一层，返回键永远是「回上一页」，只有栈底才退回桌面（不杀进程） */
-  var VIEWS = ["home", "detail", "metro", "diag", "pick"];
+  var VIEWS = ["home", "detail", "metro", "diag", "pick", "route"];
   var viewStack = ["home"];
 
   function showView(name, opts) {
@@ -4826,7 +4887,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.56";
+  var APP_FALLBACK_VERSION = "1.0.57";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -4849,6 +4910,10 @@
   /* 测试钩子：注入定位、直接触发导航（ui-smoke 用来验证导航一律步行） */
   window.cdBusSetFix = function (fix) { state.fix = fix || null; };
   window.cdBusNavToStation = navToStation;
+  window.cdBusOpenRoute = openRoutePlanner;
+  window.cdBusPlanRoute = planRoute;
+  window.cdBusSearchDestination = searchDestination;
+  window.cdBusRouteState = routeState;
 
   /* ------------------------------------------------------------ 使用说明 */
 
@@ -5280,6 +5345,174 @@
     }
   }
 
+  /* ------------------------------------------------------------ 去哪儿（路线规划） */
+
+  var routeState = { strategy: "0", pois: [], dest: null };
+  var routePickedEl = null;
+
+  function openRoutePlanner() {
+    showView("route");
+    $("routeBox").innerHTML = '<div class="empty">输入目的地，点「规划」搜索地点</div>';
+    $("poiBox").className = "hidden";
+    $("poiBox").innerHTML = "";
+    if ($("destInput")) $("destInput").value = "";
+    routeState.dest = null;
+  }
+
+  function fmtWalk(m) {
+    if (!m || m <= 0) return "";
+    return m >= 1000 ? (m / 1000).toFixed(1) + " 公里" : m + " 米";
+  }
+  function fmtDuration(sec) {
+    var s = Number(sec) || 0;
+    if (s <= 0) return "";
+    var m = Math.round(s / 60);
+    return m >= 60 ? Math.floor(m / 60) + " 小时 " + (m % 60) + " 分" : m + " 分钟";
+  }
+
+  /* 搜目的地 POI（服务端最多 3 条，选一个再规划） */
+  async function searchDestination() {
+    var key = $("destInput") ? String($("destInput").value || "").trim() : "";
+    if (!key) { setStatus("先输入目的地", true); return; }
+    setStatus("正在搜索「" + key + "」…");
+    try {
+      var pois = await rpc("pois", { key: key });
+      routeState.pois = pois || [];
+      var box = $("poiBox");
+      box.innerHTML = "";
+      if (!routeState.pois.length) {
+        box.innerHTML = '<div class="empty">没找到「' + key + '」相关地点，换个关键词试试</div>';
+        box.className = "";
+        return;
+      }
+      routeState.pois.forEach(function (poi, i) {
+        var item = document.createElement("div");
+        item.className = "poiitem";
+        var nm = document.createElement("span");
+        nm.className = "pname";
+        nm.textContent = poi.name;
+        var ad = document.createElement("span");
+        ad.className = "paddr";
+        ad.textContent = poi.address || "";
+        item.appendChild(nm);
+        item.appendChild(ad);
+        item.onclick = function () { chooseDestination(poi, item); };
+        box.appendChild(item);
+      });
+      box.className = "";
+      setStatus("找到 " + routeState.pois.length + " 个地点，选一个");
+    } catch (e) {
+      setStatus("搜索失败：" + (e.message || "请重试"), true);
+    }
+  }
+
+  async function chooseDestination(poi, item) {
+    routeState.dest = poi;
+    if (routePickedEl) routePickedEl.classList.remove("on");
+    if (item) { item.classList.add("on"); routePickedEl = item; }
+    if ($("rtitle")) $("rtitle").textContent = "去哪儿 · " + poi.name;
+    if ($("destInput")) $("destInput").value = poi.name;
+    await planRoute();
+  }
+
+  /* 起点用当前定位（Java 侧内部做 WGS84→GCJ02），终点是选中的 POI（GCJ02） */
+  async function planRoute() {
+    var dest = routeState.dest;
+    if (!dest) { setStatus("先选一个目的地", true); return; }
+    var fix = state.fix;
+    if (!fix || !isFinite(fix.lat) || !isFinite(fix.lng)) {
+      setStatus("没有定位，无法从当前位置规划", true);
+      return;
+    }
+    var box = $("routeBox");
+    box.innerHTML = '<div class="empty">正在规划路线…</div>';
+    try {
+      var data = await rpc("transit", {
+        from: { lat: fix.lat, lng: fix.lng, name: "我的位置" },
+        dest: { lat: dest.lat, lng: dest.lng, name: dest.name },
+        strategy: routeState.strategy
+      });
+      var list = (data && data.transits) || [];
+      if (!list.length) {
+        box.innerHTML = '<div class="empty">没查到合适的公交/地铁路线，换个目的地试试</div>';
+        setStatus("没有可用方案");
+        return;
+      }
+      box.innerHTML = "";
+      list.forEach(function (plan, idx) {
+        box.appendChild(renderPlan(plan, idx, dest));
+      });
+      setStatus("找到 " + list.length + " 套方案");
+    } catch (e) {
+      box.innerHTML = '<div class="empty">规划失败：' + (e.message || "请重试") + '</div>';
+      setStatus("规划失败", true);
+    }
+  }
+
+  function renderPlan(plan, idx, dest) {
+    var card = document.createElement("div");
+    card.className = "plan";
+    var head = document.createElement("div");
+    head.className = "planhead";
+    var time = document.createElement("span");
+    time.className = "plantime";
+    time.textContent = fmtDuration(plan.duration) || "—";
+    var meta = document.createElement("span");
+    meta.className = "planmeta";
+    meta.textContent = "方案 " + (idx + 1) + (plan.transferCount ? " · 换乘 " + plan.transferCount + " 次" : " · 直达")
+      + (plan.walkingDistance ? " · 步行 " + fmtWalk(plan.walkingDistance) : "");
+    head.appendChild(time);
+    head.appendChild(meta);
+    if (plan.tag) {
+      var tag = document.createElement("span");
+      tag.className = "plantag";
+      tag.textContent = plan.tag;
+      head.appendChild(tag);
+    }
+    card.appendChild(head);
+
+    var segsBox = document.createElement("div");
+    segsBox.className = "segs";
+    (plan.segments || []).forEach(function (seg) {
+      var row = document.createElement("div");
+      row.className = "segreq";
+      if (seg.mode === "walk") {
+        var wm = document.createElement("span");
+        wm.className = "segmode walk";
+        wm.textContent = "步行";
+        var wt = document.createElement("span");
+        wt.textContent = fmtWalk(seg.walkDistance);
+        row.appendChild(wm);
+        row.appendChild(wt);
+      } else {
+        var bm = document.createElement("span");
+        bm.className = "segmode " + (seg.mode === "metro" ? "metro" : "bus");
+        bm.textContent = seg.mode === "metro" ? "地铁" : "公交";
+        var bn = document.createElement("span");
+        if (seg.lineId && seg.mode === "bus") {
+          bn.className = "segb";
+          bn.textContent = seg.name + "（" + seg.from + " → " + seg.to + "）";
+          bn.onclick = function () {
+            openDetail({ lineId: seg.lineId, lineName: seg.name, title: seg.name + " · " + dest.name });
+          };
+        } else {
+          bn.textContent = seg.name + "（" + seg.from + " → " + seg.to + "）";
+        }
+        row.appendChild(bm);
+        row.appendChild(bn);
+        if (seg.viaNum > 0) {
+          var vn = document.createElement("span");
+          vn.className = "planmeta";
+          vn.textContent = seg.viaNum + " 站";
+          row.appendChild(vn);
+        }
+      }
+      segsBox.appendChild(row);
+    });
+    card.appendChild(segsBox);
+    return card;
+  }
+
   /* ------------------------------------------------------------ 交互 */
 
   function runSearchFromInput() {
@@ -5568,6 +5801,25 @@
 
   $("exitSearch").onclick = exitSearchView;
 
+  $("openRoute").onclick = function () { openRoutePlanner(); };
+  $("rback").onclick = function () { showView("home"); };
+  $("rgo").onclick = function () { run(searchDestination); };
+  if ($("destInput")) {
+    $("destInput").onkeydown = function (e) {
+      if (e && (e.key === "Enter" || e.keyCode === 13)) { e.preventDefault(); run(searchDestination); }
+    };
+  }
+  (function () {
+    var chips = $("strategyRow") ? $("strategyRow").children : null;
+    if (chips) chips.forEach(function (c) {
+      c.onclick = function () {
+        chips.forEach(function (x) { if (x.classList) x.classList.remove("on"); });
+        c.classList.add("on");
+        routeState.strategy = c.getAttribute("data-st") || "0";
+        if (routeState.dest) run(planRoute);
+      };
+    });
+  })();
   $("openMetro").onclick = function () { run(openMetro); };
   $("mback").onclick = function () { showView("home"); };
 

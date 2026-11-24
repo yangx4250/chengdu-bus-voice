@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.0.56）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.0.57）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -166,6 +166,8 @@ chengdu-bus/build/成都公交.apk    (约 92 KB)
 **应用名「成都公交」（v1.0.1）**：桌面显示名、安装列表、系统标题栏统一改成「成都公交」；
 **v1.0.17 线路页直接盯站**：选中站点后，站名下方多一个「📌 盯站」按钮，
 不用先进详情页。再点一次「📌 已盯站」取消。
+
+**v1.0.57 去哪儿（线路推荐）**：首页新增「🧭 去哪儿」入口。输入目的地搜地点，选一个后自动规划「从我当前位置到目的地」的公交/地铁路线，每段标注公交还是地铁、显示换乘次数/步行距离/用时；点公交线路可直接进详情页看实时车。公交/地铁换乘用新增的 `transit!integrate.action`（车来了 `/api/transfer/` 路径），起点自动做 WGS84→GCJ02 转换。
 
 **v1.0.56 修复详情页第一张卡片被吸顶区挡住**：首次进详情自动滚到当前站时，
 滚动目标原来按「整个视口中点」算；吸顶区（竖排站名 + 车牌 + 导航）升高到 400px+ 后，
