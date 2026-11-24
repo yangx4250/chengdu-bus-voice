@@ -451,6 +451,10 @@ public final class WatchService extends Service {
         }
         String text = lineName + "路，" + stationName + "站，" + what + "。";
         Log.i(TAG, "后台/息屏播报：" + text);
+        /* 锁屏通知（v1.0.44）：前台服务自带的常驻通知是 IMPORTANCE_LOW，
+           锁屏上只会折成一行灰字。这里另发一条高优先级通知，息屏时能直接看到
+           「还有 2 站」。只在后台/息屏这条分支发 —— 亮屏时页面自己会显示。 */
+        Notify.post(this, lineName + "路 · " + stationName, what);
         LAST_SPEAK = text;
         LAST_SPEAK_AT = System.currentTimeMillis();
         if (speech != null) {

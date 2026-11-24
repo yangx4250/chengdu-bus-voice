@@ -195,6 +195,24 @@ public final class BusBridge {
         return WatchService.toggleDiag();
     }
 
+    /** 锁屏通知开关：关掉后盯站/下车提醒只在后台播报，不弹锁屏通知。 */
+    @JavascriptInterface
+    public void setLockNotify(boolean on) {
+        Notify.setEnabled(activity, on);
+    }
+
+    /** 锁屏通知当前是否开启（默认开）。 */
+    @JavascriptInterface
+    public boolean lockNotifyOn() {
+        return Notify.enabled(activity);
+    }
+
+    /** 立刻发一条锁屏通知，供设置页「试一下」按钮使用。 */
+    @JavascriptInterface
+    public void testLockNotify() {
+        Notify.post(activity, "成都公交 · 锁屏通知测试", "如果你在锁屏上看到这条，说明锁屏通知可用");
+    }
+
     /** 申请「忽略电池优化」，让息屏后后台服务不被系统清掉。 */
     @JavascriptInterface
     public void requestIgnoreBatteryOptimization() {

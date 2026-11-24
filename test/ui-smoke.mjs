@@ -228,6 +228,8 @@ let arrivalsEta = null;
 const heartbeatLog = [];
 let heartbeatRunning = false;
 let watchDiagOn = false;
+let lockNotifyOn = true;
+const lockNotifyLog = [];
 let watchSvcRunning = true;
 let alightStatusState = { running: false };
 const payloads = new Map();
@@ -496,6 +498,10 @@ const bridge = {
       lastAt: Date.now(), lastText: '后台心跳第 3 次', lastResult: '✅ 系统 TTS' });
   },
   toggleWatchDiag() { watchDiagOn = !watchDiagOn; return watchDiagOn; },
+  /* 锁屏通知桩（v1.0.44）：记录开关与测试通知调用 */
+  setLockNotify(on) { lockNotifyLog.push(['set', Boolean(on)]); lockNotifyOn = Boolean(on); },
+  lockNotifyOn() { return lockNotifyOn; },
+  testLockNotify() { lockNotifyLog.push(['test', true]); },
   heartbeatStatus() {
     return JSON.stringify({ running: heartbeatRunning, count: heartbeatRunning ? 1 : 3,
       lastAt: Date.now(), lastText: '后台心跳第 1 次', lastResult: '✅ 系统 TTS' });
@@ -2651,6 +2657,56 @@ if (stage9.length) {
   process.exit(1);
 }
 console.log('✓ 字体大小通过：6 档选项、实时生效、持久化、不跟随系统');
+
+// ------------------------------------------------ 第十阶段：设置 → 锁屏通知（v1.0.44）
+
+const stage10 = [];
+document.getElementById('setDiag').onclick();
+await new Promise((r) => setTimeout(r, 300));
+
+// 开关默认开
+const lockBox = document.getElementById('lockNotify');
+if (!lockBox) stage10.push('后台诊断页缺少锁屏通知开关 #lockNotify');
+else if (lockBox.checked !== true) stage10.push('锁屏通知默认应为开');
+
+// 关掉 → 必须调用 bridge.setLockNotify(false)
+if (lockBox && typeof lockBox.onchange === 'function') {
+  lockBox.checked = false;
+  lockBox.onchange();
+  await new Promise((r) => setTimeout(r, 120));
+  const last = lockNotifyLog[lockNotifyLog.length - 1];
+  if (!last || last[0] !== 'set' || last[1] !== false) {
+    stage10.push('关掉开关没有调用 setLockNotify(false)，日志：' + JSON.stringify(lockNotifyLog));
+  }
+} else {
+  stage10.push('锁屏通知开关没有绑定 onchange');
+}
+
+// 测试按钮要能发一条
+const testBtn = document.getElementById('lockNotifyTest');
+if (!testBtn) stage10.push('缺少「发一条测试通知」按钮');
+else if (typeof testBtn.onclick !== 'function') stage10.push('测试通知按钮没有绑定点击事件');
+else {
+  const before = lockNotifyLog.length;
+  testBtn.onclick();
+  await new Promise((r) => setTimeout(r, 120));
+  if (lockNotifyLog.length <= before) stage10.push('点测试通知没有调用 testLockNotify');
+}
+
+// 重新进入设置页时开关状态要跟着原生走
+lockNotifyOn = true;
+document.getElementById('diagBack').onclick();
+await new Promise((r) => setTimeout(r, 150));
+document.getElementById('setDiag').onclick();
+await new Promise((r) => setTimeout(r, 200));
+if (lockBox && lockBox.checked !== true) stage10.push('重进设置页后开关状态没有跟随 lockNotifyOn()');
+
+if (stage10.length) {
+  console.error('✗ UI 冒烟失败（锁屏通知）：');
+  for (const f of stage10) console.error('  - ' + f);
+  process.exit(1);
+}
+console.log('✓ 锁屏通知通过：默认开、可关闭、测试通知可用、状态跟随原生');
 
 // 首页有 30 秒自动刷新定时器，测试用完直接退出
 process.exit(0);

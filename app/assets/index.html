@@ -703,6 +703,19 @@
     </div>
     <div class="setbody">
       <div class="setcard">
+        <div class="setcardtitle">锁屏通知</div>
+        <div class="setitem" style="padding: 8px 0;">
+          <span class="seticon">🔔</span>
+          <span class="setinfo">
+            <span class="setname">锁屏显示到站提醒</span>
+            <span class="setsub">盯站和下车提醒在息屏/锁屏时弹通知</span>
+          </span>
+          <label class="switch"><input type="checkbox" id="lockNotify"><span class="knob"></span></label>
+        </div>
+        <div class="btns"><button id="lockNotifyTest">发一条测试通知</button></div>
+        <div class="dhead">关掉后只在后台念，不弹锁屏。测试时先锁屏再点。</div>
+      </div>
+      <div class="setcard">
         <div class="setcardtitle">后台心跳</div>
         <div class="btns"><button id="dHeartbeat">开始后台心跳（每 30 秒报一次）</button></div>
         <div id="heartbeatInfo" class="dhead"></div>
@@ -4769,7 +4782,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.43";
+  var APP_FALLBACK_VERSION = "1.0.44";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -5235,7 +5248,7 @@
     if (id === "setPageGuide") renderGuide();
     if (id === "setPageFont") renderFontPage();
     if (id === "setPageVoice") renderDiag();
-    if (id === "setPageDiag") renderHeartbeatInfo();
+    if (id === "setPageDiag") { renderHeartbeatInfo(); syncLockNotifySwitch(); }
   }
   /* 首次打开：进入首页后弹一次使用说明 */
   $("guideOk").onclick = function () { closeGuideModal(true); };
@@ -5316,6 +5329,36 @@
       setStatus("心跳已停止", false);
     }
     renderHeartbeatInfo();
+  };
+
+  /* 锁屏通知开关（v1.0.44）：默认开。关掉后盯站/下车提醒只在后台念，不弹锁屏。 */
+  function syncLockNotifySwitch() {
+    var box = $("lockNotify");
+    if (!box) return;
+    var on = true;
+    try {
+      if (bridge && bridge.lockNotifyOn) on = bridge.lockNotifyOn() !== false;
+    } catch (e) { on = true; }
+    box.checked = on;
+  }
+
+  $("lockNotify").onchange = function () {
+    if (!bridge || !bridge.setLockNotify) {
+      setStatus("要在 App 里才能用", true);
+      return;
+    }
+    var on = Boolean($("lockNotify").checked);
+    try { bridge.setLockNotify(on); } catch (e) { /* 忽略 */ }
+    setStatus(on ? "锁屏通知已开：息屏时到站提醒会弹在锁屏上" : "锁屏通知已关", false);
+  };
+
+  $("lockNotifyTest").onclick = function () {
+    if (!bridge || !bridge.testLockNotify) {
+      setStatus("要在 App 里才能用", true);
+      return;
+    }
+    try { bridge.testLockNotify(); } catch (e) { /* 忽略 */ }
+    setStatus("已发送测试通知，锁屏看一下", false);
   };
 
   $("dWatchDiag").onclick = function () {
