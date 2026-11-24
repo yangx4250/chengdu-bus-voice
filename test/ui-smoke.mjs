@@ -887,6 +887,23 @@ if (!/\.searchgo\s*\{[^}]*width:\s*46px/.test(html)) {
   failures.push('🔍 按钮没有单独的图标尺寸样式');
 }
 
+/* v1.0.50：使用说明按当前版本重写——不能出现已经删掉的功能，
+   必须覆盖现在的真实入口（🔍/🔄/三列格子/吸顶区/锁屏通知/字体大小）。 */
+if (/查询并播报|自动播报开关|「当前位置」|id="near"/.test(html)) failures.push('使用说明里还在讲已删除的功能');
+if (/点击车辆看沿途各站/.test(html)) failures.push('使用说明里还在讲已合并的「车辆页」');
+const guideAll = (html.match(/var GUIDE_QUICK = \[([\s\S]*?)\n  \];/) || ['', ''])[1] +
+  (html.match(/var GUIDE_FULL = \[([\s\S]*?)\n  \];/) || ['', ''])[1];
+for (const need of ['🔍', '🔄', '三列', '吸顶', '锁屏通知', '字体大小', '盯站', '下车提醒', '导航', '同站其他']) {
+  if (guideAll.indexOf(need) < 0) failures.push('使用说明缺少「' + need + '」相关说明');
+}
+/* 首屏弹窗只放关键几条，完整版按章节 */
+const quickLen = (html.match(/var GUIDE_QUICK = \[([\s\S]*?)\n  \];/) || [])[1] || '';
+const quickCount = (quickLen.match(/\{ icon:/g) || []).length;
+if (quickCount < 4 || quickCount > 6) failures.push('首屏说明条目数应在 4~6 之间，实际 ' + quickCount);
+const fullLen = (html.match(/var GUIDE_FULL = \[([\s\S]*?)\n  \];/) || [])[1] || '';
+const secCount = (fullLen.match(/\{ title:/g) || []).length;
+if (secCount < 7) failures.push('完整说明章节太少，实际 ' + secCount + ' 章');
+
 if (failures.length) {
   console.error('✗ UI 冒烟失败：');
   for (const f of failures) console.error('  - ' + f);
