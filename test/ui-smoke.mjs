@@ -588,7 +588,7 @@ const builtins = new Set([
   'if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'new', 'function', 'await', 'async',
   'do', 'else', 'try', 'throw', 'delete', 'void', 'in', 'of', 'instanceof', 'yield',
   'JSON', 'String', 'Number', 'Boolean', 'Math', 'Date', 'Object', 'Array', 'Promise', 'Error', 'Blob', 'URL',
-  'setTimeout', 'setInterval', 'clearInterval', 'clearTimeout', 'requestAnimationFrame', 'parseInt', 'parseFloat', 'isNaN', 'isFinite', 'ResizeObserver',
+  'setTimeout', 'setInterval', 'clearInterval', 'clearTimeout', 'requestAnimationFrame', 'parseInt', 'parseFloat', 'isNaN', 'isFinite',
   'encodeURIComponent', 'decodeURIComponent', 'btoa', 'atob', 'Uint8Array', 'ArrayBuffer',
   'DataView', 'Audio', 'localStorage', 'document', 'window', 'console', 'fetch', 'rpc', 'speak',
 ]);
@@ -883,29 +883,17 @@ const stage2 = [];
 // ------------------------------------------- v1.0.46：详情页吸顶区不随页面滚动
 
 {
-  /* 吸顶区（#dtop）只放顶栏 + 车牌，钉在最上面不参与滚动；
-     站名芯片、方向、导航行、到站表全部在下面的 #dscroll 里正常滚动。 */
+  /* 吸顶区（#dtop）要自己滚动，页面其余部分正常滚动；
+     车牌行在吸顶区里、不在滚动区（#dlist）里。 */
   const dtopRule = html.match(/#dtop\s*\{([^}]*)\}/);
   const rule = dtopRule ? dtopRule[1] : '';
   if (!/position:\s*sticky/.test(rule)) stage2.push('#dtop 不是 sticky，滚动时会跟着页面走');
+  if (!/overflow-y:\s*auto/.test(rule)) stage2.push('#dtop 没有内部滚动，上面一块会跟着页面滚走');
+  if (!/max-height/.test(rule)) stage2.push('#dtop 没有高度上限，内部滚动不会生效');
 
-  const dtopHtml = html.slice(html.indexOf('id="dtop"'), html.indexOf('id="dscroll"'));
-  const scrollStart = html.indexOf('id="dscroll"');
-  const scrollHtml = html.slice(scrollStart, scrollStart + 1200);
-
-  /* 车牌行必须在吸顶区里，跟着一起固定 */
+  /* 车牌行必须在 #dtop 里（吸顶区），不能在 #dlist（滚动区）里 */
+  const dtopHtml = html.slice(html.indexOf('id="dtop"'), html.indexOf('id="dbuses"'));
   if (!/id="dbusinfo"/.test(dtopHtml)) stage2.push('车牌行 #dbusinfo 不在吸顶区 #dtop 里');
-
-  /* 会滚动的内容不能在吸顶区里，否则整个吸顶区被撑高、把页面顶下去 */
-  const scrollable = ['id="lchips"', 'id="ddirs"', 'id="lnav"', 'id="dlist"'];
-  for (const marker of scrollable) {
-    if (new RegExp(marker.replace(/"/g, '"')).test(dtopHtml)) {
-      stage2.push('可滚动内容 ' + marker + ' 还留在吸顶区 #dtop 里，应该放到 #dscroll');
-    }
-  }
-  if (!/id="lchips"/.test(scrollHtml) || !/id="dlist"/.test(scrollHtml)) {
-    stage2.push('站名芯片或到站表不在滚动区 #dscroll 里');
-  }
 }
 
 
