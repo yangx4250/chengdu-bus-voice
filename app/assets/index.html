@@ -105,11 +105,14 @@
 
   #dothers { display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
     overflow: visible; padding-bottom: 2px; }
-  #dothers .others-label { grid-column: 1 / -1; }
+  #dothers .others-label { grid-column: 1 / -1; display: flex; align-items: center;
+    justify-content: space-between; gap: 8px; }
   #dothers .chip { min-width: 0; overflow: hidden; text-overflow: ellipsis;
     justify-content: center; }
   .others-label { font-size: var(--fs-sm); color: var(--muted); align-self: center;
     margin-right: 2px; white-space: nowrap; }
+  .others-toggle { font-size: var(--fs-sm); color: var(--accent); cursor: pointer;
+    white-space: nowrap; user-select: none; }
   .otherline { border-color: #2c3b57; }
   .otherline:active { background: #22304a; }
 
@@ -3032,7 +3035,10 @@
   }
 
 
-  /* 同站其它线路：按当前站坐标查附近，取同一站的其它线路 */
+  /* 同站其它线路：按当前站坐标查附近，取同一站的其它线路。
+     默认折叠，只显示标题行和「展开」按钮；点了才请求、才铺开。 */
+  var othersFolded = true;
+  try { othersFolded = localStorage.getItem("cdbus.othersFolded") !== "0"; } catch (e) {}
   async function loadStationOthers(target) {
     var box = $("dothers");
     if (!box || !view.data) return;
@@ -3149,8 +3155,24 @@
 
       var label = document.createElement("span");
       label.className = "others-label";
-      label.textContent = "同站其它 · " + (station.name || "");
+
+      var nameSpan = document.createElement("span");
+      nameSpan.textContent = "同站其它 · " + (station.name || "") +
+        (othersFolded ? "（" + others.length + " 条）" : "");
+      label.appendChild(nameSpan);
+
+      var toggle = document.createElement("span");
+      toggle.className = "others-toggle";
+      toggle.textContent = othersFolded ? "展开 ▾" : "收起 ▴";
+      toggle.onclick = function () {
+        othersFolded = !othersFolded;
+        try { localStorage.setItem("cdbus.othersFolded", othersFolded ? "1" : "0"); } catch (e) {}
+        renderOthersBox(station, others);
+      };
+      label.appendChild(toggle);
       box.appendChild(label);
+
+      if (othersFolded) { box.className = "chips"; return; }
 
       others.forEach(function (item) {
         var chip = document.createElement("div");
@@ -3185,6 +3207,67 @@
     } catch (e) {
       /* 拿不到就不显示 */
     }
+  }
+
+  /* 折叠/展开后只重画这一块，不重新发请求 */
+  function renderOthersBox(station, others) {
+    var box = $("dothers");
+    if (!box) return;
+    var prevScrollY = window.scrollY;
+    box.innerHTML = "";
+    box.className = "chips";
+
+    var label = document.createElement("span");
+    label.className = "others-label";
+
+    var nameSpan = document.createElement("span");
+    nameSpan.textContent = "同站其它 · " + (station.name || "") +
+      (othersFolded ? "（" + others.length + " 条）" : "");
+    label.appendChild(nameSpan);
+
+    var toggle = document.createElement("span");
+    toggle.className = "others-toggle";
+    toggle.textContent = othersFolded ? "展开 ▾" : "收起 ▴";
+    toggle.onclick = function () {
+      othersFolded = !othersFolded;
+      try { localStorage.setItem("cdbus.othersFolded", othersFolded ? "1" : "0"); } catch (e) {}
+      renderOthersBox(station, others);
+    };
+    label.appendChild(toggle);
+    box.appendChild(label);
+
+    if (othersFolded) { box.className = "chips"; return; }
+
+    others.forEach(function (item) {
+      var chip = document.createElement("div");
+      chip.className = "chip otherline";
+      var a = item.arrival;
+      var text = item.label + " ";
+      if (!a) {
+        text += "暂无实时";
+      } else {
+        var ended = outsideService(a.firstTime, a.lastTime, a);
+        text += ended ? ("不在运营 " + (a.lastTime ? "末班" + a.lastTime : ""))
+          : (a.etaSeconds !== null ? describe(a) : (a.preStartTime ? "待发车" : "暂无实时"));
+      }
+      chip.textContent = text;
+      if (a) {
+        chip.onclick = function () {
+          openDetail({
+            lineId: a.lineId,
+            lineName: a.lineName,
+            stationId: a.stationId,
+            stationName: station.name,
+            fromOrder: a.stationOrder,
+            title: a.lineName + "路 · " + station.name
+          });
+        };
+      } else {
+        chip.onclick = function () { setStatus("这条线暂时没有实时数据", true); };
+      }
+      box.appendChild(chip);
+    });
+    box.className = "chips";
   }
 
   /* 按站序切盯站（详情页行内 📌 用） */
@@ -4622,7 +4705,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.38";
+  var APP_FALLBACK_VERSION = "1.0.39";
 
   function fillAbout() {
     var verEl = $("abVersion");

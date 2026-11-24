@@ -1965,10 +1965,23 @@ else {
     if (String(document.getElementById('detail').className).includes('hidden')) {
       stage5.push('点站名离开了详情页（应该在原页更新）');
     }
+    /* 默认折叠：只有标题 + 「展开」按钮，不铺开线路 */
+    const foldedNow = textOf(document.getElementById('dothers'));
+    if (!/同站其它/.test(foldedNow)) stage5.push('「同站其它」标签丢失');
+    if (!/展开/.test(foldedNow)) stage5.push('「同站其它」没有折叠按钮：' + foldedNow.slice(0, 120));
+    if (/716路|45路/.test(foldedNow)) {
+      stage5.push('默认折叠时不该铺开线路：' + foldedNow.slice(0, 160));
+    }
+    const othersToggle = findByClass(document.getElementById('dothers'), 'others-toggle')[0];
+    if (!othersToggle) stage5.push('找不到「展开」按钮');
+    else {
+      othersToggle.onclick();
+      await new Promise((r) => setTimeout(r, 200));
+    }
     const othersNow = textOf(document.getElementById('dothers'));
-    if (!/同站其它/.test(othersNow)) stage5.push('「同站其它」标签丢失');
     if (!/716路/.test(othersNow)) stage5.push('点站名后没有列出该站的其它线路：' + othersNow.slice(0, 120));
   if (!/45路/.test(othersNow)) stage5.push('没有实时数据的线路没有列出（应全量展示）：' + othersNow.slice(0, 160));
+    if (!/收起/.test(othersNow)) stage5.push('展开后按钮没有变成「收起」');
     /* 反方向过滤：详情页当前方向是 P02 的终点站；对面站台（801路 往另一方向）不该出现 */
     if (/801路/.test(othersNow)) {
       stage5.push('反方向的线路混进了「同站其它」：' + othersNow.slice(0, 160));
