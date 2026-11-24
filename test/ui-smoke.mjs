@@ -220,6 +220,7 @@ const alightServiceLog = [];
 const exitLog = [];
 const navLog = [];
 const transitCalls = [];
+const poiQueries = [];
 const batteryLog = [];
 const notes = [];
 /* 让 arrivals 桩返回「已到站」的车（盯站到站播报测试用） */
@@ -475,11 +476,23 @@ const bridge = {
     if (method === 'city') return JSON.stringify({ state: 'ok', data: { city: '成都' } });
     if (method === 'nearby') return JSON.stringify({ state: 'ok', data: nearbyPayload });
     if (method === 'pois') {
+      // 模拟服务端：单次最多 3 条，且不同关键词回不同地点 → 多轮收窄能挖出更多
       const key = String(args.key || '');
-      return JSON.stringify({ state: 'ok', data: [
-        { name: '成都武侯祠博物馆（' + key + '）', address: '武侯区武侯祠大街 231 号', lat: 30.6469, lng: 104.0481 },
-        { name: '春熙路步行街（' + key + '）', address: '锦江区春熙路', lat: 30.6546, lng: 104.0791 },
-      ] });
+      poiQueries.push(key);
+      if (key === '武侯祠') {
+        return JSON.stringify({ state: 'ok', data: [
+          { name: '成都武侯祠博物馆', address: '武侯区武侯祠大街 231 号', lat: 30.6469, lng: 104.0481 },
+          { name: '成都武侯祠博物馆-西区', address: '武侯区武侯祠大街 231 号', lat: 30.6471, lng: 104.0455 },
+          { name: '武侯祠大街', address: '武侯区', lat: 30.6462, lng: 104.0488 },
+        ] });
+      }
+      if (key.indexOf('武侯祠') >= 0) {
+        return JSON.stringify({ state: 'ok', data: [
+          { name: '武侯祠-地铁站', address: '武侯祠大街', lat: 30.6455, lng: 104.05 },
+          { name: '锦里古街', address: '武侯祠大街 231 号', lat: 30.6451, lng: 104.0475 },
+        ] });
+      }
+      return JSON.stringify({ state: 'ok', data: [] });
     }
     if (method === 'transit') {
       transitCalls.push(args);
@@ -2921,10 +2934,15 @@ if (document.getElementById('route').className.includes('hidden')) stage11.push(
 const destIn = document.getElementById('destInput');
 destIn.value = '武侯祠';
 window.cdBusSearchDestination();
-await new Promise((r) => setTimeout(r, 300));
+await new Promise((r) => setTimeout(r, 900));
 const poiBox = document.getElementById('poiBox');
 const pois = findByClass(poiBox, 'poiitem');
 if (pois.length < 1) stage11.push('搜目的地没有列出 POI');
+else if (pois.length <= 3) {
+  // 服务端单次只回 3 条，多轮收窄后必须超过 3 条
+  stage11.push('目的地搜索只列出 ' + pois.length + ' 个地点（多轮收窄没生效）');
+}
+if (poiQueries.length < 2) stage11.push('目的地搜索只查了一轮（没有做多轮收窄）');
 else {
   // 选第一个 POI（onclick 真触发，会调 planRoute）
   pois[0].onclick();

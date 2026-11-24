@@ -4887,7 +4887,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.57";
+  var APP_FALLBACK_VERSION = "1.0.58";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -5371,12 +5371,61 @@
   }
 
   /* 搜目的地 POI（服务端最多 3 条，选一个再规划） */
+  /* 目的地（POI）模糊搜索：服务端 query!nSearch.action 的 pois[] 单次最多
+     只回 3 条（poiCount 才是真实总数），所以照 searchStationsFuzzy 的做法
+     多轮收窄——拿第一轮拿到的地点名再各查一次，合并去重。实测「春熙路」
+     3→10、「武侯祠」3→12、「环球中心」3→9。缓存 1 天。 */
+  async function searchPoisFuzzy(key) {
+    var cacheKey = "cdbus.pois1." + key;
+    var hit = cacheGet(cacheKey);
+    if (hit && Date.now() - hit.at < 86400000 && Array.isArray(hit.list)) return hit.list;
+
+    var seen = {};
+    var pool = [];
+    function absorb(list) {
+      (list || []).forEach(function (poi) {
+        if (!poi || !poi.name || seen[poi.name]) return;
+        seen[poi.name] = true;
+        pool.push(poi);
+      });
+    }
+
+    absorb(await rpc("pois", { key: key }).catch(function () { return []; }));
+
+    /* 第二轮：对已拿到的地点名（最多 8 个）再各查一次 */
+    var second = pool.slice(0, 8).map(function (p) { return String(p.name || ""); })
+      .filter(function (n) { return n && n !== key; });
+    if (second.length) {
+      var lists = await Promise.all(second.map(function (q) {
+        return rpc("pois", { key: q }).catch(function () { return []; });
+      }));
+      lists.forEach(absorb);
+    }
+
+    /* 相关性排序：名字包含原关键词的优先，再看地址/名字长度。
+       地点名不像站名有「距离」字段可用（sn1Distance 恒是怪值），
+       所以只按「命中关键词 → 名字短 → 字典序」排。 */
+    var upper = String(key).toUpperCase();
+    var matched = pool.slice().sort(function (a, b) {
+      var ha = String(a.name).toUpperCase().indexOf(upper) >= 0 ? 0 : 1;
+      var hb = String(b.name).toUpperCase().indexOf(upper) >= 0 ? 0 : 1;
+      if (ha !== hb) return ha - hb;
+      var la = String(a.name).length;
+      var lb = String(b.name).length;
+      if (la !== lb) return la - lb;
+      return String(a.name).localeCompare(String(b.name), "zh");
+    });
+
+    if (pool.length) cacheSet(cacheKey, { at: Date.now(), list: matched });
+    return matched;
+  }
+
   async function searchDestination() {
     var key = $("destInput") ? String($("destInput").value || "").trim() : "";
     if (!key) { setStatus("先输入目的地", true); return; }
     setStatus("正在搜索「" + key + "」…");
     try {
-      var pois = await rpc("pois", { key: key });
+      var pois = await searchPoisFuzzy(key);
       routeState.pois = pois || [];
       var box = $("poiBox");
       box.innerHTML = "";
