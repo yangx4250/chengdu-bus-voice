@@ -4887,7 +4887,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.58";
+  var APP_FALLBACK_VERSION = "1.0.59";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -4913,7 +4913,9 @@
   window.cdBusOpenRoute = openRoutePlanner;
   window.cdBusPlanRoute = planRoute;
   window.cdBusSearchDestination = searchDestination;
-  window.cdBusRouteState = routeState;
+  /* routeState 在下面才用 var 声明，这里直接赋引用会拿到 undefined，
+     改成一个取值函数（测试读 window.cdBusRouteState().strategy）。 */
+  window.cdBusRouteState = function () { return routeState; };
 
   /* ------------------------------------------------------------ 使用说明 */
 
@@ -5349,6 +5351,7 @@
 
   var routeState = { strategy: "0", pois: [], dest: null };
   var routePickedEl = null;
+  window.cdBusRouteState = function () { return routeState; };
 
   function openRoutePlanner() {
     showView("route");
@@ -5858,16 +5861,24 @@
       if (e && (e.key === "Enter" || e.keyCode === 13)) { e.preventDefault(); run(searchDestination); }
     };
   }
+  /* 注意：element.children 在 WebView 里是 HTMLCollection，没有 forEach
+     （只有 NodeList 才有），所以下面必须用下标循环，不能写成 chips.forEach。 */
   (function () {
-    var chips = $("strategyRow") ? $("strategyRow").children : null;
-    if (chips) chips.forEach(function (c) {
-      c.onclick = function () {
-        chips.forEach(function (x) { if (x.classList) x.classList.remove("on"); });
-        c.classList.add("on");
-        routeState.strategy = c.getAttribute("data-st") || "0";
-        if (routeState.dest) run(planRoute);
-      };
-    });
+    var row = $("strategyRow");
+    if (!row) return;
+    var chips = row.children || [];
+    function pick(c) {
+      for (var i = 0; i < chips.length; i++) {
+        if (chips[i] && chips[i].classList) chips[i].classList.remove("on");
+      }
+      if (c.classList) c.classList.add("on");
+      routeState.strategy = c.getAttribute("data-st") || "0";
+      if (routeState.dest) run(planRoute);
+      else setStatus("已切到「" + String(c.textContent || "") + "」，选一个目的地后生效");
+    }
+    for (var i = 0; i < chips.length; i++) {
+      (function (c) { c.onclick = function () { pick(c); }; })(chips[i]);
+    }
   })();
   $("openMetro").onclick = function () { run(openMetro); };
   $("mback").onclick = function () { showView("home"); };

@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.0.58）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.0.59）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -166,6 +166,10 @@ chengdu-bus/build/成都公交.apk    (约 92 KB)
 **应用名「成都公交」（v1.0.1）**：桌面显示名、安装列表、系统标题栏统一改成「成都公交」；
 **v1.0.17 线路页直接盯站**：选中站点后，站名下方多一个「📌 盯站」按钮，
 不用先进详情页。再点一次「📌 已盯站」取消。
+
+**v1.0.59 修复「去哪儿」策略按钮点了没反应**：`推荐 / 少换乘 / 少步行 / 公交优先` 四个按钮原来用 `element.children.forEach` 绑定点击，
+而浏览器里 `children` 是 HTMLCollection、**只有 NodeList 才有 forEach**，绑定时直接抛 `TypeError`，四个按钮全没挂上事件。
+改成下标循环逐个绑定；点一下会立刻按新策略重新规划，还没选目的地时提示「选一个目的地后生效」。
 
 **v1.0.58 目的地搜索挖全**：车来了 POI 搜索单次最多只回 3 个地点（`poiCount` 才是真实总数），照站点搜索的做法加了多轮收窄——拿第一轮拿到的地点名再各查一次，合并去重。实测「春熙路」3→10、「武侯祠」3→12、「环球中心」3→9。结果按「命中关键词 → 名字短」排序，缓存 1 天。
 

@@ -22,7 +22,8 @@ function textOf(node) {
   if (!node) return '';
   const raw = node.__rawHtml || '';                    // innerHTML 赋值的内容
   const own = node.textContent || '';
-  const kids = (node.children || []).map(textOf).join('');
+  /* children 可能是 HTMLCollection 桩（类数组、没有 map），统一用 Array.from 摊平 */
+  const kids = Array.from(node.children || []).map(textOf).join('');
   return raw + own + kids;                             // 三者都要，appendChild 是追加
 }
 
@@ -644,6 +645,26 @@ const missingFns = [...new Set(used)].filter((n) => !defined.has(n) && !builtins
 const errors = [];
 process.on('unhandledRejection', (err) => errors.push('unhandledRejection: ' + (err?.message ?? err)));
 process.on('uncaughtException', (err) => errors.push('uncaughtException: ' + err.message));
+
+/* 策略芯片：真实 WebView 里是 HTML 里的静态节点，element.children 返回
+   HTMLCollection —— 有 length / 下标 / Symbol.iterator，但**没有 forEach**。
+   桩里必须照这个样子造，否则页面写成 chips.forEach 也能过测试（v1.0.59 的 bug）。 */
+function makeHtmlCollection(items) {
+  const col = { length: items.length };
+  for (let i = 0; i < items.length; i++) col[i] = items[i];
+  col.item = (i) => items[i] || null;
+  col.namedItem = () => null;
+  col[Symbol.iterator] = function () { return items[Symbol.iterator](); };
+  return col;
+}
+const strategyChips = ['推荐', '少换乘', '少步行', '公交优先'].map((label, i) => {
+  const c = makeElement();
+  c.className = i === 0 ? 'chip on' : 'chip';
+  c.textContent = label;
+  c.setAttribute('data-st', String(i));
+  return c;
+});
+document.getElementById('strategyRow').children = makeHtmlCollection(strategyChips);
 
 const run = new Function(
   'window', 'document', 'localStorage', 'Audio', 'console',
@@ -2957,6 +2978,29 @@ else {
     const c = transitCalls[transitCalls.length - 1];
     if (!c.from || !isFinite(c.from.lat) || !c.dest || !isFinite(c.dest.lat)) {
       stage11.push('transit 没传起点/终点坐标：' + JSON.stringify(c));
+    }
+  }
+
+  /* 策略芯片：必须是「真点一下」才验证得出来。WebView 的 children 是
+     HTMLCollection（没有 forEach），写成 chips.forEach 会抛 TypeError、全部不绑。 */
+  if (typeof strategyChips[1].onclick !== 'function') {
+    stage11.push('策略芯片没有绑上点击（children 不是数组，不能对它调 forEach）');
+  } else {
+    const plansBefore = transitCalls.length;
+    strategyChips[1].onclick();
+    await new Promise((r) => setTimeout(r, 500));
+    const st = typeof window.cdBusRouteState === 'function' ? window.cdBusRouteState().strategy : null;
+    if (String(st) !== '1') stage11.push('点「少换乘」没有切换策略，当前 strategy=' + st);
+    if (!strategyChips[1].className.split(' ').includes('on')) {
+      stage11.push('点「少换乘」没有高亮该芯片，className=' + strategyChips[1].className);
+    }
+    if (strategyChips[0].className.split(' ').includes('on')) {
+      stage11.push('点「少换乘」后「推荐」还是高亮状态');
+    }
+    if (transitCalls.length <= plansBefore) {
+      stage11.push('点「少换乘」没有按新策略重新规划');
+    } else if (String(transitCalls[transitCalls.length - 1].strategy) !== '1') {
+      stage11.push('重新规划没带上策略 1：' + JSON.stringify(transitCalls[transitCalls.length - 1].strategy));
     }
   }
 }
