@@ -229,12 +229,13 @@ public final class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        // 返回键一律交给页面：页面自己维护视图栈，栈底时才回退退出
+        // 返回键一律交给页面：页面自己维护视图栈，栈底时 moveTaskToBack 退回桌面（不杀进程）
         if (web != null) {
             web.evaluateJavascript("window.cdBusBackView && window.cdBusBackView()", null);
             return;
         }
-        super.onBackPressed();
+        // WebView 还没准备好时的兜底：同样退到后台，不要结束进程
+        moveTaskToBack(true);
     }
 
     @Override

@@ -318,13 +318,17 @@ public final class BusBridge {
         return AlightService.statusJson();
     }
 
-    /** 页面视图栈已经到底了：退出 App。 */
+    /**
+     * 页面视图栈已经到底了：退回桌面，但不结束进程。
+     * 用 moveTaskToBack 而不是 finish()，这样从桌面点图标回来时页面状态还在，
+     * 盯站/下车提醒等后台服务也不受影响。
+     */
     @JavascriptInterface
     public void exitApp() {
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                activity.finish();
+                activity.moveTaskToBack(true);
             }
         });
     }

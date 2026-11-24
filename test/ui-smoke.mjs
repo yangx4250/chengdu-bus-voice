@@ -914,6 +914,17 @@ if (!/guideSectionsHtml\(\)/.test(setBody)) failures.push('设置页没有复用
   if (/b5c11b4d/.test(html)) failures.push('代码里还留着签名指纹 b5c11b4d');
 }
 
+/* 返回键回桌面不应杀死 App（v1.0.55）：exitApp 必须 moveTaskToBack，不能 finish */
+{
+  const bridgeJava = readFileSync(path.join(here, '..', 'app', 'src', 'com', 'chengdu', 'bus', 'BusBridge.java'), 'utf-8');
+  const mainJava = readFileSync(path.join(here, '..', 'app', 'src', 'com', 'chengdu', 'bus', 'MainActivity.java'), 'utf-8');
+  const exitFn = (bridgeJava.match(/void exitApp\(\)\s*\{([\s\S]*?)\n    \}/) || ['', ''])[1];
+  if (!/moveTaskToBack\s*\(\s*true\s*\)/.test(exitFn)) failures.push('exitApp() 没有用 moveTaskToBack 退回桌面');
+  if (/\bfinish\s*\(/.test(exitFn)) failures.push('exitApp() 仍在调用 finish()，会杀死 App');
+  const backFn = (mainJava.match(/void onBackPressed\(\)\s*\{([\s\S]*?)\n    \}/) || ['', ''])[1];
+  if (/super\.onBackPressed\s*\(/.test(backFn)) failures.push('onBackPressed() 仍会 super.onBackPressed() 结束 Activity');
+}
+
 if (failures.length) {
   console.error('✗ UI 冒烟失败：');
   for (const f of failures) console.error('  - ' + f);

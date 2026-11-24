@@ -2138,7 +2138,7 @@
 
   /* ------------------------------------------------------------ 详情页 */
 
-  /* 视图栈：每进一层记一层，返回键永远是「回上一页」，只有栈底才退出 App */
+  /* 视图栈：每进一层记一层，返回键永远是「回上一页」，只有栈底才退回桌面（不杀进程） */
   var VIEWS = ["home", "detail", "metro", "diag", "pick"];
   var viewStack = ["home"];
 
@@ -2184,7 +2184,7 @@
     if (bridge && bridge.setView) { try { bridge.setView(name); } catch (e) {} }
   }
 
-  /* 返回上一页；已经在栈底返回 false（交给原生退出 App） */
+  /* 返回上一页；已经在栈底返回 false（交给原生退回桌面，不杀进程） */
   function goBack() {
     if (viewStack.length > 1) {
       viewStack.pop();
@@ -3854,7 +3854,7 @@
   window.cdBusShouldAutoRefresh = shouldAutoRefreshHome;
   window.cdBusBack = function () { return backHandler(); };
 
-  /* 原生返回键调用这个：无论第几级页面都回上一页，只有首页才退出 App */
+  /* 原生返回键调用这个：无论第几级页面都回上一页，只有首页才退回桌面（不杀进程） */
   window.cdBusBackView = function () { return backHandler(); };
 
   /* ------------------------------------------------- 回到前台立即刷新
@@ -4805,7 +4805,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.54";
+  var APP_FALLBACK_VERSION = "1.0.55";
 
   function fillAbout() {
     var verEl = $("abVersion");
