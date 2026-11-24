@@ -822,7 +822,6 @@
         </div>
       </div>
     </div>
-    <div id="lstationfav" class="navrow hidden"></div>
   </div>
   <div id="dbuses" class="chips"></div>
   <div id="dothers" class="chips hidden"></div>
@@ -2293,19 +2292,19 @@
   /* 线路页的导航按钮条：每个已装的地图 App 一个按钮 */
   /* 详情页的「收藏站点」按钮行：与导航条并列，收藏当前选中的站 */
   function renderStationFavRow() {
-    var box = $("lstationfav");
-    if (!box) return;
+    /* 收藏/盯站按钮现在挂在导航行里，重画导航行即可 */
+    renderLineNav();
+  }
+
+  function makeStationFavBtn(target) {
     var lv = state.lineView;
-    var target = state.station;
-    if (!lv || !target) { box.className = "navrow hidden"; box.innerHTML = ""; return; }
+    if (!lv || !target) return document.createElement("span");
 
     /* 是否已收藏：按 stationId 查 */
     var isFav = loadFavs().some(function (f) {
       return favType(f) === "station" && String(f.stationId) === String(target.stationId);
     });
 
-    box.className = "navrow";
-    box.innerHTML = "";
     var btn = document.createElement("span");
     btn.className = "navbtn stationfav" + (isFav ? " on" : "");
     btn.textContent = isFav ? "★ 已收藏站点" : "☆ 收藏站点";
@@ -2324,12 +2323,9 @@
         firstTime: lv.firstTime || "",
         lastTime: lv.lastTime || ""
       });
-      renderStationFavRow();   // 重新渲染本行按钮状态
+      renderLineNav();   // 重画导航行，按钮状态跟着变
     };
-    box.appendChild(btn);
-
-    /* 盯站入口：详情页/线路页的「📌 盯站」按钮（行内 📌 已按用户要求取消）。 */
-    box.appendChild(renderLineWatchBtn(target));
+    return btn;
   }
 
   /* 线路页的盯站按钮：当前盯的就是这一站时显示「📌 已盯站」并可点取消 */
@@ -2359,7 +2355,7 @@
           lastTime: state.lineView.lastTime || ""
         });
       }
-      renderStationFavRow();   // 重画本行，按钮状态跟着变
+      renderLineNav();   // 重画导航行，按钮状态跟着变
     };
     return btn;
   }
@@ -2380,16 +2376,11 @@
     box.className = "navrow";
     box.innerHTML = "";
 
-    var label = document.createElement("span");
-    label.className = "navlabel";
-    /* 导航一律步行；地图 App 由用户在弹层里自己选 */
-    label.textContent = "导航";
-    box.appendChild(label);
-
     var btns = document.createElement("div");
     btns.className = "navbtns";
     box.appendChild(btns);
 
+    /* ① 导航：地图 App 收进弹层，由用户自己选 */
     var btn = document.createElement("span");
     btn.className = "navbtn";
     btn.setAttribute("data-nav", "open");
@@ -2398,7 +2389,7 @@
     ico.textContent = "🧭";
     btn.appendChild(ico);
     var txt = document.createElement("span");
-    txt.textContent = target.name;
+    txt.textContent = "导航";
     btn.appendChild(txt);
     btn.title = "选择地图导航到 " + target.name;
     btn.onclick = function (ev) {
@@ -2406,6 +2397,10 @@
       openNavPick(target.name);
     };
     btns.appendChild(btn);
+
+    /* ② 收藏站点、③ 盯站：和导航同一排，排在它后面 */
+    btns.appendChild(makeStationFavBtn(target));
+    btns.appendChild(renderLineWatchBtn(target));
   }
 
   /* 地图选择弹层：列出已装的地图 App + 系统地图兜底，点谁就用谁导航 */
@@ -4762,7 +4757,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.40";
+  var APP_FALLBACK_VERSION = "1.0.41";
 
   function fillAbout() {
     var verEl = $("abVersion");

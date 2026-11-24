@@ -1162,12 +1162,14 @@ if (!stationChips.length) {
     await new Promise((r) => setTimeout(r, 200));   // loadNavApps 是异步的
     const navBtns = findByClass(lnav, 'navbtn');
     if (!navBtns.length) stage2.push('导航按钮条没有按钮');
-    else if (navBtns.length !== 1) {
-      stage2.push('导航条应只有一个「导航」按钮（地图在弹层里选），实际 ' + navBtns.length + ' 个');
+    else if (navBtns.length !== 3) {
+      stage2.push('导航行应有 3 个按钮（导航/收藏/盯站），实际 ' + navBtns.length + ' 个');
     } else {
       /* 点「导航」→ 弹出地图选择层，里面列出已装的地图 App */
       const beforeNav = navLog.length;
-      navBtns[0].onclick({ stopPropagation() {} });
+      const navEntry = findByClass(lnav, 'navbtn').find((b) => /导航/.test(textOf(b)) && !/收藏|盯站/.test(textOf(b)));
+      if (!navEntry) stage2.push('导航行里找不到「导航」按钮');
+      else navEntry.onclick({ stopPropagation() {} });
       await new Promise((r) => setTimeout(r, 200));
       const pickList = document.getElementById('dnavpickList');
       const pickText = textOf(pickList);
@@ -1657,7 +1659,7 @@ else {
     if (chips3.length) {
       chips3[0].onclick();
       await new Promise((r) => setTimeout(r, 500));
-      const sfav3 = findByClass(document.getElementById('lstationfav'), 'stationfav');
+      const sfav3 = findByClass(document.getElementById('lnav'), 'stationfav');
       if (sfav3.length && String(sfav3[0].textContent).indexOf('已收藏') < 0) {
         const chipStationId = chips3[0].__stationId || null;
         sfav3[0].onclick();
@@ -1691,7 +1693,7 @@ else {
   if (favCards2.length) {
     favCards2[0].onclick();
     await new Promise((r) => setTimeout(r, 900));
-    const sfavBtn = findByClass(document.getElementById('lstationfav'), 'stationfav');
+    const sfavBtn = findByClass(document.getElementById('lnav'), 'stationfav');
     if (!sfavBtn.length) {
       stage4.push('详情页没有「收藏站点」按钮');
     } else {
@@ -1700,7 +1702,7 @@ else {
       if (chips0.length) {
         chips0[0].onclick();
         await new Promise((r) => setTimeout(r, 400));
-        const sfavBtn2 = findByClass(document.getElementById('lstationfav'), 'stationfav');
+        const sfavBtn2 = findByClass(document.getElementById('lnav'), 'stationfav');
         if (sfavBtn2.length) {
           const favsBefore = JSON.parse(storage.get('cdbus.favorites') || '[]').length;
           sfavBtn2[0].onclick();
@@ -1710,7 +1712,7 @@ else {
             stage4.push('点「收藏站点」没有写入收藏');
           }
           // 再点取消
-          const sfavBtn3 = findByClass(document.getElementById('lstationfav'), 'stationfav');
+          const sfavBtn3 = findByClass(document.getElementById('lnav'), 'stationfav');
           sfavBtn3[0].onclick();
           await new Promise((r) => setTimeout(r, 100));
           const favsFinal = JSON.parse(storage.get('cdbus.favorites') || '[]').length;
@@ -1740,7 +1742,7 @@ else {
       chips1[0].onclick();
       await new Promise((r) => setTimeout(r, 400));
 
-      const wBtn = findByClass(document.getElementById('lstationfav'), 'stationwatch');
+      const wBtn = findByClass(document.getElementById('lnav'), 'stationwatch');
       if (!wBtn.length) {
         stage4.push('线路页没有「盯站」按钮');
       } else if (String(wBtn[0].textContent).indexOf('盯站') < 0) {
@@ -1753,7 +1755,7 @@ else {
         if (after <= before) {
           stage4.push('点线路页「盯站」没有启动后台服务');
         }
-        const wBtn2 = findByClass(document.getElementById('lstationfav'), 'stationwatch');
+        const wBtn2 = findByClass(document.getElementById('lnav'), 'stationwatch');
         if (!wBtn2.length || String(wBtn2[0].textContent).indexOf('已盯站') < 0) {
           stage4.push('盯站后按钮没有变成「已盯站」：' + (wBtn2[0] ? textOf(wBtn2[0]) : '找不到按钮'));
         } else {
@@ -1774,7 +1776,7 @@ else {
         } else {
           stopEl.onclick();
           await new Promise((r) => setTimeout(r, 300));
-          const wBtn3 = findByClass(document.getElementById('lstationfav'), 'stationwatch');
+          const wBtn3 = findByClass(document.getElementById('lnav'), 'stationwatch');
           const label3 = wBtn3.length ? String(wBtn3[0].textContent) : '';
           if (label3.indexOf('已盯站') >= 0) {
             stage4.push('点盯站条的「停止」后按钮还是「已盯站」，没有立刻刷新：' + label3);
