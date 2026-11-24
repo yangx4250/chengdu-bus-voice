@@ -2043,6 +2043,25 @@ else {
     else if (t.scroll !== true) stage5.push('从首页进详情后到站表没有要求滚动到当前站：' + JSON.stringify(t));
     else if (t.nearest !== true) stage5.push('进详情时应滚到当前站而不是车所在站：' + JSON.stringify(t));
   }
+  /* v1.0.56：滚动目标必须落在吸顶区下方——第一张卡片不能被 #dtop 挡住。
+     直接调纯函数 scrollTargetFor，模拟「吸顶区 420px + 视口 800px」的真实场景，
+     断言滚完后元素顶部(finalTop) 在吸顶区下沿(visTop) 之下。 */
+  {
+    const f = window.cdBusScrollTargetFor;
+    if (typeof f !== 'function') stage5.push('没有暴露 window.cdBusScrollTargetFor，无法核对滚动目标');
+    else {
+      /* 目标行当前在 rect.top=1000（文档中段）、高 96px；吸顶 420、视口 800。
+         旧算法 target=1000-800/2+48=648 → finalTop=352，落在吸顶区(0~420)里被挡；
+         新算法 target=1000-616+48=432 → finalTop=568，避开吸顶区。 */
+      const topH = 420, viewH = 800;
+      const calc = f({ top: 1000, height: 96 }, topH, viewH);
+      if (!(calc.visTop > topH)) stage5.push('滚动可视上沿没有避开吸顶区：' + JSON.stringify(calc));
+      if (!(calc.finalTop >= calc.visTop)) {
+        stage5.push('滚完后第一张卡片仍在吸顶区覆盖范围内（会被挡住）：' + JSON.stringify(calc));
+      }
+      if (!(calc.visMid > viewH / 2)) stage5.push('可视区中点没有下移到吸顶区以下：' + JSON.stringify(calc));
+    }
+  }
   /* v1.0.54：手动刷新 / 回前台自动刷新都不要再滚回车辆所在站，
      保持用户当前浏览位置（首次进入那一次滚动除外）。 */
   {

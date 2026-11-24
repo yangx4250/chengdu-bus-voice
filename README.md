@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.0.55）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.0.56）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -166,6 +166,11 @@ chengdu-bus/build/成都公交.apk    (约 92 KB)
 **应用名「成都公交」（v1.0.1）**：桌面显示名、安装列表、系统标题栏统一改成「成都公交」；
 **v1.0.17 线路页直接盯站**：选中站点后，站名下方多一个「📌 盯站」按钮，
 不用先进详情页。再点一次「📌 已盯站」取消。
+
+**v1.0.56 修复详情页第一张卡片被吸顶区挡住**：首次进详情自动滚到当前站时，
+滚动目标原来按「整个视口中点」算；吸顶区（竖排站名 + 车牌 + 导航）升高到 400px+ 后，
+视口中点仍落在吸顶区覆盖范围内，滚过去的第一张卡片被挡住、和上面内容重合。
+现在改为按「吸顶区下沿到屏幕底部」这段可视区的中点算，保证滚到的卡片完整落在吸顶区下方。
 
 **v1.0.55 返回键回桌面不杀进程**：在首页按返回键以前会调 `finish()` 销毁 Activity，
 整个 App 连带盯站/下车提醒后台服务一起被杀掉。现在改成 `moveTaskToBack(true)`——
