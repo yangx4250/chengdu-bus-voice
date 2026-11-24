@@ -657,11 +657,13 @@ function makeHtmlCollection(items) {
   col[Symbol.iterator] = function () { return items[Symbol.iterator](); };
   return col;
 }
+/* 桩要和页面 HTML 的 data-st 对齐（v1.0.59 起）：推荐=0 少步行=1 少换乘=2 公交优先=3 */
+const STRATEGY_ST = { '推荐': '0', '少步行': '1', '少换乘': '2', '公交优先': '3' };
 const strategyChips = ['推荐', '少换乘', '少步行', '公交优先'].map((label, i) => {
   const c = makeElement();
   c.className = i === 0 ? 'chip on' : 'chip';
   c.textContent = label;
-  c.setAttribute('data-st', String(i));
+  c.setAttribute('data-st', STRATEGY_ST[label]);
   return c;
 });
 document.getElementById('strategyRow').children = makeHtmlCollection(strategyChips);
@@ -2983,14 +2985,24 @@ else {
 
   /* 策略芯片：必须是「真点一下」才验证得出来。WebView 的 children 是
      HTMLCollection（没有 forEach），写成 chips.forEach 会抛 TypeError、全部不绑。 */
+  /* 策略值必须和车来了接口对得上：实测 0=推荐 1=少步行 2=少换乘 3=公交优先。
+     写反过——「少换乘」发的是 1（其实少步行）、「少步行」发的是 2（其实少换乘）。 */
+  const stOf = {};
+  for (const c of strategyChips) stOf[String(c.textContent || '')] = c.getAttribute('data-st');
+  if (stOf['少换乘'] !== '2') stage11.push('「少换乘」的 strategy 应该是 2，实际 ' + stOf['少换乘']);
+  if (stOf['少步行'] !== '1') stage11.push('「少步行」的 strategy 应该是 1，实际 ' + stOf['少步行']);
+  if (stOf['推荐'] !== '0') stage11.push('「推荐」的 strategy 应该是 0，实际 ' + stOf['推荐']);
+  if (stOf['公交优先'] !== '3') stage11.push('「公交优先」的 strategy 应该是 3，实际 ' + stOf['公交优先']);
+
   if (typeof strategyChips[1].onclick !== 'function') {
     stage11.push('策略芯片没有绑上点击（children 不是数组，不能对它调 forEach）');
   } else {
+    /* 点「少换乘」：strategy 2，且第一条要是换乘最少的方案 */
     const plansBefore = transitCalls.length;
     strategyChips[1].onclick();
     await new Promise((r) => setTimeout(r, 500));
     const st = typeof window.cdBusRouteState === 'function' ? window.cdBusRouteState().strategy : null;
-    if (String(st) !== '1') stage11.push('点「少换乘」没有切换策略，当前 strategy=' + st);
+    if (String(st) !== '2') stage11.push('点「少换乘」没有切换策略，当前 strategy=' + st);
     if (!strategyChips[1].className.split(' ').includes('on')) {
       stage11.push('点「少换乘」没有高亮该芯片，className=' + strategyChips[1].className);
     }
@@ -2999,8 +3011,27 @@ else {
     }
     if (transitCalls.length <= plansBefore) {
       stage11.push('点「少换乘」没有按新策略重新规划');
-    } else if (String(transitCalls[transitCalls.length - 1].strategy) !== '1') {
-      stage11.push('重新规划没带上策略 1：' + JSON.stringify(transitCalls[transitCalls.length - 1].strategy));
+    } else if (String(transitCalls[transitCalls.length - 1].strategy) !== '2') {
+      stage11.push('重新规划没带上策略 2：' + JSON.stringify(transitCalls[transitCalls.length - 1].strategy));
+    }
+    /* 桩里返回的顺序是「步行 600m/换乘 1 次」在前、「步行 100m/换乘 0 次」在后，
+       点「少换乘」后第一条必须是换乘 0 次那条 —— 接口本身不按策略排序，页面要自己排。 */
+    const firstLine = (textOf(document.getElementById('routeBox')).match(/方案 1([^方]*)/) || [])[1] || '';
+    if (!/直达|换乘 0/.test(firstLine)) {
+      stage11.push('点「少换乘」后第一条不是换乘最少的方案：' + firstLine.trim().slice(0, 40));
+    }
+
+    /* 点「少步行」：strategy 1，第一条要是走路最少的 */
+    strategyChips[2].onclick();
+    await new Promise((r) => setTimeout(r, 500));
+    const st2 = typeof window.cdBusRouteState === 'function' ? window.cdBusRouteState().strategy : null;
+    if (String(st2) !== '1') stage11.push('点「少步行」没有切换策略，当前 strategy=' + st2);
+    if (String(transitCalls[transitCalls.length - 1].strategy) !== '1') {
+      stage11.push('点「少步行」重新规划没带上策略 1');
+    }
+    const firstWalk = (textOf(document.getElementById('routeBox')).match(/方案 1([^方]*)/) || [])[1] || '';
+    if (!/步行 100 米/.test(firstWalk)) {
+      stage11.push('点「少步行」后第一条不是走路最少的方案：' + firstWalk.trim().slice(0, 40));
     }
   }
 }

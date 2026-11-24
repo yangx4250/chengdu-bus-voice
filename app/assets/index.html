@@ -835,8 +835,8 @@
     </div>
     <div id="strategyRow" class="chips" style="margin-top:8px">
       <span class="chip on" data-st="0">推荐</span>
-      <span class="chip" data-st="1">少换乘</span>
-      <span class="chip" data-st="2">少步行</span>
+      <span class="chip" data-st="2">少换乘</span>
+      <span class="chip" data-st="1">少步行</span>
       <span class="chip" data-st="3">公交优先</span>
     </div>
   </div>
@@ -4887,7 +4887,7 @@
   }
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.59";
+  var APP_FALLBACK_VERSION = "1.0.60";
 
   function fillAbout() {
     var verEl = $("abVersion");
@@ -5468,6 +5468,33 @@
   }
 
   /* 起点用当前定位（Java 侧内部做 WGS84→GCJ02），终点是选中的 POI（GCJ02） */
+  /* 车来了的 strategy 只决定「挑哪些候选」，不保证第一条就最符合它
+     （实测选「少步行」时第一条仍可能是走路最多的），所以前端按策略再排一次。
+     实测语义：0=推荐 1=少步行 2=少换乘 3=公交优先（不坐地铁）。 */
+  function sortPlans(list, strategy) {
+    var arr = (list || []).slice();
+    var st = String(strategy || "0");
+    arr.sort(function (a, b) {
+      if (st === "1") {
+        return (Number(a.walkingDistance) || 0) - (Number(b.walkingDistance) || 0)
+          || (Number(a.duration) || 0) - (Number(b.duration) || 0);
+      }
+      if (st === "2") {
+        return (Number(a.transferCount) || 0) - (Number(b.transferCount) || 0)
+          || (Number(a.walkingDistance) || 0) - (Number(b.walkingDistance) || 0)
+          || (Number(a.duration) || 0) - (Number(b.duration) || 0);
+      }
+      if (st === "3") {
+        /* 公交优先：不坐地铁的方案排前面 */
+        var am = (a.segments || []).some(function (sg) { return sg.mode === "metro"; }) ? 1 : 0;
+        var bm = (b.segments || []).some(function (sg) { return sg.mode === "metro"; }) ? 1 : 0;
+        return am - bm || (Number(a.duration) || 0) - (Number(b.duration) || 0);
+      }
+      return (Number(a.duration) || 0) - (Number(b.duration) || 0);
+    });
+    return arr;
+  }
+
   async function planRoute() {
     var dest = routeState.dest;
     if (!dest) { setStatus("先选一个目的地", true); return; }
@@ -5484,7 +5511,7 @@
         dest: { lat: dest.lat, lng: dest.lng, name: dest.name },
         strategy: routeState.strategy
       });
-      var list = (data && data.transits) || [];
+      var list = sortPlans((data && data.transits) || [], routeState.strategy);
       if (!list.length) {
         box.innerHTML = '<div class="empty">没查到合适的公交/地铁路线，换个目的地试试</div>';
         setStatus("没有可用方案");

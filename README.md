@@ -19,7 +19,7 @@ $ cd-bus line 16路 --stop 天府广场南
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.0.59）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.0.60）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -166,6 +166,8 @@ chengdu-bus/build/成都公交.apk    (约 92 KB)
 **应用名「成都公交」（v1.0.1）**：桌面显示名、安装列表、系统标题栏统一改成「成都公交」；
 **v1.0.17 线路页直接盯站**：选中站点后，站名下方多一个「📌 盯站」按钮，
 不用先进详情页。再点一次「📌 已盯站」取消。
+
+**v1.0.60 修复「少换乘/少步行」结果相反**：车来了换乘接口的 `strategy` 值和按钮标签之前对不上——实测 1 是「少步行」、2 是「少换乘」（此前标反了），4 个按钮的 `data-st` 已按真实语义改回。另外接口只决定「挑哪些候选」，不保证第一条就最符合该策略，现在前端会按当前策略重新排一次序（少步行按步行距离、少换乘按换乘次数、公交优先把不坐地铁的排前面）。
 
 **v1.0.59 修复「去哪儿」策略按钮点了没反应**：`推荐 / 少换乘 / 少步行 / 公交优先` 四个按钮原来用 `element.children.forEach` 绑定点击，
 而浏览器里 `children` 是 HTMLCollection、**只有 NodeList 才有 forEach**，绑定时直接抛 `TypeError`，四个按钮全没挂上事件。
