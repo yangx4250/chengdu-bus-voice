@@ -4,13 +4,39 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
 APP="$ROOT/app"
-SDK="${ANDROID_JAR:-$ROOT/../sdk/android.jar}"
 OUT="$ROOT/build"
-PREFIX=/data/data/com.dsharnessmobile.shell/files/usr
-export PATH="$PREFIX/bin:$PATH"
-export JAVA_HOME="$PREFIX/lib/jvm/java-17-openjdk"
 
-[ -f "$SDK" ] || { echo "缺少 android.jar：$SDK"; exit 1; }
+# 工具链：优先用手机上的 Termux 前缀，没有就用系统 PATH（本机 Ubuntu 环境）
+PREFIX=/data/data/com.dsharnessmobile.shell/files/usr
+if [ -d "$PREFIX/bin" ]; then
+  export PATH="$PREFIX/bin:$PATH"
+  [ -d "$PREFIX/lib/jvm/java-17-openjdk" ] && export JAVA_HOME="$PREFIX/lib/jvm/java-17-openjdk"
+fi
+
+# android.jar：依次在几个常见位置找，都找不到才报错。
+# 依赖不提交进仓库，所以每台机器要自己准备一份。
+find_android_jar() {
+  local c
+  for c in \
+    "${ANDROID_JAR:-}" \
+    "$ROOT/../sdk/android.jar" \
+    "$ROOT/sdk/android.jar" \
+    "$ROOT/.sdk/android.jar" \
+    "/tmp/android.jar" \
+    "${ANDROID_HOME:-}"/platforms/android-34/android.jar \
+    "${ANDROID_HOME:-}"/platforms/android-33/android.jar \
+    "/usr/lib/android-sdk/platforms/android-33/android.jar"; do
+    [ -n "$c" ] && [ -f "$c" ] && { echo "$c"; return 0; }
+  done
+  return 1
+}
+SDK=$(find_android_jar) || {
+  echo "缺少 android.jar。放到以下任一位置，或设 ANDROID_JAR 环境变量："
+  echo "  $ROOT/sdk/android.jar    （推荐，已 gitignore）"
+  echo "  /tmp/android.jar"
+  exit 1
+}
+echo "   android.jar: $SDK"
 
 rm -rf "$OUT"
 mkdir -p "$OUT/classes" "$OUT/dex"
@@ -31,7 +57,21 @@ echo "== 2/5 混淆 + 转 dex (r8 --release)"
 # 网页里是按字符串 "AndroidBus.start(...)" 调用的。
 RULES="$ROOT/proguard-rules.pro"
 [ -f "$RULES" ] || { echo "!! 缺少 $RULES"; exit 1; }
-if ! r8 --release --lib "$SDK" --min-api 24 \
+# R8：优先 R8_JAR 环境变量，其次 sdk/r8.jar，最后找系统里的 r8 命令
+find_r8() {
+  local c
+  for c in "${R8_JAR:-}" "$ROOT/sdk/r8.jar" "$ROOT/../sdk/r8.jar" "/tmp/r8.jar"; do
+    [ -n "$c" ] && [ -f "$c" ] && { echo "$c"; return 0; }
+  done
+  command -v r8 >/dev/null 2>&1 && { echo ""; return 0; }
+  return 1
+}
+R8JAR=$(find_r8) || {
+  echo "缺少 R8。放到 sdk/r8.jar，或设 R8_JAR 环境变量，或安装 r8 命令"
+  exit 1
+}
+if [ -n "$R8JAR" ]; then R8_CMD=(java -cp "$R8JAR" com.android.tools.r8.R8); else R8_CMD=(r8); fi
+if ! "${R8_CMD[@]}" --release --lib "$SDK" --min-api 24 \
      --output "$OUT/dex" \
      --pg-conf "$RULES" \
      $(find "$OUT/classes" -name '*.class') > "$OUT/r8.log" 2>&1; then
@@ -51,7 +91,17 @@ aapt package -f \
 
 echo "== 4/5 塞入 classes.dex"
 cp "$OUT/dex/classes.dex" "$OUT/classes.dex"
-( cd "$OUT" && zip -q -j base.apk classes.dex )
+# 不用 zip 命令（部分环境没装），直接用 Python 的 zipfile 重写一遍
+python3 - "$OUT/base.apk" "$OUT/classes.dex" <<'PYZIP'
+import sys, zipfile, shutil
+apk, dex = sys.argv[1], sys.argv[2]
+tmp = apk + ".tmp"
+with zipfile.ZipFile(apk) as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
+    for item in zin.infolist():
+        zout.writestr(item, zin.read(item.filename))
+    zout.write(dex, "classes.dex")
+shutil.move(tmp, apk)
+PYZIP
 
 echo "== 5/6 对齐 (zipalign)"
 python3 "$ROOT/tools/zipalign.py" "$OUT/base.apk" "$OUT/aligned.apk"
@@ -68,11 +118,11 @@ if [ ! -f "$KEYSTORE" ]; then
     -dname "CN=Chengdu Bus, OU=DSH, O=local, L=Chengdu, S=Sichuan, C=CN" >/dev/null 2>&1
 fi
 apksigner sign --ks "$KEYSTORE" --ks-pass pass:cdbus123 \
-  --key-pass pass:cdbus123 --out "$ROOT/build/成都公交.apk" "$OUT/aligned.apk" 2>&1 | grep -v "^$" || true
-apksigner verify --print-certs "$ROOT/build/成都公交.apk" 2>&1 | head -3
+  --key-pass pass:cdbus123 --out "$ROOT/build/公交来了.apk" "$OUT/aligned.apk" 2>&1 | grep -v "^$" || true
+apksigner verify --print-certs "$ROOT/build/公交来了.apk" 2>&1 | head -3
 
 # 6.5 产物自检：混淆后这些「按名字被调用」的东西必须还在
-python3 - "$ROOT/build/成都公交.apk" "$ROOT/app/src/com/chengdu/bus/BusBridge.java" <<'PYEOF'
+python3 - "$ROOT/build/公交来了.apk" "$ROOT/app/src/com/chengdu/bus/BusBridge.java" <<'PYEOF'
 import sys, zipfile, re
 apk, bridge_src = sys.argv[1], sys.argv[2]
 dex = zipfile.ZipFile(apk).read("classes.dex")
@@ -110,8 +160,8 @@ else:
 PYEOF
 [ $? -eq 0 ] || exit 1
 
-FINGERPRINT=$(apksigner verify --print-certs "$ROOT/build/成都公交.apk" 2>/dev/null | grep -m1 "SHA-256 digest" | sed "s/.*: //")
+FINGERPRINT=$(apksigner verify --print-certs "$ROOT/build/公交来了.apk" 2>/dev/null | grep -m1 "SHA-256 digest" | sed "s/.*: //")
 echo "== 签名 SHA-256: $FINGERPRINT"
 
-SIZE=$(stat -c %s "$ROOT/build/成都公交.apk")
-echo "== 完成：$ROOT/build/成都公交.apk ($((SIZE/1024)) KB)"
+SIZE=$(stat -c %s "$ROOT/build/公交来了.apk")
+echo "== 完成：$ROOT/build/公交来了.apk ($((SIZE/1024)) KB)"

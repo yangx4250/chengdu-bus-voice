@@ -26,3 +26,4 @@ demo/*.mp3
 .o2.txt
 *.bak.html
 .inline.js
+sdk/
