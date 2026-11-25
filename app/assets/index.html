@@ -95,6 +95,8 @@
   .lvbuses { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
     font-size: 12px; color: var(--muted); padding: 2px 4px 6px; }
   .lvbuses .lvb-num { color: #ffce4a; font-weight: 600; }
+  /* 「末班在途」：比「N 辆在途」更醒目一点，提示这是当天最后一班 */
+  .lvbuses .lvb-last { color: #ff8a65; font-weight: 600; }
   .lvbuses .lvb-upd { margin-left: auto; opacity: .7; }
 
   .chip.nearest .nbadge { font-style: normal; font-size: 10px; line-height: 1.5;
@@ -280,6 +282,13 @@
   .refreshnote { margin-left: auto; font-size: 11px; color: #5f6f8c; white-space: nowrap; }
   .locbar.err .dot { background: var(--hot); }
 
+  /* 在线更新进度条 */
+  .updbar { height: 6px; background: #1d2740; border-radius: 999px;
+    margin-top: 10px; overflow: hidden; }
+  .updbar-fill { height: 100%; width: 0%; border-radius: 999px;
+    background: var(--accent); transition: width .2s linear; }
+
+  /* 城市切换按钮（顶部标题旁） */
   /* 顶栏城市名：纯文字，不做胶囊/边框（原来那个圆角方块太抢眼）。
      仍然是按钮，点了能切换城市。 */
   .citytext { flex: 0 0 auto; background: none; border: 0; padding: 2px 0 2px 2px;
@@ -886,6 +895,21 @@
           <div class="kv"><span>运行环境</span><span id="abEnv">—</span></div>
           <div class="kv"><span>数据来源</span><span>车来了（公交实时）· OpenStreetMap</span></div>
           <div class="kv" style="border:none"><span>说明</span><span>到站时间为预测，仅供参考。</span></div>
+        </div>
+      </div>
+      <div class="setcard">
+        <div class="setcardtitle">在线更新</div>
+        <div class="kv"><span>当前版本</span><span id="updCurrent">—</span></div>
+        <div class="kv" id="updRow" style="display:none"><span>最新版本</span><span id="updLatest">—</span></div>
+        <div class="kv" id="updStateRow" style="display:none;border:none"><span>状态</span><span id="updState">—</span></div>
+        <div class="btns" style="margin-top:8px">
+          <button id="updCheck" class="primary">检查更新</button>
+        </div>
+        <div class="btns" id="updActions" style="display:none">
+          <button id="updGo" class="primary">下载并安装</button>
+        </div>
+        <div class="updbar" id="updBarWrap" style="display:none">
+          <div class="updbar-fill" id="updBarFill"></div>
         </div>
       </div>
       <div class="setcard">
@@ -2834,6 +2858,42 @@
     }, 30000);
   }
 
+  /**
+   * 这一方向的最后一辆车是不是「末班车」。
+   *
+   * 判断依据（只需时间 + 车辆存在性，不依赖 GPS）：
+   *   1) 当前时间已到/过了这条线的末班时间；
+   *   2) 且路线上确实还有车在跑。
+   * 两条同时成立 → 现在在途的就是末班车（正开往终点的那一趟）。
+   *
+   * 为什么用「末班时间」而不是别的：
+   *   车来了只给「车在第几站」，不给班次编号。末班时间点是唯一可靠的边界 ——
+   *   过了它还在跑的车，必然是当天最后一班。
+   *
+   * @returns {boolean}
+   */
+  function isLastBusInTransit(lineViewOverride) {
+    var lv = lineViewOverride || state.lineView;
+    if (!lv || !lv.buses || !lv.buses.length) return false;
+    var last = lv.lastTime;
+    if (!last) return false;                 // 没有末班时间，判断不了
+    var lastMin = minutesOf(last);
+    if (lastMin === null) return false;
+    var now = new Date();
+    var cur = now.getHours() * 60 + now.getMinutes();
+    /* 末班时间已过（或正好在末班这一分钟）。跨夜线路（末班 < 首班）
+       单独处理：那时 cur 落在凌晨，lastMin 在深夜，用「已过 lastMin 或还在末班后」判断。 */
+    var firstMin = minutesOf(lv.firstTime || '');
+    var overMidnight = firstMin !== null && lastMin < firstMin;
+
+    if (overMidnight) {
+      /* 跨夜线路（如 22:00—01:30）：末班在凌晨。
+         已到末班 = 深夜已过 22:00（进入末班车运行期）或凌晨已过 01:30 之前。 */
+      return cur >= firstMin || cur <= lastMin;
+    }
+    return cur >= lastMin;
+  }
+
   /* 站名芯片上挂 🚌：一个站有多辆车也只画一个，标出车辆数 */
   function renderLineBuses() {
     var box = $("lvbuses");
@@ -2850,6 +2910,13 @@
     var label = document.createElement("span");
     label.className = "lvb-num";
     label.textContent = "🚌 " + n + " 辆在途";
+    /* 末班时间已过但还有车在跑 → 这就是末班车，在后面点出来 */
+    if (isLastBusInTransit()) {
+      var tail = document.createElement("span");
+      tail.className = "lvb-last";
+      tail.textContent = " · 末班在途";
+      label.appendChild(tail);
+    }
     box.appendChild(label);
     var upd = document.createElement("span");
     upd.className = "lvb-upd";
@@ -3867,6 +3934,8 @@
   window.cdBusOthersFolded = function () { return othersFolded; };
   window.cdBusRefreshHome = refreshHome;
   window.cdBusOutsideService = outsideService;
+  window.cdBusIsLastBusInTransit = isLastBusInTransit;
+  window.cdBusLineView = function () { return state.lineView; };
   window.cdBusSwitchCity = switchCity;
   window.cdBusOpenOtherNoRealtime = openOtherLineWithoutRealtime;
 
@@ -6203,11 +6272,167 @@
   paintCityChrome();
 
 
+  /* ---------------------------------------------------------- 在线更新 */
+
+  var updTimer = null;
+  var updLast = { latest: '', hasUpdate: false };
+
+  function updEl(id) { return $(id); }
+
+  function updSetState(text) {
+    var row = updEl("updStateRow");
+    var el = updEl("updState");
+    if (row && el) {
+      row.style.display = text ? "" : "none";
+      el.textContent = text || "";
+    }
+  }
+
+  function updSetBar(percent) {
+    var wrap = updEl("updBarWrap");
+    var fill = updEl("updBarFill");
+    if (!wrap || !fill) return;
+    if (percent === null) {
+      wrap.style.display = "none";
+      fill.style.width = "0%";
+      return;
+    }
+    wrap.style.display = "";
+    fill.style.width = Math.max(0, Math.min(100, percent)) + "%";
+  }
+
+  function updShowActions(show) {
+    var box = updEl("updActions");
+    if (box) box.style.display = show ? "" : "none";
+  }
+
+  async function updRefreshCurrent() {
+    try {
+      if (bridge && bridge.updateVersion) {
+        var info = JSON.parse(bridge.updateVersion() || "{}");
+        var el = updEl("updCurrent");
+        if (el) el.textContent = (info.name || "—") + (info.code ? "（" + info.code + "）" : "");
+      }
+    } catch (e) {}
+  }
+
+  /** 处理一次更新状态（由轮询调用）。 */
+  function updHandle(state, data) {
+    if (!state) return;
+    if (state === "checking") {
+      updSetState("正在检查…");
+      return;
+    }
+    if (state === "checked") {
+      var latest = data.latest || "";
+      var has = Boolean(data.hasUpdate);
+      var row = updEl("updRow");
+      var el = updEl("updLatest");
+      if (row && el) {
+        row.style.display = "";
+        el.textContent = latest || "—";
+      }
+      updLast = { latest: latest, hasUpdate: has };
+      if (has) {
+        updSetState("有新版本 " + latest + "，可以下载安装");
+        updShowActions(true);
+        /* 启动时的静默检查也要让用户知道 */
+        showToast("发现新版本 " + latest);
+      } else {
+        updSetState("已是最新版本");
+        updShowActions(false);
+      }
+      return;
+    }
+    if (state === "downloading") {
+      var pct = Number(data.percent || 0);
+      updSetState("下载中 " + pct + "%");
+      updSetBar(pct);
+      return;
+    }
+    if (state === "verifying") {
+      updSetState("校验安装包…");
+      return;
+    }
+    if (state === "ready") {
+      updSetBar(null);
+      updSetState("下载完成（" + Math.round((data.size || 0) / 1024) + " KB）");
+      /* 检查安装权限：没有就引导去开 */
+      var canInstall = false;
+      try { canInstall = bridge && bridge.updateCanInstall ? Boolean(bridge.updateCanInstall()) : false; } catch (e) {}
+      if (!canInstall) {
+        updSetState("需要在系统设置里允许「安装未知应用」");
+        showToast("请允许安装未知应用后重试", true);
+        try { if (bridge && bridge.updateOpenInstallPermission) bridge.updateOpenInstallPermission(); } catch (e2) {}
+        return;
+      }
+      /* 已有权限 → 直接拉起安装 */
+      var ok = false;
+      try { ok = bridge && bridge.updateInstall ? Boolean(bridge.updateInstall()) : false; } catch (e3) {}
+      if (!ok) updSetState("拉起安装失败，请再点一次「下载并安装」");
+      return;
+    }
+    if (state === "error") {
+      updSetBar(null);
+      updSetState(data.message || "更新失败");
+      showToast(data.message || "更新失败", true);
+      return;
+    }
+    if (state === "idle") {
+      /* 静默检查没新版：什么都不显示 */
+      return;
+    }
+    if (state === "busy") {
+      updSetState("正在处理，请稍候…");
+      return;
+    }
+  }
+
+  function updStartPoll() {
+    updStopPoll();
+    updTimer = setInterval(function () {
+      if (!bridge || !bridge.updatePoll) return;
+      try {
+        var raw = bridge.updatePoll();
+        var res = JSON.parse(raw || "{}");
+        updHandle(res.state, res.data || {});
+      } catch (e) {
+        updStopPoll();
+      }
+    }, 250);
+  }
+
+  function updStopPoll() {
+    if (updTimer) clearInterval(updTimer);
+    updTimer = null;
+  }
+
+  function updCheck(manual) {
+    if (!bridge || !bridge.updateCheck) {
+      showToast("仅支持在 App 内检查更新", true);
+      return;
+    }
+    updShowActions(false);
+    updSetBar(null);
+    if (manual) updSetState("正在检查…");
+    updStartPoll();
+    try { bridge.updateCheck(!manual); } catch (e) { updSetState("检查失败"); }
+  }
+
+  function updDownload() {
+    if (!bridge || !bridge.updateDownload) return;
+    updShowActions(false);
+    updSetBar(0);
+    updSetState("准备下载…");
+    updStartPoll();
+    try { bridge.updateDownload(); } catch (e) { updSetState("下载失败"); }
+  }
+
   /* 设置页导航 */
   function enterSet(id) {
     setStack.push(id);
     showSetPage(id);
-    if (id === "setPageAbout") fillAbout();
+    if (id === "setPageAbout") { fillAbout(); updRefreshCurrent(); }
     if (id === "setPageGuide") renderGuide();
     if (id === "setPageFont") renderFontPage();
     if (id === "setPageVoice") renderDiag();
@@ -6223,6 +6448,12 @@
   /* 首次打开：等定位/首页渲染完再弹，避免和首屏加载抢焦点。
      注意 view.name 初始是 undefined（只在 showView 里赋值），
      所以用「没有打开任何二级页」来判断当前在首页。 */
+  /* 启动时静默检查更新：等首屏加载完（定位 + 附近站点）再查，
+     避免和首屏请求抢带宽。查不到就静默，不影响任何功能。 */
+  setTimeout(function () {
+    if (bridge && bridge.updateCheck) updCheck(false);
+  }, 6000);
+
   if (!guideSeen()) {
     setTimeout(function () {
       /* 只有仍在首页、且没有打开任何二级页时才弹 */
@@ -6242,6 +6473,10 @@
   $("setVoice").onclick = function () { enterSet("setPageVoice"); };
   $("setDiag").onclick = function () { enterSet("setPageDiag"); };
   $("setAbout").onclick = function () { enterSet("setPageAbout"); };
+
+  /* 在线更新 */
+  $("updCheck").onclick = function () { updCheck(true); };
+  $("updGo").onclick = function () { updDownload(); };
   $("voiceBack").onclick = function () { backFromDiag(); };
   $("diagBack").onclick = function () { backFromDiag(); };
   $("aboutBack").onclick = function () { backFromDiag(); };

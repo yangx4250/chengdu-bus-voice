@@ -60,6 +60,16 @@ public final class BusBridge {
     private final AtomicLong sequence = new AtomicLong();
     private volatile String currentView = "home";
 
+    /** 在线更新模块（由 MainActivity 注入）。 */
+    private volatile Updater updater = null;
+    /** 更新进度存在这里，页面用 updatePoll 拉（避免从后台线程回调 JS）。 */
+    private volatile String updateState = "";
+    private volatile String updateData = "";
+
+    void setUpdater(Updater u) {
+        this.updater = u;
+    }
+
     private static final class Task {
         volatile String state = "running";
         volatile String data;
@@ -175,6 +185,121 @@ public final class BusBridge {
             Log.w(TAG, "读取版本失败", e);
         }
         return out.toString();
+    }
+
+    /* ------------------------------------------------------------ 在线更新 */
+
+    /**
+     * 检查更新。
+     *
+     * @param silent 启动时的静默检查：没有新版就什么都不做
+     * 结果用 updatePoll() 拉，因为后台线程不能直接回调 JS。
+     */
+    @JavascriptInterface
+    public void updateCheck(final boolean silent) {
+        final Updater u = updater;
+        if (u == null) {
+            pushUpdate("error", "{\"message\":\"更新模块不可用\"}");
+            return;
+        }
+        pushUpdate("checking", "{\"silent\":" + silent + "}");
+        u.check(silent, new Updater.Listener() {
+            @Override
+            public void onState(String state, org.json.JSONObject data) {
+                /* 静默检查时，「没新版」不需要推给页面 */
+                if (silent && "checked".equals(state) && data != null
+                        && !data.optBoolean("hasUpdate", false)) {
+                    pushUpdate("idle", "{}");
+                    return;
+                }
+                pushUpdate(state, data == null ? "{}" : data.toString());
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public void updateDownload() {
+        final Updater u = updater;
+        if (u == null) {
+            pushUpdate("error", "{\"message\":\"更新模块不可用\"}");
+            return;
+        }
+        pushUpdate("downloading", "{\"percent\":0}");
+        u.downloadAndInstall(new Updater.Listener() {
+            @Override
+            public void onState(String state, org.json.JSONObject data) {
+                pushUpdate(state, data == null ? "{}" : data.toString());
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public void updateCancel() {
+        if (updater != null) updater.cancel();
+    }
+
+    /** 是否已安装「未知来源」权限。没权限时页面引导用户去开。 */
+    @JavascriptInterface
+    public boolean updateCanInstall() {
+        return updater != null && updater.canInstall();
+    }
+
+    @JavascriptInterface
+    public void updateOpenInstallPermission() {
+        if (updater != null) updater.openInstallPermission();
+    }
+
+    /** 发起安装（要求已下载且已授权）。返回是否成功发起。 */
+    @JavascriptInterface
+    public boolean updateInstall() {
+        return updater != null && updater.install();
+    }
+
+    /** 页面轮询更新进度。返回 {state, data} 的 JSON 字符串。 */
+    @JavascriptInterface
+    public String updatePoll() {
+        String st = updateState;
+        String dt = updateData;
+        if ("ready".equals(st) || "error".equals(st) || "idle".equals(st)) {
+            /* 终态只交付一次，避免页面反复处理 */
+            updateState = "";
+            updateData = "";
+        }
+        try {
+            org.json.JSONObject o = new org.json.JSONObject();
+            o.put("state", st == null ? "" : st);
+            o.put("data", new org.json.JSONObject(dt == null || dt.isEmpty() ? "{}" : dt));
+            return o.toString();
+        } catch (Exception e) {
+            return "{\"state\":\"\",\"data\":{}}";
+        }
+    }
+
+    /** 当前已下载的安装包信息（没有则 null）。 */
+    @JavascriptInterface
+    public String updateDownloaded() {
+        if (updater == null) return "";
+        org.json.JSONObject o = updater.downloadedApk();
+        return o == null ? "" : o.toString();
+    }
+
+    /** 当前版本（页面显示用）。 */
+    @JavascriptInterface
+    public String updateVersion() {
+        if (updater == null) return "{}";
+        try {
+            return new org.json.JSONObject()
+                    .put("name", updater.currentVersionName())
+                    .put("code", updater.currentVersionCode())
+                    .toString();
+        } catch (Exception e) {
+            return "{}";
+        }
+    }
+
+    private void pushUpdate(String state, String data) {
+        updateState = state == null ? "" : state;
+        updateData = data == null ? "{}" : data;
     }
 
     @JavascriptInterface

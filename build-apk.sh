@@ -79,7 +79,8 @@ dex = zipfile.ZipFile(apk).read("classes.dex")
 
 # (1) Manifest 里按类名注册的组件，必须保留原始类名
 need_classes = [b"Lcom/chengdu/bus/MainActivity;", b"Lcom/chengdu/bus/WatchService;",
-                b"Lcom/chengdu/bus/AlightService;", b"Lcom/chengdu/bus/HeartbeatService;"]
+                b"Lcom/chengdu/bus/AlightService;", b"Lcom/chengdu/bus/HeartbeatService;",
+                b"Lcom/chengdu/bus/ApkProvider;"]
 missing = [n.decode() for n in need_classes if n not in dex]
 if missing:
     print("!! dex 缺少类:", missing); sys.exit(1)

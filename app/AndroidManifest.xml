@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.chengdu.bus"
-    android:versionCode="188"
-    android:versionName="1.2.8">
+    android:versionCode="190"
+    android:versionName="1.3.0">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="33" />
 
@@ -19,6 +19,9 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- 长时间后台时别让系统把进程当成「可随时回收」 -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- 在线更新：下载新版本 APK 后交给系统安装器。没有这条权限，
+         点安装会被系统直接拒绝，也不会给用户授权入口。 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Android 11+ 包可见性：不声明就看不到系统的 TTS 引擎（getEngines 为空、init status=-1） -->
     <queries>
@@ -79,5 +82,14 @@
             android:exported="false"
             android:stopWithTask="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- 在线更新：把下载到 cache/update 的安装包暴露成 content:// URI。
+             Android 7+ 禁止把 file:// 交给安装器（FileUriExposedException），
+             必须走 content:// + 临时授权。这里是自写实现，不依赖 androidx。 -->
+        <provider
+            android:name=".ApkProvider"
+            android:authorities="com.chengdu.bus.apkprovider"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

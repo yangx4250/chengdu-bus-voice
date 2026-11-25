@@ -44,6 +44,7 @@ public final class MainActivity extends Activity {
     private WebView web;
     private Speech speech;
     private BusBridge bridge;
+    private Updater updater;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -102,7 +103,9 @@ public final class MainActivity extends Activity {
             }
         });
 
+        updater = new Updater(this);
         bridge = new BusBridge(this, speech);
+        bridge.setUpdater(updater);
         web.addJavascriptInterface(bridge, "AndroidBus");
 
         setContentView(web);
@@ -270,6 +273,9 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (updater != null) {
+            try { updater.shutdown(); } catch (Throwable ignored) {}
+        }
         if (speech != null) speech.shutdown();
         if (web != null) {
             web.removeJavascriptInterface("AndroidBus");

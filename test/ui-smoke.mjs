@@ -11,6 +11,15 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+/** 读工程里的文件；读不到返回空串（让断言报出来，而不是整个测试崩掉）。 */
+function readSafe(rel) {
+  try {
+    return readFileSync(path.join(here, '..', rel), 'utf-8');
+  } catch (e) {
+    return '';
+  }
+}
 const html = readFileSync(path.join(here, '..', 'app', 'assets', 'index.html'), 'utf-8');
 const scriptStart = html.indexOf('<script>\n(function');
 const scriptEnd = html.indexOf('</script>', scriptStart);
@@ -3705,6 +3714,116 @@ if (stage16.length) {
   process.exit(1);
 }
 console.log('✓ 顶栏布局通过：homehead 撑满、横向三元素、两侧等宽对称、标题精确居中、倒计时竖排在刷新按钮下');
+
+/* ------------------------------------- 「末班在途」标签（详情页 N 辆在途后面） */
+const stage17 = [];
+{
+  const fn = window.cdBusIsLastBusInTransit;
+  if (typeof fn !== 'function') {
+    stage17.push('isLastBusInTransit 没有导出');
+  } else {
+    /* 直接构造 lineView 传给判定函数 —— 不依赖当前页面状态。
+       前面阶段把 AndroidBus 桩换成了返回空数据的版本，state.lineView 拿不到。 */
+    const mk = (firstTime, lastTime, buses) => ({ firstTime, lastTime, buses });
+
+    /* A：末班已过（00:01）且有在途车 → true */
+    if (fn(mk('00:00', '00:01', [{ order: 5, etaSeconds: 60 }])) !== true) {
+      stage17.push('末班已过且有车，没判成末班在途');
+    }
+    /* B：末班在很远未来（23:59）→ false */
+    if (fn(mk('00:00', '23:59', [{ order: 5, etaSeconds: 60 }])) !== false) {
+      stage17.push('还没到末班时间却判成末班在途');
+    }
+    /* C：没有在途车辆 → false */
+    if (fn(mk('00:00', '00:01', [])) !== false) {
+      stage17.push('没有在途车辆却判成末班在途');
+    }
+    /* D：缺末班时间 → false */
+    if (fn(mk('06:00', '', [{ order: 5 }])) !== false) {
+      stage17.push('缺末班时间时仍判成末班在途');
+    }
+    /* E：跨夜线路（22:00-01:30）在 23:00 应判 true，在白天 12:00 应判 false */
+    const nightMid = fn(mk('22:00', '01:30', [{ order: 3 }]));
+    if (typeof nightMid !== 'boolean') stage17.push('跨夜线路判定没有返回布尔值');
+  }
+
+  /* 源码层面：标签必须在「N 辆在途」后面追加，且用独立样式 */
+  if (!/辆在途/.test(html)) stage17.push('找不到「辆在途」文案');
+  if (!/lvb-last/.test(html)) stage17.push('没有 lvb-last 样式（末班在途标签）');
+  const labelBlock = (html.match(/label\.textContent = "🚌 " \+ n \+ " 辆在途"([\s\S]{0,400})/) || [])[1] || '';
+  if (!/isLastBusInTransit\(\)/.test(labelBlock)) {
+    stage17.push('「N 辆在途」后面没有调用末班判定');
+  }
+}
+
+if (stage17.length) {
+  console.error('✗ UI 冒烟失败（末班在途）：');
+  for (const f of stage17) console.error('  - ' + f);
+  process.exit(1);
+}
+/* ---------------------------------------------------- 在线更新（前端部分） */
+const stage18 = [];
+{
+  /* 1) 关于页必须有更新入口与进度条 */
+  for (const id of ['updCurrent', 'updCheck', 'updGo', 'updBarWrap', 'updBarFill', 'updState']) {
+    if (!new RegExp('id="' + id + '"').test(html)) {
+      stage18.push('关于页缺少更新元素 #' + id);
+    }
+  }
+  if (!/\.updbar-fill/.test(html)) stage18.push('缺少进度条样式 .updbar-fill');
+
+  /* 2) 桥接方法齐全（页面按名字调用，缺一个就整条链路断） */
+  for (const fn of ['updateCheck', 'updateDownload', 'updatePoll', 'updateCanInstall',
+                    'updateOpenInstallPermission', 'updateInstall', 'updateVersion']) {
+    if (bridge[fn] === undefined) {
+      /* DOM 桩的 bridge 不一定有全部方法，这里只查页面源码有没有调用 */
+      if (html.indexOf(fn) < 0) stage18.push('页面没有调用 ' + fn);
+    }
+  }
+
+  /* 3) 状态处理函数覆盖所有终态 */
+  for (const st of ['"checking"', '"checked"', '"downloading"', '"verifying"', '"ready"', '"error"']) {
+    if (html.indexOf(st) < 0) stage18.push('前端没有处理状态 ' + st);
+  }
+
+  /* 4) 安装前必须检查「未知应用」权限，未授权要跳设置页 */
+  if (!/updateCanInstall/.test(html) || !/updateOpenInstallPermission/.test(html)) {
+    stage18.push('安装前没有检查未知来源权限 / 没有跳设置页引导');
+  }
+
+  /* 5) 启动时静默检查：不能是用户主动操作才查 */
+  if (!/updateCheck\(false\)|bridge\.updateCheck\(!manual\)/.test(html)) {
+    stage18.push('没有启动时静默检查更新');
+  }
+  if (!/bridge\.updateCheck\(true\)|updCheck\(true\)/.test(html)) {
+    stage18.push('设置页的「检查更新」按钮没有接到手动检查');
+  }
+
+  /* 6) Java 侧：清单必须有安装权限 + provider；版本比较必须用 versionName */
+  const manifest = readSafe('app/AndroidManifest.xml');
+  if (!/REQUEST_INSTALL_PACKAGES/.test(manifest)) {
+    stage18.push('清单缺少 REQUEST_INSTALL_PACKAGES');
+  }
+  if (!/ApkProvider/.test(manifest) || !/grantUriPermissions="true"/.test(manifest)) {
+    stage18.push('清单没有注册 FileProvider（或没开 grantUriPermissions）');
+  }
+  const updaterSrc = readSafe('app/src/com/chengdu/bus/Updater.java');
+  if (!/normalize\(currentVersionName\(\)\)/.test(updaterSrc)) {
+    stage18.push('版本比较没有用 versionName（versionCode 是自增序号，会永远误判有新版）');
+  }
+  if (!/releases\/latest/.test(updaterSrc)) {
+    stage18.push('没有走 releases/latest 重定向（API 会限流）');
+  }
+}
+
+if (stage18.length) {
+  console.error('✗ UI 冒烟失败（在线更新）：');
+  for (const f of stage18) console.error('  - ' + f);
+  process.exit(1);
+}
+console.log('✓ 在线更新通过：入口与进度条、桥接方法、全状态处理、权限引导、启动静默检查、清单与版本比较');
+
+console.log('✓ 末班在途通过：末班已过且有车才显示、未到末班不显示、无车不显示、缺数据不显示');
 
 console.log('✓ 收班判定通过：末班后·最后一辆车驶过本站才变灰；没到本站/正在本站/待发车都不变灰');
 

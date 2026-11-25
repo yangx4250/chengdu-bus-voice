@@ -17,6 +17,9 @@
 -keep class com.chengdu.bus.WatchService { *; }
 -keep class com.chengdu.bus.AlightService { *; }
 -keep class com.chengdu.bus.HeartbeatService { *; }
+# ContentProvider 也是按 android:name 由系统实例化的 —— 混淆改名后
+# 系统找不到类，安装包 URI 会直接失败（INSTALL_FAILED_INVALID_URI）。
+-keep class com.chengdu.bus.ApkProvider { *; }
 
 # ---- 3. Android 框架回调（Activity/Service 生命周期由系统按名字调）----
 -keepclassmembers class * extends android.app.Activity {
