@@ -6334,7 +6334,12 @@
       }
       updLast = { latest: latest, hasUpdate: has };
       if (has) {
-        updSetState("有新版本 " + latest + "，可以下载安装");
+        var srcName = "";
+        var s2 = String(data.source || "");
+        if (/gitee/.test(s2)) srcName = "（Gitee）";
+        else if (/proxy/.test(s2)) srcName = "（代理）";
+        else if (/github/.test(s2)) srcName = "（GitHub）";
+        updSetState("有新版本 " + latest + srcName + "，可以下载安装");
         updShowActions(true);
         /* 启动时的静默检查也要让用户知道 */
         showToast("发现新版本 " + latest);
@@ -6342,6 +6347,16 @@
         updSetState("已是最新版本");
         updShowActions(false);
       }
+      return;
+    }
+    if (state === "source") {
+      /* 正在尝试某个下载源 */
+      var src = String(data.source || "");
+      var label = "更新源";
+      if (/gitee/.test(src)) label = "Gitee";
+      else if (/gh-proxy|ghfast/.test(src)) label = "GitHub 代理";
+      else if (/github\.com/.test(src)) label = "GitHub 直连";
+      updSetState("连接 " + label + "…");
       return;
     }
     if (state === "downloading") {

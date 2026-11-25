@@ -43,15 +43,27 @@ public final class Updater {
 
     private static final String TAG = "CdBusUpdate";
 
-    /** 仓库地址。改仓库时只改这两行。 */
-    private static final String REPO = "yangx4250/chengdu-bus-voice";
+    /** 仓库。GitHub 与 Gitee 同名，改仓库时两处都要改。 */
+    private static final String GH_REPO = "yangx4250/chengdu-bus-voice";
+    private static final String GT_REPO = "yangxiao436426/chengdu-bus-voice";
     private static final String APK_NAME = "chengdu-bus-latest.apk";
 
-    private static final String LATEST_PAGE =
-            "https://github.com/" + REPO + "/releases/latest";
-    /** 固定地址：GitHub 会自动跳到最新 release 的该文件名。 */
-    private static final String DOWNLOAD_URL =
-            "https://github.com/" + REPO + "/releases/latest/download/" + APK_NAME;
+    /**
+     * 更新源，按顺序尝试。
+     *
+     * <p>为什么 Gitee 排第一：实测国内直连 github.com 会超时（12s 无响应），
+     * 而 gitee.com 0.7s 可用。GitHub 直连放最后，给有梯子的场景用。</p>
+     *
+     * <p>代理（gh-proxy / ghfast）实测能完整取到 755666 字节的包，但它们
+     * 是第三方公共服务，可能限速或投毒 —— 所以下载后必须做签名校验，
+     * 见 {@link #verifyApkSignature(File)}。</p>
+     */
+    private static final String[] DOWNLOAD_SOURCES = {
+        "https://gitee.com/" + GT_REPO + "/releases/download/LATEST_TAG/" + APK_NAME,
+        "https://gh-proxy.com/https://github.com/" + GH_REPO + "/releases/latest/download/" + APK_NAME,
+        "https://ghfast.top/https://github.com/" + GH_REPO + "/releases/latest/download/" + APK_NAME,
+        "https://github.com/" + GH_REPO + "/releases/latest/download/" + APK_NAME,
+    };
 
     /** 下载超时。整包 700KB 左右，30 秒足够；慢网也不至于卡死。 */
     private static final int CONNECT_TIMEOUT = 15000;
@@ -66,6 +78,8 @@ public final class Updater {
     private final ExecutorService pool = Executors.newSingleThreadExecutor();
     private final AtomicBoolean busy = new AtomicBoolean(false);
     private volatile boolean cancelled = false;
+    /** 最近一次检查得到的下载地址（Gitee 的，带 tag，优先用）。 */
+    private volatile String lastDownloadUrl = "";
 
     public Updater(Activity activity) {
         this.activity = activity;
@@ -155,22 +169,25 @@ public final class Updater {
             @Override
             public void run() {
                 try {
-                    String tag = fetchLatestTag();
-                    if (tag == null) {
-                        emit(listener, "error", msg("检查更新失败：拿不到版本信息"));
+                    Release rel = fetchLatest();
+                    if (rel == null) {
+                        emit(listener, "error", msg("检查更新失败：所有更新源都不可达"));
                         return;
                     }
                     /* 统一用 versionName 比较 —— versionCode 是自增序号，
                        和语义版本号不同量纲，混比会误判（见 normalize 的注释）。 */
-                    int remote = normalize(tag);
+                    int remote = normalize(rel.tag);
                     int local = normalize(currentVersionName());
                     JSONObject data = new JSONObject();
-                    data.put("latest", tag);
+                    data.put("latest", rel.tag);
                     data.put("current", currentVersionName());
                     data.put("currentCode", local);
                     data.put("latestCode", remote);
                     data.put("hasUpdate", remote > local);
-                    data.put("url", DOWNLOAD_URL);
+                    data.put("url", rel.downloadUrl);
+                    data.put("source", rel.source);
+                    /* 记住这次检查到的下载地址，下载时优先用它 */
+                    lastDownloadUrl = rel.downloadUrl;
                     emit(listener, "checked", data);
                 } catch (Throwable e) {
                     Log.w(TAG, "检查更新失败", e);
@@ -183,16 +200,65 @@ public final class Updater {
     }
 
     /**
-     * 读最新 tag。
+     * 取最新版本信息，按源顺序尝试。
      *
-     * <p>用 HEAD 请求跟随重定向太脆（有些 CDN 不返回 HEAD），这里用 GET 但
-     * 只读响应头、不下载正文：看到 30x 的 Location 就立刻断开，
-     * 拿到 /releases/tag/vX.Y.Z 里的字符串。</p>
+     * <p>三个源各自的取法不同：</p>
+     * <ul>
+     *   <li><b>Gitee API</b>：`/repos/{owner}/{repo}/releases` 返回列表，
+     *       取第一个的 tag_name。公开仓库不需要 token、不限流。</li>
+     *   <li><b>GitHub 重定向</b>：`releases/latest` 的 302 Location 里是 tag。
+     *       不用 API 是因为未认证 60 次/小时就被 403。</li>
+     *   <li><b>代理</b>：代理转发 GitHub 的重定向，取法同 GitHub。</li>
+     * </ul>
+     *
+     * @return {tag, downloadUrl} 或 null（全部失败）
      */
-    private String fetchLatestTag() {
+    private Release checkFromGitee() {
         HttpURLConnection conn = null;
         try {
-            conn = (HttpURLConnection) new URL(LATEST_PAGE).openConnection();
+            String url = "https://gitee.com/api/v5/repos/" + GT_REPO + "/releases?page=1&per_page=1";
+            conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setConnectTimeout(CONNECT_TIMEOUT);
+            conn.setReadTimeout(READ_TIMEOUT);
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("User-Agent", "cdbus-updater");
+            if (conn.getResponseCode() != 200) return null;
+            String body = readAll(conn.getInputStream());
+            org.json.JSONArray arr = new org.json.JSONArray(body);
+            if (arr.length() == 0) return null;
+            org.json.JSONObject rel = arr.getJSONObject(0);
+            String tag = rel.optString("tag_name", "");
+            if (tag.isEmpty()) return null;
+            /* 附件里找 APK */
+            String url2 = "https://gitee.com/" + GT_REPO + "/releases/download/"
+                    + tag + "/" + APK_NAME;
+            /* 有 attach_files 就用它给的地址，否则用约定路径 */
+            org.json.JSONArray assets = rel.optJSONArray("assets");
+            if (assets != null) {
+                for (int i = 0; i < assets.length(); i++) {
+                    org.json.JSONObject a = assets.getJSONObject(i);
+                    if (APK_NAME.equals(a.optString("name"))) {
+                        String u2 = a.optString("browser_download_url", "");
+                        if (!u2.isEmpty()) url2 = u2;
+                        break;
+                    }
+                }
+            }
+            return new Release(tag, url2, "gitee");
+        } catch (Throwable e) {
+            Log.w(TAG, "Gitee 检查失败", e);
+            return null;
+        } finally {
+            if (conn != null) try { conn.disconnect(); } catch (Throwable ignored) {}
+        }
+    }
+
+    /** GitHub 的 latest 重定向（可经代理）。 */
+    private Release checkFromGithubRedirect(String base) {
+        HttpURLConnection conn = null;
+        try {
+            String url = base + "https://github.com/" + GH_REPO + "/releases/latest";
+            conn = (HttpURLConnection) new URL(url).openConnection();
             conn.setInstanceFollowRedirects(false);
             conn.setConnectTimeout(CONNECT_TIMEOUT);
             conn.setReadTimeout(READ_TIMEOUT);
@@ -200,34 +266,70 @@ public final class Updater {
             conn.setRequestProperty("User-Agent", "cdbus-updater");
             int code = conn.getResponseCode();
             String location = conn.getHeaderField("Location");
+            String tag = null;
             if (code >= 300 && code < 400 && location != null) {
                 int idx = location.indexOf("/releases/tag/");
                 if (idx >= 0) {
-                    String tag = location.substring(idx + "/releases/tag/".length());
+                    tag = location.substring(idx + "/releases/tag/".length());
                     int cut = tag.indexOf('?');
                     if (cut > 0) tag = tag.substring(0, cut);
-                    return tag.trim();
+                    tag = tag.trim();
                 }
             }
-            /* 没有重定向：说明 latest 已经是当前页，直接用最终 URL 里解析 */
-            String finalUrl = conn.getURL().toString();
-            int idx2 = finalUrl.indexOf("/releases/tag/");
-            if (idx2 >= 0) return finalUrl.substring(idx2 + "/releases/tag/".length()).trim();
-            return null;
+            if (tag == null || tag.isEmpty()) return null;
+            String dl = base + "https://github.com/" + GH_REPO
+                    + "/releases/latest/download/" + APK_NAME;
+            return new Release(tag, dl, base.isEmpty() ? "github" : "proxy");
         } catch (Throwable e) {
-            Log.w(TAG, "取最新版本失败", e);
+            Log.w(TAG, "GitHub 检查失败（" + (base.isEmpty() ? "直连" : "代理") + "）", e);
             return null;
         } finally {
-            if (conn != null) {
-                try { conn.disconnect(); } catch (Throwable ignored) {}
-            }
+            if (conn != null) try { conn.disconnect(); } catch (Throwable ignored) {}
+        }
+    }
+
+    /** 按 Gitee → 代理 → GitHub 直连的顺序检查。 */
+    private Release fetchLatest() {
+        Release r = checkFromGitee();
+        if (r != null) return r;
+        r = checkFromGithubRedirect("https://gh-proxy.com/");
+        if (r != null) return r;
+        r = checkFromGithubRedirect("https://ghfast.top/");
+        if (r != null) return r;
+        return checkFromGithubRedirect("");
+    }
+
+    /** 版本检查结果。 */
+    static final class Release {
+        final String tag;
+        final String downloadUrl;
+        final String source;
+
+        Release(String tag, String downloadUrl, String source) {
+            this.tag = tag;
+            this.downloadUrl = downloadUrl;
+            this.source = source;
+        }
+    }
+
+    private static String readAll(InputStream in) throws java.io.IOException {
+        try {
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            return out.toString("UTF-8");
+        } finally {
+            try { in.close(); } catch (Throwable ignored) {}
         }
     }
 
     /**
-     * 下载并准备安装。失败/取消都会回调 state。
+     * 下载并准备安装。
      *
-     * @param listener 进度回调：downloading(percent) / verifying / ready / error
+     * <p>按 {@link #DOWNLOAD_SOURCES} 顺序尝试，任何一个成功就停。
+     * 下完必须通过 {@link #verifyApkSignature(File)} —— 第三方代理由其
+     * 不可信，签名校验是唯一能挡住「代理返回投毒包」的手段。</p>
      */
     public void downloadAndInstall(final Listener listener) {
         if (!busy.compareAndSet(false, true)) {
@@ -238,113 +340,217 @@ public final class Updater {
         pool.execute(new Runnable() {
             @Override
             public void run() {
-                File part = null;
                 try {
-                    File dir = ApkProvider.dir(activity);
-                    File apk = new File(dir, APK_NAME);
-                    part = new File(dir, APK_NAME + ".part");
-                    if (part.exists()) {
-                        //noinspection ResultOfMethodCallIgnored
-                        part.delete();
+                    /* 优先用检查阶段拿到的地址（Gitee 带 tag，最准） */
+                    java.util.List<String> urls = new java.util.ArrayList<>();
+                    String first = lastDownloadUrl;
+                    if (first != null && !first.isEmpty()) urls.add(first);
+                    for (String u : DOWNLOAD_SOURCES) {
+                        if (u != null && !u.isEmpty() && !u.contains("LATEST_TAG")
+                                && !urls.contains(u)) {
+                            urls.add(u);
+                        }
                     }
 
-                    HttpURLConnection conn = (HttpURLConnection) new URL(DOWNLOAD_URL).openConnection();
-                    conn.setInstanceFollowRedirects(true);
-                    conn.setConnectTimeout(CONNECT_TIMEOUT);
-                    conn.setReadTimeout(READ_TIMEOUT);
-                    conn.setRequestProperty("User-Agent", "cdbus-updater");
-                    int code = conn.getResponseCode();
-                    if (code != 200) {
-                        emit(listener, "error", msg("下载失败：HTTP " + code));
-                        return;
-                    }
-                    long total = conn.getContentLength();
-                    InputStream in = conn.getInputStream();
-                    FileOutputStream out = new FileOutputStream(part);
-                    byte[] buf = new byte[8192];
-                    long done = 0;
-                    int lastPercent = -1;
-                    long lastEmit = 0;
-                    int n;
-                    while ((n = in.read(buf)) > 0) {
+                    File dir = ApkProvider.dir(activity);
+                    File apk = new File(dir, APK_NAME);
+                    File part = new File(dir, APK_NAME + ".part");
+
+                    String lastErr = "";
+                    for (int i = 0; i < urls.size(); i++) {
                         if (cancelled) {
-                            out.close();
-                            in.close();
-                            //noinspection ResultOfMethodCallIgnored
-                            part.delete();
-                            conn.disconnect();
                             emit(listener, "error", msg("已取消"));
                             return;
                         }
-                        out.write(buf, 0, n);
-                        done += n;
-                        if (total > 0) {
-                            int percent = (int) (done * 100 / total);
-                            long now = System.currentTimeMillis();
-                            /* 进度别刷太勤：变化 >=1% 且间隔 >=200ms 才回调一次 */
-                            if (percent != lastPercent && (now - lastEmit >= 200 || percent == 100)) {
-                                lastPercent = percent;
-                                lastEmit = now;
-                                JSONObject d = new JSONObject();
-                                d.put("percent", percent);
-                                d.put("done", done);
-                                d.put("total", total);
-                                emit(listener, "downloading", d);
+                        String url = urls.get(i);
+                        try {
+                            JSONObject d = new JSONObject();
+                            d.put("source", url);
+                            d.put("index", i);
+                            emit(listener, "source", d);
+
+                            if (part.exists()) {
+                                //noinspection ResultOfMethodCallIgnored
+                                part.delete();
                             }
+                            long total = downloadOne(url, part, listener);
+                            if (total < 0) {          // 取消
+                                return;
+                            }
+                            if (total == 0) {
+                                lastErr = "下载失败";
+                                continue;
+                            }
+
+                            /* 大小校验 */
+                            long size = part.length();
+                            if (total > 0 && size != total) {
+                                lastErr = "下载不完整 " + size + "/" + total;
+                                continue;
+                            }
+                            if (!isZip(part)) {
+                                lastErr = "不是有效安装包";
+                                continue;
+                            }
+
+                            JSONObject vd = new JSONObject();
+                            vd.put("size", size);
+                            emit(listener, "verifying", vd);
+
+                            /* 签名校验：必须和已安装的一致，否则装不上、也可能是投毒 */
+                            String sigErr = verifyApkSignature(part);
+                            if (sigErr != null) {
+                                lastErr = sigErr;
+                                continue;
+                            }
+
+                            if (apk.exists()) {
+                                //noinspection ResultOfMethodCallIgnored
+                                apk.delete();
+                            }
+                            if (!part.renameTo(apk)) {
+                                lastErr = "保存失败";
+                                continue;
+                            }
+
+                            JSONObject rd = new JSONObject();
+                            rd.put("path", apk.getAbsolutePath());
+                            rd.put("size", apk.length());
+                            rd.put("sha256", sha256(apk));
+                            rd.put("source", url);
+                            emit(listener, "ready", rd);
+                            return;
+                        } catch (Throwable e) {
+                            lastErr = e.getMessage() == null ? e.toString() : e.getMessage();
+                            Log.w(TAG, "源失败：" + url, e);
                         }
                     }
-                    out.flush();
-                    out.close();
-                    in.close();
-                    conn.disconnect();
-
-                    /* 大小校验：Content-Length 和实际字节数对不上就是半截包 */
-                    long size = part.length();
-                    if (total > 0 && size != total) {
-                        //noinspection ResultOfMethodCallIgnored
-                        part.delete();
-                        emit(listener, "error", msg("下载不完整：" + size + "/" + total + " 字节"));
-                        return;
-                    }
-                    /* 粗校验：APK 是 zip，前两个字节必须是 PK */
-                    if (!isZip(part)) {
-                        //noinspection ResultOfMethodCallIgnored
-                        part.delete();
-                        emit(listener, "error", msg("下载的文件不是有效安装包"));
-                        return;
-                    }
-
-                    JSONObject vd = new JSONObject();
-                    vd.put("size", size);
-                    emit(listener, "verifying", vd);
-
-                    /* 换名：先删旧的，再把 .part 挪正 */
-                    if (apk.exists()) {
-                        //noinspection ResultOfMethodCallIgnored
-                        apk.delete();
-                    }
-                    if (!part.renameTo(apk)) {
-                        emit(listener, "error", msg("安装包保存失败"));
-                        return;
-                    }
-
-                    JSONObject rd = new JSONObject();
-                    rd.put("path", apk.getAbsolutePath());
-                    rd.put("size", apk.length());
-                    rd.put("sha256", sha256(apk));
-                    emit(listener, "ready", rd);
-                } catch (Throwable e) {
-                    Log.w(TAG, "下载失败", e);
-                    if (part != null && part.exists()) {
-                        //noinspection ResultOfMethodCallIgnored
-                        part.delete();
-                    }
-                    emit(listener, "error", msg("下载失败：" + e.getMessage()));
+                    emit(listener, "error", msg("所有更新源都失败：" + lastErr));
                 } finally {
                     busy.set(false);
                 }
             }
         });
+    }
+
+    /**
+     * 从单个 URL 下载到 part 文件。
+     *
+     * @return 总字节数；0 表示这个源失败（调用方换下一个）；-1 表示用户取消
+     */
+    private long downloadOne(String url, File part, Listener listener) throws Exception {
+        HttpURLConnection conn = null;
+        FileOutputStream out = null;
+        InputStream in = null;
+        try {
+            conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setInstanceFollowRedirects(true);
+            conn.setConnectTimeout(CONNECT_TIMEOUT);
+            conn.setReadTimeout(READ_TIMEOUT);
+            conn.setRequestProperty("User-Agent", "cdbus-updater");
+            int code = conn.getResponseCode();
+            if (code != 200) {
+                Log.w(TAG, "HTTP " + code + " @ " + url);
+                return 0;
+            }
+            long total = conn.getContentLength();
+            in = conn.getInputStream();
+            out = new FileOutputStream(part);
+            byte[] buf = new byte[8192];
+            long done = 0;
+            int lastPercent = -1;
+            long lastEmit = 0;
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                if (cancelled) {
+                    emit(listener, "error", msg("已取消"));
+                    //noinspection ResultOfMethodCallIgnored
+                    part.delete();
+                    return -1;
+                }
+                out.write(buf, 0, n);
+                done += n;
+                if (total > 0) {
+                    int percent = (int) (done * 100 / total);
+                    long now = System.currentTimeMillis();
+                    if (percent != lastPercent && (now - lastEmit >= 200 || percent == 100)) {
+                        lastPercent = percent;
+                        lastEmit = now;
+                        JSONObject d = new JSONObject();
+                        d.put("percent", percent);
+                        d.put("done", done);
+                        d.put("total", total);
+                        emit(listener, "downloading", d);
+                    }
+                }
+            }
+            out.flush();
+            return total > 0 ? total : part.length();
+        } finally {
+            if (out != null) try { out.close(); } catch (Throwable ignored) {}
+            if (in != null) try { in.close(); } catch (Throwable ignored) {}
+            if (conn != null) try { conn.disconnect(); } catch (Throwable ignored) {}
+        }
+    }
+
+    /**
+     * 校验下载到的 APK 签名是否与本机已安装的一致。
+     *
+     * <p>为什么用签名而不是硬编码 SHA-256：包每版都变，硬编码哈希要每版改代码。
+     * 签名证书是固定的（本项目 keystore 不变），校验它既省事又能挡住投毒 ——
+     * 第三方代理返回的假包签名必然不同。</p>
+     *
+     * @return null 表示通过；否则返回错误说明
+     */
+    private String verifyApkSignature(File apk) {
+        try {
+            android.content.pm.PackageManager pm = activity.getPackageManager();
+            int flags = Build.VERSION.SDK_INT >= 28
+                    ? android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES
+                    : android.content.pm.PackageManager.GET_SIGNATURES;
+
+            /* 下载包的签名 */
+            android.content.pm.PackageInfo remote = pm.getPackageArchiveInfo(apk.getAbsolutePath(), flags);
+            if (remote == null) return "安装包无法解析";
+            if (!activity.getPackageName().equals(remote.packageName)) {
+                return "包名不符：" + remote.packageName;
+            }
+
+            /* 本机已安装的签名 */
+            android.content.pm.PackageInfo local = pm.getPackageInfo(activity.getPackageName(), flags);
+            String a = signatureOf(local);
+            String b = signatureOf(remote);
+            if (a == null || a.isEmpty()) return "读不到本机签名";
+            if (b == null || b.isEmpty()) return "读不到安装包签名";
+            if (!a.equals(b)) return "签名不一致（可能被篡改）";
+            return null;
+        } catch (Throwable e) {
+            return "签名校验失败：" + e.getMessage();
+        }
+    }
+
+    /** 取包信息的签名摘要（hex）。 */
+    private static String signatureOf(android.content.pm.PackageInfo info) {
+        try {
+            byte[] bytes;
+            if (Build.VERSION.SDK_INT >= 28) {
+                android.content.pm.SigningInfo si = info.signingInfo;
+                if (si == null) return null;
+                android.content.pm.Signature[] sigs = si.getApkContentsSigners();
+                if (sigs == null || sigs.length == 0) return null;
+                bytes = sigs[0].toByteArray();
+            } else {
+                android.content.pm.Signature[] sigs = info.signatures;
+                if (sigs == null || sigs.length == 0) return null;
+                bytes = sigs[0].toByteArray();
+            }
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            StringBuilder sb = new StringBuilder();
+            for (byte x : md.digest(bytes)) sb.append(String.format("%02x", x));
+            return sb.toString();
+        } catch (Throwable e) {
+            return null;
+        }
     }
 
     /** 取消当前下载。 */
