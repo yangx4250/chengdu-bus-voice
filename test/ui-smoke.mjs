@@ -3844,38 +3844,42 @@ if (stage19.length) {
   for (const f of stage19) console.error('  - ' + f);
   process.exit(1);
 }
-/* ------------------------ 刷新后站名条要对准「离我最近」 */
+/* ------------------ 站名条滚动：自动刷新不动、手动刷新才回最近站 */
 const stage20 = [];
 {
-  /* 决策顺序：没选过站 → 滚到最近；选过站 → 以选中为准（不打断浏览） */
-  /* DOM 桩没有真实布局和定位坐标，跑不出「最近站」，
-     所以这里查源码里的决策顺序：没选中站时优先滚 nearest。 */
-  const scrollBlock = html.slice(html.indexOf('if (opts && opts.scroll && !hasActive && nearestId)'));
-  if (!scrollBlock) {
-    stage20.push('找不到「没选中站时滚到最近」的分支');
-  } else if (!/\.chip\.nearest/.test(scrollBlock.slice(0, 800))) {
-    stage20.push('滚动分支没有用 .chip.nearest 作为目标');
+  /* 1) renderLineView 必须接收 scroll 参数，而不是写死 true */
+  if (!/function renderLineView\(opts\)/.test(html)) {
+    stage20.push('renderLineView 没有接收 scroll 参数（滚动行为无法区分自动/手动）');
   }
-  const hasActiveDecl = /var hasActive = box\.querySelector && box\.querySelector\("\.chip\.on"\)/.test(html);
-  if (!hasActiveDecl) {
-    stage20.push('没有先判断「是否已选中某站」，选过站时会打断用户浏览');
+  if (/renderLineStations\(\{\s*scroll:\s*true\s*\}\)\s*;\s*\n\s*renderLineNav/.test(html)) {
+    stage20.push('renderLineView 里写死了 scroll: true，自动刷新也会被拽回最近站');
+  }
+  const viewBody = (html.match(/function renderLineView\(opts\) \{([\s\S]*?)\n  \}/) || [])[1] || '';
+  if (!/renderLineStations\(\{\s*scroll:\s*Boolean\(opts && opts\.scroll\)\s*\}\)/.test(viewBody)) {
+    stage20.push('renderLineView 没有把 opts.scroll 传给 renderLineStations');
   }
 
-  /* 源码层面：三条重画路径都必须要求滚动 */
-  const lvMatches = [...html.matchAll(/renderLineStations\(([^)]*)\)/g)]
-    .map((m) => m[1].trim());
-  if (!lvMatches.some((a) => a.includes('scroll: true'))) {
-    stage20.push('没有任何一处 renderLineStations 带 scroll: true，站名条不会对准最近站');
+  /* 2) 自动刷新路径必须不滚 */
+  if (/\(!auto\) \|\| view\.scrollOnLoad/.test(html) === false) {
+    stage20.push('loadMatrix 里没有「自动刷新不滚、手动才滚」的判定');
   }
-  /* 自动刷新那条（renderLineView 内）必须带 */
-  const viewBody = (html.match(/function renderLineView\(\) \{([\s\S]*?)\n  \}/) || [])[1] || '';
-  if (!/renderLineStations\(\{\s*scroll:\s*true\s*\}\)/.test(viewBody)) {
-    stage20.push('renderLineView 里重画站名条没带 scroll，自动刷新不会对准最近站');
-  }
+  /* 3) 30 秒车辆刷新必须显式 scroll:false */
   const busesIdx = html.indexOf('async function refreshLineBuses');
   const busesSeg = busesIdx >= 0 ? html.slice(busesIdx, busesIdx + 1600) : '';
-  if (!/renderLineStations\(\{\s*scroll:\s*true\s*\}\)/.test(busesSeg)) {
-    stage20.push('车辆位置刷新后重画站名条没带 scroll');
+  if (!/renderLineStations\(\{\s*scroll:\s*false\s*\}\)/.test(busesSeg)) {
+    stage20.push('车辆位置刷新（30 秒定时）仍会拽回最近站，应为 scroll:false');
+  }
+  /* 4) 点站名不滚 */
+  if (/点站名[\s\S]{0,200}renderLineView\(\)/.test(html)) {
+    stage20.push('点站名的路径还在无参调用 renderLineView');
+  }
+  /* 5) 决策顺序：没选中站时优先 nearest */
+  const scrollBlock = html.slice(html.indexOf('if (opts && opts.scroll && !hasActive && nearestId)'));
+  if (!scrollBlock || !/\.chip\.nearest/.test(scrollBlock.slice(0, 800))) {
+    stage20.push('滚动分支没有用 .chip.nearest 作为目标');
+  }
+  if (!/var hasActive = box\.querySelector && box\.querySelector\("\.chip\.on"\)/.test(html)) {
+    stage20.push('没有先判断「是否已选中某站」');
   }
 }
 
@@ -3884,7 +3888,7 @@ if (stage20.length) {
   for (const f of stage20) console.error('  - ' + f);
   process.exit(1);
 }
-console.log('✓ 站名条滚动通过：刷新后对准最近站、选过站时以选中为准、重画路径都带 scroll');
+console.log('✓ 站名条滚动通过：自动刷新保持原位、手动刷新才回最近站、点站名不滚、切方向回最近');
 
 console.log('✓ Gitee 版本选择通过：拉多条 release 按版本号取最大、跳过 prerelease');
 

@@ -2559,7 +2559,7 @@
   }
 
   /* 重新画这一页的顶栏 + 方向 + 站名 + 导航（方向切换、选站时都用它） */
-  function renderLineView() {
+  function renderLineView(opts) {
     var lv = state.lineView;
     if (!lv) return;
     var titleEl = $("dtitle");
@@ -2573,8 +2573,10 @@
     renderLineDirections();
     renderLineBuses();
     /* scroll: true → 站名条横向滚到「离我最近」的站。
-       自动刷新（每 30 秒）和手动刷新都会走到这里。 */
-    renderLineStations({ scroll: true });
+       只有**手动刷新 / 用户主动操作**才传 true；
+       30 秒自动刷新传 false（保持用户当前浏览位置），
+       否则正看着后面几站时会被反复拽回去。 */
+    renderLineStations({ scroll: Boolean(opts && opts.scroll) });
     renderLineNav();
     renderStationFavRow();
   }
@@ -2844,8 +2846,8 @@
       lv.buses = buses;
       lv.busesAt = Date.now();
       renderLineBuses();
-      /* 车辆位置更新后也让站名条对准「离我最近」 */
-      renderLineStations({ scroll: true });
+      /* 车辆位置刷新属于自动刷新：不改变站名条滚动位置 */
+      renderLineStations({ scroll: false });
     } catch (e) {
       /* 静默失败，保留上一次的图标 */
     }
@@ -3040,7 +3042,7 @@
         /* 换站就把「同站其它」一起换掉 —— 这一块讲的永远是当前选中那一站 */
         view.pickedStation = { name: station.name, order: station.order, stationId: station.stationId, lat: station.lat, lng: station.lng };
         renderLineStations();
-        renderLineView();
+        renderLineView({ scroll: false });
         loadStationOthers().catch(function () {});
         /* 点站名 = 只刷数据、不出声（用户要求：从任何入口进详情、
            点上面的站名都不要念）。想听就点左下角 🔊 悬浮按钮。
@@ -3120,9 +3122,10 @@
       view.stationName = station.name;
       view.fromOrder = station.order;
     }
-    renderLineView();
+    /* 换方向 = 换了一整条线，旧滚动位置没意义 → 回到最近站 */
+    renderLineView({ scroll: true });
     refreshLineBuses();
-    await loadMatrix();
+    await loadMatrix({ scrollStations: true });
     if (state.station) await refresh(false);
     else renderLineEmpty();
   }
@@ -3280,6 +3283,8 @@
 
   async function loadMatrix(options) {
     var auto = Boolean(options && options.auto);
+    /* scrollStations：强制/禁止站名条滚到最近站，覆盖默认规则 */
+    var forceScrollStations = options && options.scrollStations;
     try {
       var data = await rpc("matrix", { lineId: view.lineId, fromOrder: view.fromOrder, window: 80 });
       view.data = data;
@@ -3354,11 +3359,14 @@
       if (!lv.buses) lv.buses = [];
       if (!lv.busesAt) lv.busesAt = 0;
       state.lineView = lv;
-      /* 每次重画都让站名条滚到「离我最近」那一站 ——
-         以前只有首次进页会滚，之后的自动/手动刷新都保持旧位置，
-         看起来像「刷新后没对准我」。到站表的纵向滚动仍只在首次进页做，
-         避免打断用户正在看的内容。 */
-      renderLineView();
+      /* 站名条是否回到「离我最近」：
+           - 30 秒自动刷新（auto=true）→ 不动，保持用户正在看的位置
+           - 手动刷新 / 首次进页      → 回到最近站
+         到站表的纵向滚动仍只在首次进页时做。 */
+      var scrollStations = forceScrollStations !== undefined
+        ? Boolean(forceScrollStations)
+        : ((!auto) || view.scrollOnLoad);
+      renderLineView({ scroll: scrollStations });
       var wantScroll = view.scrollOnLoad;
       view.scrollOnLoad = false;
       renderTimes({ scroll: wantScroll, nearest: wantScroll });
@@ -3445,7 +3453,8 @@
     for (var ri = 0; ri < rows2.length; ri++) rows2[ri].classList.remove("picked");
     if (rowEl) rowEl.classList.add("picked");
 
-    renderLineView();
+    /* 用户已明确点了某站，别再滚动把视图拉走 */
+    renderLineView({ scroll: false });
     window.cdBusLastPick = { order: st.order, name: st.name, stationId: st.stationId };
 
     /* 不走 run()：它有 state.busy 守卫，盯站轮询 / 自动刷新期间点站会被静默吞掉，
