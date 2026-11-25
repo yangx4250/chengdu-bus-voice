@@ -69,24 +69,41 @@ def step(n, total, msg):
     print(f"\n== {n}/{total} {msg}")
 
 
-def http_json(url, method="GET", body=None, token=None, timeout=90):
-    """发 JSON 请求，返回 (status, 解析后的对象或错误文本)。"""
+def http_json(url, method="GET", body=None, token=None, timeout=90, retries=3):
+    """发 JSON 请求，返回 (status, 解析后的对象或错误文本)。
+
+    5xx 会重试 —— GitHub 的建 Release 接口实测会返回 500 且响应体为空，
+    隔几秒重试就成功（服务端瞬时故障，不是我们的请求有问题）。
+    """
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(url, data=data, method=method, headers={
-        "User-Agent": "cdbus-release",
-        "Accept": "application/vnd.github+json",
-        "Content-Type": "application/json",
-    })
-    if token:
-        req.add_header("Authorization", f"Bearer {token}")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            raw = r.read()
-            return r.status, (json.loads(raw) if raw else {})
-    except urllib.error.HTTPError as e:
-        return e.code, e.read().decode()[:500]
-    except Exception as e:
-        return None, str(e)[:300]
+    last = (None, "")
+    for attempt in range(retries):
+        req = urllib.request.Request(url, data=data, method=method, headers={
+            "User-Agent": "cdbus-release",
+            "Accept": "application/vnd.github+json",
+            "Content-Type": "application/json",
+        })
+        if token:
+            req.add_header("Authorization", f"Bearer {token}")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                raw = r.read()
+                return r.status, (json.loads(raw) if raw else {})
+        except urllib.error.HTTPError as e:
+            txt = e.read().decode()[:500]
+            last = (e.code, txt)
+            if e.code >= 500 and attempt < retries - 1:
+                print(f"   ⚠ {e.code}，{6 * (attempt + 1)} 秒后重试…")
+                time.sleep(6 * (attempt + 1))
+                continue
+            return last
+        except Exception as e:
+            last = (None, str(e)[:300])
+            if attempt < retries - 1:
+                time.sleep(4)
+                continue
+            return last
+    return last
 
 
 def md5_of(path):
@@ -228,7 +245,7 @@ def release_github(version_name, title, notes, token):
             "draft": False, "prerelease": False,
         }, token=token)
         if st not in (200, 201):
-            die(f"GitHub 建 Release 失败：{out}")
+            die(f"GitHub 建 Release 失败：HTTP {st} {out}")
         rid = out["id"]
         ok(f"GitHub Release 已创建（id={rid}）")
 
