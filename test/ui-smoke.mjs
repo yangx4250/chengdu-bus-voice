@@ -958,18 +958,20 @@ if (!/待发车 09:24/.test(spoken)) failures.push('播报没有念待发车时�
 if (!/暂无实时车辆/.test(spoken)) failures.push('播报没有说明无车：' + spoken);
 
 /* v1.0.49：首页去掉「查询并播报」「当前位置」两个按钮——
-   查询变成搜索框右边的 🔍，刷新变成标题栏设置左边的 🔄。 */
+   查询变成搜索框右边的 🔍。
+   v1.1.8 起顶栏改为：设置居左、标题居中、刷新居右（按钮位置上移到了标题两侧）。 */
 if (/id="near"/.test(html)) failures.push('首页还留着「当前位置」按钮');
 if (/>查询并播报</.test(html)) failures.push('首页还留着「查询并播报」按钮');
 if (/<button id="go"[^>]*>查询并播报/.test(html)) failures.push('查询按钮还是文字，不是 🔍');
 if (!/<input id="line"[\s\S]{0,200}?<button id="go" class="searchgo"[^>]*>🔍<\/button>/.test(html)) {
   failures.push('搜索框右边没有 🔍 查询按钮');
 }
-if (!/id="refreshHome" class="iconbtn"[^>]*>🔄</.test(html)) {
+if (!/id="refreshHome" class="iconbtn[^"]*"[^>]*>🔄</.test(html)) {
   failures.push('刷新按钮没有变成 🔄 图标');
 }
-if (html.indexOf('id="refreshHome"') > html.indexOf('id="settingsBtn"')) {
-  failures.push('刷新按钮没放在设置按钮左边');
+/* 新布局：设置在最左、刷新在最右，标题在中间 —— 见下方「顶栏布局」专项断言 */
+if (html.indexOf('id="settingsBtn"') > html.indexOf('id="refreshHome"')) {
+  failures.push('设置按钮应在刷新按钮左边（新布局：设置居左、刷新居右）');
 }
 if (!/\.searchgo\s*\{[^}]*width:\s*46px/.test(html)) {
   failures.push('🔍 按钮没有单独的图标尺寸样式');
@@ -1679,20 +1681,23 @@ if (/\.armeta\.live\s*\{/.test(html) || /\.armeta\.hot\s/.test(html)) {
   stage3.push('样式表里还留着 .armeta.live / .armeta.hot 规则');
 }
 
-/* 收班行仍然要变淡（这是唯一保留的行状态） */
-const endedRow = rowOf('716路');
-if (endedRow && !hasClass(endedRow, 'ended')) {
-  stage3.push('已收班的 716 格子没有标 ended（应收班变淡）');
+/* 首页取消变灰：这个物理站是双向共用，站序只对应一个方向，另一个方向的车
+   可能还在跑，所以首页任何线路格子都不该带 ended 类（详情页才判收班）。 */
+for (const ln of ['P02', 'P10', '716', 'P36', '45', '801']) {
+  const cell = rowOf(ln + '路');
+  if (cell && hasClass(cell, 'ended')) {
+    stage3.push('首页线路 ' + ln + ' 仍被标成已收班变灰（首页不该变灰）');
+  }
 }
 
 /* v1.0.26：灰色（不在运营时段）的格子也要能点进去看。
    这里必须真的点一下——守卫写在 onclick 函数体里，只看有没有函数抓不到回归。 */
-const endedCell = rowOf('716路');
-if (endedCell && typeof endedCell.onclick === 'function') {
-  endedCell.onclick();
+const anyCell = rowOf('716路');
+if (anyCell && typeof anyCell.onclick === 'function') {
+  anyCell.onclick();
   await new Promise((r) => setTimeout(r, 900));
   if (String(document.getElementById('detail').className).includes('hidden')) {
-    stage3.push('点已收班的 716 格子没有进入详情页（灰色线路也应能点进去看）');
+    stage3.push('点首页线路格子没有进入详情页');
   }
   window.cdBusBackView();
   await new Promise((r) => setTimeout(r, 400));
@@ -2300,6 +2305,40 @@ else {
     let leftover = null;
     try { leftover = localStorage.getItem('cdbus.othersFolded'); } catch (e) {}
     if (leftover !== null) stage5.push('折叠状态仍被写进 localStorage：' + leftover);
+  }
+
+  /* 点站名一律不播报（用户要求：从任何入口进详情、点上面的站名都不要出声）。
+     这里把两条渲染路径的站名芯片都点一遍，确认 speakLog 没增长。 */
+  {
+    const before = speakLog.length;
+    const chipsBox = document.getElementById('lchips');
+    const chips = (chipsBox && chipsBox.children) || [];
+    if (chips.length) {
+      const c0 = chips[chips.length - 1];
+      if (typeof c0.onclick === 'function') {
+        c0.onclick();
+        await new Promise((r) => setTimeout(r, 700));
+      }
+    }
+    const chips2 = (document.getElementById('dchips') || {}).children || [];
+    for (const c of Array.from(chips2).slice(0, 2)) {
+      if (typeof c.onclick === 'function') {
+        c.onclick();
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    if (speakLog.length !== before) {
+      stage5.push('点详情页站名仍会自动播报：' + speakLog.slice(before).join(' / ').slice(0, 80));
+    }
+  }
+
+  /* 源码层面：三处「点站名后的刷新」都不能传 true，openDetail 也不该再播报 */
+  if (/refresh\(true\)/.test(html)) {
+    stage5.push('代码里仍有 refresh(true)：点站名会自动播报');
+  }
+  const openDetailBody = (html.match(/async function openDetail\(opts\) \{([\s\S]*?)\n  \}/) || [])[1] || '';
+  if (/speak\(/.test(openDetailBody)) {
+    stage5.push('openDetail 里仍有 speak()：进详情会自动播报');
   }
 
   /* 「同站其它」必须跟着用户当前选中的站走：
@@ -3457,43 +3496,58 @@ if (stage14.length) {
   process.exit(1);
 }
 /* ------------------------------ 有在途车辆时不能判「不在运营时段」 */
+const mjs = (await import('node:fs')).readFileSync(
+  (await import('node:path')).join(here, '..', 'lib', 'chelaile.mjs'), 'utf-8');
+
 const stage15 = [];
 {
   const os = window.cdBusOutsideService;
   if (typeof os !== 'function') {
     stage15.push('outsideService 没有导出，无法校验');
   } else {
-    /* 时间设成一定「过了末班」的线路：07:40-13:00 */
+    /* 用一条一定「已过末班」的线路：07:40-13:00（当前时间远超末班） */
     const first = '07:40', last = '13:00';
 
-    /* 1) 有 stationsAway、但 ETA 是 null（区县线路常见）→ 不能判灰 */
-    if (os(first, last, { stationsAway: 9, etaSeconds: null }) !== false) {
-      stage15.push('有车但 ETA 为 null 被判成不在运营时段');
+    /* 1) 最后一辆车还没到本站（away > 0）→ 不算收班，保持白色 */
+    if (os(first, last, { stationsAway: 2 }) !== false) {
+      stage15.push('车还没到本站就判成收班了');
     }
-    /* 2) 有 stationsAway、ETA 是 -1（崇州实测）→ 不能判灰 */
-    if (os(first, last, { stationsAway: 6, etaSeconds: -1 }) !== false) {
-      stage15.push('有车但 ETA 为 -1 被判成不在运营时段');
+    /* 2) 车正好在本站（away = 0）→ 不算收班 */
+    if (os(first, last, { stationsAway: 0 }) !== false) {
+      stage15.push('车正在本站却被判成收班');
     }
-    /* 3) stationsAway 为 0（即将到站）→ 不能判灰 */
-    if (os(first, last, { stationsAway: 0, etaSeconds: null }) !== false) {
-      stage15.push('车已到站却被判成不在运营时段');
+    /* 3) 最后一辆车已驶过本站（away < 0）→ 收班，变灰 */
+    if (os(first, last, { stationsAway: -1 }) !== true) {
+      stage15.push('车已驶过本站却没判成收班');
     }
-    /* 4) 待发车 → 不能判灰 */
-    if (os(first, last, { stationsAway: null, etaSeconds: null, preStartTime: '09:20' }) !== false) {
-      stage15.push('待发车被判成不在运营时段');
+    if (os(first, last, { stationsAway: -5 }) !== true) {
+      stage15.push('车驶过多站后没判成收班');
     }
-    /* 5) 真的没车（stationsAway 为 null 且无待发）→ 应判灰 */
-    if (os(first, last, { stationsAway: null, etaSeconds: null }) !== true) {
-      stage15.push('确实没车却没判不在运营时段');
+    /* 4) 完全没车（arrival 为 null）且已过末班 → 收班 */
+    if (os(first, last, null) !== true) {
+      stage15.push('彻底没车却没判成收班');
     }
-    /* 6) 数据缺失（首末班为空）→ 不判灰，避免整片变灰 */
-    if (os(undefined, undefined, { stationsAway: 3, etaSeconds: -1 }) !== false) {
-      stage15.push('首末班缺失时把有车的线路判灰了');
+    /* 5) 待发车 → 不算收班 */
+    if (os(first, last, { stationsAway: null, preStartTime: '09:20' }) !== false) {
+      stage15.push('待发车被判成收班');
+    }
+    /* 6) 还没到末班时间 → 一律不算收班（哪怕车已驶过）。
+          不要用「当前时间 +N 小时」构造，跨午夜时会算出已过的末班，用例自身就错。
+          用 24 小时运营线路（00:00-23:59）：任何时刻都在区间内。 */
+    if (os('00:00', '23:59', { stationsAway: -3 }) !== false) {
+      stage15.push('还没到末班时间就把线路判成收班（24 小时线路被误判）');
+    }
+    /* 7) 首末班数据缺失 → 不判灰（数据缺失不等于收班） */
+    if (os(undefined, undefined, { stationsAway: -2 }) !== false) {
+      stage15.push('首末班缺失时把线路判灰了');
     }
 
-    /* 7) 源码层面：无实时数据的补查格子不该只凭时间判灰 */
-    if (/ended:\s*outsideService\(firstTime,\s*lastTime,\s*null\)/.test(html)) {
-      stage15.push('补查格子仍只凭时间判收班（区县线路会整片变灰）');
+    /* 8) 客户端必须保留负数 stationsAway —— 截断成 0 就分不出「驶过」和「到站」 */
+    if (!/arrived: stationsAway === 0/.test(mjs)) {
+      stage15.push('arrivals 里 arrived 仍用 <=0，区分不了「驶过」与「到站」');
+    }
+    if (/Math\.max\(0, .*target\.order/.test(mjs)) {
+      stage15.push('nearby 又把 stationsAway 截断成 0 了');
     }
   }
 }
@@ -3503,7 +3557,156 @@ if (stage15.length) {
   for (const f of stage15) console.error('  - ' + f);
   process.exit(1);
 }
-console.log('✓ 收班判定通过：有车（含 ETA 为 -1/null）不判灰、待发车不判灰、真没车才变淡');
+/* ------------------------------------------ 顶栏布局：标题居中、左右按钮 */
+const stage16 = [];
+{
+  const top = (html.match(/<div class="topline">[\s\S]*?<\/div>/) || [])[0] || '';
+  if (!top) stage16.push('找不到 topline 容器');
+
+  /* 1) 标题必须在最前，但两侧按钮用绝对定位 —— 标题本身不能和按钮抢 flex 空间 */
+  const h1Rule = (html.match(/\.homehead \.topline h1 \{([^}]*)\}/) || [])[1] || '';
+  if (!/text-align:\s*center/.test(h1Rule)) {
+    stage16.push('标题没有居中（缺 text-align: center）');
+  }
+  if (!/order:\s*2/.test(h1Rule) || !/flex:\s*1 1 auto/.test(h1Rule)) {
+    stage16.push('标题没有占中间并居中：' + h1Rule.trim().slice(0, 70));
+  }
+  /* 顶栏必须是 flex 三元素布局，且两侧按钮同宽对称。
+     踩过的坑（都有截图佐证）：
+       - grid 1fr auto 1fr 会被倒计时数字挤出新行，刷新按钮掉到第二行；
+       - position:absolute 被 .iconbtn 的 flex 规则盖掉，按钮挤在中间；
+       - 两侧宽度不等时 margin:auto 只平分剩余空间，标题偏左。 */
+  const topRule = (html.match(/\.homehead \.topline \{([^}]*)\}/) || [])[1] || '';
+  if (!/display:\s*flex/.test(topRule)) {
+    stage16.push('顶栏不是 flex 布局：' + topRule.trim().slice(0, 70));
+  }
+  if (/display:\s*grid/.test(topRule)) {
+    stage16.push('顶栏又用回 grid 了（会被第四个元素撑出新行）');
+  }
+  /* 关键：顶部那条通用 header { display:flex; align-items:center } 会把
+     .homehead 也变成横向 flex、并按内容宽度居中缩起来 —— 按钮因此永远贴不到边。
+     必须显式 width:100% + align-items:stretch 覆盖掉。 */
+  const headRule = (html.match(/\.homehead \{([^}]*)\}/) || [])[1] || '';
+  if (!/width:\s*100%/.test(headRule)) {
+    stage16.push('homehead 没有拉满宽度，顶栏会缩成内容宽度：' + headRule.trim().slice(0, 70));
+  }
+  if (!/align-items:\s*stretch/.test(headRule)) {
+    stage16.push('homehead 没有覆盖 header 的 align-items:center：' + headRule.trim().slice(0, 70));
+  }
+  if (!/flex-direction:\s*column/.test(headRule)) {
+    stage16.push('homehead 不是纵向布局（会被 header 的横向 flex 接管）');
+  }
+  /* 通用 header 规则若被改成 align-items:stretch 等，也要能兜住 */
+  if (/header\s*\{[^}]*align-items:\s*center/.test(html) && !/align-items:\s*stretch/.test(headRule)) {
+    stage16.push('header 的 align-items:center 仍在生效且 homehead 未覆盖');
+  }
+
+  /* 右侧容器（刷新按钮 + 倒计时）—— 后面的断言都要用，先声明 */
+  const wrapRule = (html.match(/\.homehead \.refwrap \{([^}]*)\}/) || [])[1] || '';
+  const btnRule = (html.match(/#settingsBtn\.edgebtn,\s*#refreshHome\.edgebtn \{([^}]*)\}/) || [])[1] || '';
+  if (!/flex:\s*0 0 44px/.test(btnRule) || !/width:\s*44px/.test(btnRule)) {
+    stage16.push('两侧按钮不是等宽固定尺寸，标题会偏：' + btnRule.trim().slice(0, 70));
+  }
+  /* 取所有匹配里的最后一条（组合选择器在前、单独 id 规则在后） */
+  const allSet = [...html.matchAll(/#settingsBtn\.edgebtn \{([^}]*)\}/g)];
+  const allRef = [...html.matchAll(/#refreshHome\.edgebtn \{([^}]*)\}/g)];
+  const setRule = allSet.length ? allSet[allSet.length - 1][1] : '';
+  const refRule = allRef.length ? allRef[allRef.length - 1][1] : '';
+  if (!/order:\s*1/.test(setRule)) stage16.push('设置按钮不是在第一位：' + setRule.trim());
+  /* 刷新按钮现在包在 .refwrap 里，横向位置由 refwrap 的 order/margin 决定 */
+  if (!/order:\s*3/.test(wrapRule)) stage16.push('refwrap 不在第三位（刷新按钮会错位）：' + wrapRule.trim());
+  const setM = (setRule.match(/margin:\s*([^;]+)/) || [])[1] || '';
+  const wrapM = (wrapRule.match(/margin:\s*([^;]+)/) || [])[1] || '';
+  if (!/0 0 0 2px/.test(setM.trim())) {
+    stage16.push('设置按钮左边距不对：' + setM.trim());
+  }
+  if (!/0 2px 0 0/.test(wrapM.trim())) {
+    stage16.push('refwrap 右边距不对，标题会偏：' + wrapM.trim());
+  }
+  /* 真正贴到屏幕边：body 有 padding，顶栏必须用负外边距抵消掉，
+     否则按钮只能贴到内容区边缘（用户截图里就是这种情况）。 */
+  if (!/margin-left:\s*calc\(-1 \* var\(--pad\)\)/.test(topRule)) {
+    stage16.push('顶栏没有抵消左内边距，按钮贴不到屏幕边：' + topRule.trim().slice(0, 90));
+  }
+  if (!/margin-right:\s*calc\(-1 \* var\(--pad\)\)/.test(topRule)) {
+    stage16.push('顶栏没有抵消右内边距');
+  }
+
+  /* 窄屏媒体查询里不能再把刷新按钮撑开（旧规则 flex:1 1 40% 会让它跑到中间） */
+  if (/#near, #refreshHome \{ flex:/.test(html)) {
+    stage16.push('窄屏媒体查询仍在拉伸刷新按钮，会把它挤到标题旁');
+  }
+
+  /* 2) 按钮顺序：设置在前、刷新在后（DOM 里设置应在标题之前，做成左边缘） */
+  const inTop = (id) => top.indexOf('id="' + id + '"');
+  if (inTop('settingsBtn') < 0) stage16.push('topline 里没有设置按钮');
+  if (inTop('refreshHome') < 0) stage16.push('topline 里没有刷新按钮');
+  if (inTop('settingsBtn') > inTop('homeTitle')) {
+    stage16.push('设置按钮应在标题之前（左侧位置）');
+  }
+  if (inTop('homeTitle') > inTop('refreshHome')) {
+    stage16.push('刷新按钮应在标题之后（右侧位置）');
+  }
+
+  /* 顶栏只能有三个参与布局的元素：设置、标题、刷新。多一个就会把右边顶宽。 */
+  /* 顶栏的横向层只有 3 个：设置 / 标题 / refwrap（refwrap 内部才竖排按钮+计时） */
+  const topLevel = (top.match(/id="(settingsBtn|homeTitle|refreshHome)"/g) || []);
+  if (topLevel.length !== 3) {
+    stage16.push('顶栏横向元素不是 3 个（会挤偏标题）：' + topLevel.join(', '));
+  }
+  if (!/class="refwrap"/.test(top)) {
+    stage16.push('顶栏没有 refwrap 容器包住刷新按钮和倒计时');
+  }
+
+  /* 状态行宽度必须和顶栏一致，否则两行轴心对不齐 */
+  const locRule = (html.match(/\.homehead \.locline \{([^}]*)\}/) || [])[1] || '';
+  if (!/calc\(-1 \* var\(--pad\)\)/.test(locRule)) {
+    stage16.push('状态行没有抵消内边距，和标题对不齐：' + locRule.trim().slice(0, 70));
+  }
+  /* 3) 城市名必须移到定位行里，跟在「已定位」后面 */
+  const loc = (html.match(/<div class="locline">[\s\S]*?<\/div>/) || [])[0] || '';
+  if (!/id="loctext"/.test(loc)) stage16.push('定位行里没有 loctext');
+  if (!/id="cityBtn"/.test(loc)) {
+    stage16.push('城市名没有移到定位行（应跟在已定位后面）');
+  }
+  if (/id="cityBtn"/.test(top)) {
+    stage16.push('城市名还在标题行里');
+  }
+  /* 顺序：loctext 在 cityBtn 之前 */
+  if (loc.indexOf('id="loctext"') > loc.indexOf('id="cityBtn"')) {
+    stage16.push('城市名排在了「已定位」前面');
+  }
+
+  /* 4) 倒计时标签不能挤标题：应绝对定位在刷新按钮旁 */
+  const noteRule = (html.match(/\.homehead \.refreshnote \{([^}]*)\}/) || [])[1] || '';
+  /* 倒计时竖排在刷新按钮正下方：包在 .refwrap 里，宽度与按钮同为 44px，
+     不占横向空间，标题仍精确居中。 */
+  if (!/flex-direction:\s*column/.test(wrapRule)) {
+    stage16.push('refwrap 不是竖排，倒计时会跑到按钮旁边：' + wrapRule.trim().slice(0, 70));
+  }
+  if (!/width:\s*44px/.test(wrapRule) || !/flex:\s*0 0 44px/.test(wrapRule)) {
+    stage16.push('refwrap 宽度没锁定 44px，会撑宽右侧把标题挤偏：' + wrapRule.trim().slice(0, 70));
+  }
+  if (!/pointer-events:\s*none/.test(noteRule)) {
+    stage16.push('倒计时没设 pointer-events:none，会挡住刷新按钮点击');
+  }
+  /* 倒计时必须在顶栏的 refwrap 里，不能回到状态行 */
+  if (/id="refreshNote"/.test(loc)) {
+    stage16.push('倒计时还在状态行，应移到刷新按钮下面');
+  }
+  if (!/id="refreshNote"/.test(top)) {
+    stage16.push('倒计时不在顶栏的 refwrap 里');
+  }
+}
+
+if (stage16.length) {
+  console.error('✗ UI 冒烟失败（顶栏布局）：');
+  for (const f of stage16) console.error('  - ' + f);
+  process.exit(1);
+}
+console.log('✓ 顶栏布局通过：homehead 撑满、横向三元素、两侧等宽对称、标题精确居中、倒计时竖排在刷新按钮下');
+
+console.log('✓ 收班判定通过：末班后·最后一辆车驶过本站才变灰；没到本站/正在本站/待发车都不变灰');
 
 console.log('✓ 定位行精简通过：只显示「已定位」，无来源/精度/耗时/城市拼接');
 
