@@ -29,18 +29,78 @@ import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
- * 车来了小程序接口（只查成都）。
+ * 车来了小程序接口（四川全省多城市，用哪个城市由 cityId 决定）。
  *
  * 签名 cryptoSign = md5(`"k"="v"&…` + "qwihrnbtmj")
  * 返回体 encryptResult = base64(AES-256-ECB(json))
  */
 public final class ChelaileClient {
 
+    /** 默认城市（成都）。实际用哪个城市由 cityId 字段决定，见 setCity / 构造函数。 */
     public static final String CITY_ID = "007";
     public static final String CITY_NAME = "成都";
-    public static final String AREA_PREFIX = "028";
-    /** 支持的城市：成都（含区县）与都江堰。都江堰在车来了里有独立 cityId 271，但数据与 007 互通。 */
-    private static final String[][] SUPPORTED = { {"007", "成都"}, {"271", "都江堰"} };
+
+    /**
+     * 城市节点表：cityId → {名称, 所属市州}。
+     *
+     * 与 lib/cities.mjs 保持一致，全部用真实线路站点坐标核对过。
+     * 注意几个坑：
+     *   - 257「东兴」在广西防城港、325「沙湾」在新疆，不是四川的，所以没有收录；
+     *   - 291「甘孜」是甘孜县，不是州府康定，所以叫「甘孜县」；
+     *   - 眉山节点（557）实际只有仁寿的数据，与 11004 完全相同，所以统一走 11004。
+     */
+    private static final String[][] CITY_TABLE = {
+        {"007", "成都", "成都"},
+        {"371", "自贡", "自贡"},
+        {"192", "攀枝花", "攀枝花"},
+        {"344", "泸州", "泸州"},
+        {"133", "绵阳", "绵阳"},
+        {"609", "遂宁", "遂宁"},
+        {"130", "内江", "内江"},
+        {"191", "乐山", "乐山"},
+        {"526", "南充", "南充"},
+        {"193", "宜宾", "宜宾"},
+        {"320", "达州", "达州"},
+        {"194", "雅安", "雅安"},
+        {"282", "巴中", "巴中"},
+        {"263", "资阳", "资阳"},
+        // 区县节点
+        {"271", "都江堰", "成都"},
+        {"516", "崇州", "成都"},
+        {"11054", "彭州", "成都"},
+        {"11057", "简阳", "成都"},
+        {"11043", "温江", "成都"},
+        {"11051", "双流", "成都"},
+        {"135", "广汉", "德阳"},
+        {"136", "江油", "绵阳"},
+        {"523", "隆昌", "内江"},
+        {"272", "荣县", "自贡"},
+        {"11004", "仁寿", "眉山"},
+        {"547", "荥经", "雅安"},
+        {"399", "岳池", "广安"},
+        {"369", "道孚", "甘孜"},
+        {"291", "甘孜县", "甘孜"},
+    };
+
+    /** 眉山节点 557 与 11004 数据相同，统一用 11004。 */
+    private static final String[][] CITY_ALIAS = { {"557", "11004"} };
+
+    /**
+     * 没有实时数据覆盖的市州 → 备注 + 可替代的区县 cityId（空串表示没有替代）。
+     * 定位到这些地方时给一句明确的说明，而不是报「不支持」。
+     */
+    private static final String[][] UNCOVERED = {
+        {"德阳", "德阳市区暂无实时数据；广汉可用", "135"},
+        {"广元", "广元全市暂无实时数据", ""},
+        {"广安", "广安市区暂无实时数据；岳池可用", "399"},
+        {"阿坝", "阿坝州全域暂无实时数据", ""},
+        {"甘孜", "康定暂无数据；道孚、甘孜县可用", "369"},
+        {"凉山", "凉山州全域暂无实时数据", ""},
+    };
+
+    /** 当前客户端绑定的城市。换城市用 setCity()。 */
+    private String cityId = CITY_ID;
+    private String cityName = CITY_NAME;
 
     private static final String BASE = "https://web.chelaile.net.cn/api/bus/";
     /** 换乘规划在独立的 /api/transfer/ 路径下，签名协议相同但路径不同。 */
@@ -75,8 +135,14 @@ public final class ChelaileClient {
 
     // ---------------------------------------------------------------- 接口
 
-    /** 坐标是否在支持范围内（成都 / 都江堰）；不是就抛异常。 */
-    public JSONObject assertChengdu(double lat, double lng) throws Exception {
+    /**
+     * 用坐标判断当前位置属于哪个城市。
+     *
+     * 返回 { cityId, city, covered } ；covered=false 表示该地没有实时数据，
+     * 此时可能带 fallback（可替代的区县节点）和 note（说明）。
+     * 旧名字 assertChengdu 保留做别名，行为一致。
+     */
+    public JSONObject assertCity(double lat, double lng) throws Exception {
         String url = "https://web.chelaile.net.cn/cdatasource/citylist"
                 + "?type=gpsRealtimeCity&lat=" + lat + "&lng=" + lng
                 + "&gpstype=wgs&s=android&v=3.80.0&src=webapp_default";
@@ -84,22 +150,133 @@ public final class ChelaileClient {
         JSONObject city = root.optJSONObject("data") == null
                 ? null : root.getJSONObject("data").optJSONObject("gpsRealtimeCity");
         if (city == null) throw new ApiException("城市定位服务不可用");
-        String cityId = city.optString("cityId");
-        String cityName = city.optString("cityName");
-        String matched = null;
-        for (String[] entry : SUPPORTED) {
-            if (entry[0].equals(cityId) || entry[1].equals(cityName)) { matched = entry[1]; break; }
+        String officialId = city.optString("cityId");
+        String officialName = city.optString("cityName");
+
+        // 1) 官方给了 cityId，且节点表里有 → 直接用
+        String nodeId = normalizeCityId(officialId);
+        if (!nodeId.isEmpty()) {
+            JSONObject out = new JSONObject();
+            out.put("cityId", nodeId);
+            out.put("city", cityNameOf(nodeId));
+            out.put("covered", true);
+            return out;
         }
-        if (matched == null) {
-            throw new ApiException("当前位置属于「" + cityName + "」，本 App 目前只支持成都（含都江堰）");
+
+        // 2) 官方只给了名字（「德阳」「凉山彝族自治州」）→ 可能是无数据市州
+        for (String[] entry : UNCOVERED) {
+            if (officialName != null && !officialName.isEmpty() && officialName.contains(entry[0])) {
+                String fallbackId = entry[2];
+                JSONObject out = new JSONObject();
+                out.put("cityId", JSONObject.NULL);
+                out.put("city", entry[0]);
+                out.put("covered", false);
+                out.put("note", entry[1]);
+                if (!fallbackId.isEmpty()) {
+                    JSONArray fb = new JSONArray();
+                    fb.put(new JSONObject().put("cityId", fallbackId).put("name", cityNameOf(fallbackId)));
+                    out.put("fallback", fb);
+                }
+                return out;
+            }
         }
-        JSONObject out = new JSONObject();
-        out.put("cityId", cityId);
-        out.put("city", matched);
+
+        // 3) 什么都没给 → 报错（前端会退到默认城市）
+        throw new ApiException("城市定位服务未返回所属城市");
+    }
+
+    /** 旧名字兼容：等价于 assertCity。 */
+    public JSONObject assertChengdu(double lat, double lng) throws Exception {
+        return assertCity(lat, lng);
+    }
+
+    /** cityId 归一化：别名归到真实节点；不认识的返回空串。 */
+    private static String normalizeCityId(String raw) {
+        if (raw == null) return "";
+        String id = raw.trim();
+        if (id.isEmpty()) return "";
+        for (String[] alias : CITY_ALIAS) {
+            if (alias[0].equals(id)) return alias[1];
+        }
+        for (String[] entry : CITY_TABLE) {
+            if (entry[0].equals(id)) return id;
+        }
+        return "";
+    }
+
+    /** cityId → 显示名（不认识的返回 cityId 本身）。 */
+    public static String cityNameOf(String id) {
+        if (id == null) return CITY_NAME;
+        for (String[] entry : CITY_TABLE) {
+            if (entry[0].equals(id.trim())) return entry[1];
+        }
+        for (String[] alias : CITY_ALIAS) {
+            if (alias[0].equals(id.trim())) return cityNameOf(alias[1]);
+        }
+        return id;
+    }
+
+    /** 按名字找 cityId（找不到返回空串）。 */
+    public static String cityIdOf(String name) {
+        if (name == null) return "";
+        String key = name.trim().replaceAll("[市县]$", "");
+        for (String[] entry : CITY_TABLE) {
+            if (entry[1].equals(key) || entry[1].equals(name.trim())) return entry[0];
+        }
+        for (String[] alias : CITY_ALIAS) {
+            if (cityNameOf(alias[1]).equals(key)) return alias[1];
+        }
+        return "";
+    }
+
+    /** 完整城市表（给前端城市选择器用）。 */
+    public static JSONArray cityTable() {
+        JSONArray out = new JSONArray();
+        try {
+            for (String[] entry : CITY_TABLE) {
+                JSONObject item = new JSONObject();
+                item.put("cityId", entry[0]);
+                item.put("name", entry[1]);
+                item.put("group", entry[2]);
+                item.put("level", entry[0].length() <= 3 ? "city" : "county");
+                out.put(item);
+            }
+            for (String[] entry : UNCOVERED) {
+                JSONObject item = new JSONObject();
+                item.put("cityId", JSONObject.NULL);
+                item.put("name", entry[0]);
+                item.put("group", entry[0]);
+                item.put("level", "city");
+                item.put("covered", false);
+                item.put("note", entry[1]);
+                if (!entry[2].isEmpty()) {
+                    item.put("fallback", entry[2]);
+                    item.put("fallbackName", cityNameOf(entry[2]));
+                }
+                out.put(item);
+            }
+        } catch (Exception ignored) {
+            // JSON 写入不会真的失败，这里只是兜底
+        }
         return out;
     }
 
-    /** 线路搜索，过滤掉地铁和非 028 线路。 */
+    /** 换城市（返回 this，方便链式调用）。传 null/空串视为不改变。 */
+    public ChelaileClient setCity(String idOrName) {
+        if (idOrName == null || idOrName.trim().isEmpty()) return this;
+        String id = normalizeCityId(idOrName);
+        if (id.isEmpty()) id = cityIdOf(idOrName);
+        if (id.isEmpty()) return this;
+        this.cityId = id;
+        this.cityName = cityNameOf(id);
+        return this;
+    }
+
+    public String cityId() { return cityId; }
+
+    public String cityName() { return cityName; }
+
+    /** 线路搜索，过滤掉地铁。区县线路是纯数字 lineId，不能按前缀过滤。 */
     public JSONArray searchLines(String keyword) throws Exception {
         LinkedHashMap<String, String> extra = new LinkedHashMap<>();
         extra.put("key", keyword);
@@ -619,8 +796,8 @@ public final class ChelaileClient {
     /** 支持自定义域名前缀（换乘规划在 /api/transfer/ 下）。 */
     private JSONObject call(String base, String endpoint, LinkedHashMap<String, String> extra) throws Exception {
         LinkedHashMap<String, String> params = new LinkedHashMap<>(BASE_PARAMS);
-        params.put("cityId", CITY_ID);
-        params.put("localCityId", CITY_ID);
+        params.put("cityId", cityId);
+        params.put("localCityId", cityId);
         if (extra != null) params.putAll(extra);
         params.put("cryptoSign", sign(params));
 

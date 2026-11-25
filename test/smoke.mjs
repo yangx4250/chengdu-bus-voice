@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * 冒烟测试：不打桩，直接打真实接口（成都）。网络不通时会被跳过并提示。
+ * 冒烟测试：不打桩，直接打真实接口（四川多城市）。网络不通时会被跳过并提示。
  */
 
 import assert from 'node:assert/strict';
-import { BusClient, BusApiError, CHENGDU } from '../lib/chelaile.mjs';
+import { BusClient, BusApiError, CHENGDU, resolveCity } from '../lib/chelaile.mjs';
+import { coverageSummary, findByName, nearestNode } from '../lib/cities.mjs';
 import {
   buildNearbyAnnouncement,
   buildStationAnnouncement,
@@ -23,22 +24,89 @@ const check = async (name, fn) => {
 
 const client = new BusClient({ retries: 1 });
 
+
+await check('省外坐标不再被硬拒绝，但会如实说明不是四川城市', async () => {
+  // 全省接入后语义变了：成都以外的四川城市也要能用，
+  // 所以旧版「只支持成都」的拒绝逻辑不再适用。现在北京会落到最近节点，
+  // 但必须给出「不在服务范围内」的判断依据，而不是静默返回成都数据。
+  const info = await client.resolveCityByGeo({ lat: 39.9042, lng: 116.4074 });
+  assert.ok(info, '应有城市识别结果');
+  assert.notEqual(info.cityId, CHENGDU.cityId, '北京不该被识别成成都');
+});
+
 await check('成都坐标被接受', async () => {
-  const city = await client.assertChengdu({ lat: 30.657, lng: 104.065 });
+  const city = await client.assertCity({ lat: 30.657, lng: 104.065 });
   assert.equal(city.cityId, CHENGDU.cityId);
 });
 
-await check('外地坐标被拒绝', async () => {
-  await assert.rejects(
-    () => client.assertChengdu({ lat: 39.9042, lng: 116.4074 }),
-    (err) => err instanceof BusApiError && /北京/.test(err.message),
-  );
-});
-
 await check('都江堰坐标被接受', async () => {
-  const city = await client.assertChengdu({ lat: 30.99, lng: 103.62 });
+  const city = await client.assertCity({ lat: 30.99, lng: 103.62 });
   assert.equal(city.name, '都江堰');
 });
+
+await check('绵阳坐标识别为绵阳', async () => {
+  const city = await client.assertCity({ lat: 31.4675, lng: 104.6796 });
+  assert.equal(city.cityId, '133');
+  assert.equal(city.name, '绵阳');
+});
+
+await check('宜宾坐标识别为宜宾', async () => {
+  const city = await client.assertCity({ lat: 28.7513, lng: 104.6432 });
+  assert.equal(city.cityId, '193');
+});
+
+await check('德阳定位返回无数据，并给出可用替代节点', async () => {
+  const info = await client.resolveCityByGeo({ lat: 31.1289, lng: 104.3979 });
+  assert.equal(info.covered, false, '德阳应标记为无数据');
+  assert.equal(info.name, '德阳');
+  assert.ok(Array.isArray(info.fallback) && info.fallback.length > 0, '应给出可用替代节点');
+  assert.equal(info.fallback[0].name, '广汉');
+});
+
+await check('西昌定位返回无数据', async () => {
+  const info = await client.resolveCityByGeo({ lat: 27.8945, lng: 102.2644 });
+  assert.equal(info.covered, false);
+  assert.equal(info.name, '凉山');
+});
+
+await check('岳池定位可用（广安下辖区县节点）', async () => {
+  const info = await client.resolveCityByGeo({ lat: 30.5294, lng: 106.44 });
+  assert.equal(info.covered, true);
+  assert.equal(info.cityId, '399');
+});
+
+await check('城市注册表覆盖统计符合实测', async () => {
+  const summary = coverageSummary();
+  assert.equal(summary.total, 21, '四川应有 21 个市州');
+  assert.ok(summary.full.length >= 14, '市本级有数据的应不少于 14 个');
+  assert.deepEqual(summary.none.sort(), ['凉山', '广元', '阿坝'].sort(), '完全无数据的应是这三个');
+  assert.ok(summary.partial.includes('德阳'));
+  assert.ok(summary.partial.includes('广安'));
+});
+
+await check('同名异地节点没有被误收（东兴/沙湾）', async () => {
+  // 车来了 257「东兴」在广西防城港、325「沙湾」在新疆，
+  // 都不是四川的，注册表里不该有它们
+  assert.equal(findByName('东兴'), null, '东兴是广西的，不该登记');
+  assert.equal(findByName('沙湾'), null, '沙湾是新疆的，不该登记');
+});
+
+await check('甘孜节点是甘孜县而非州府康定', async () => {
+  const node = resolveCity({ cityId: '291' }).node;
+  assert.equal(node.name, '甘孜县');
+  assert.ok(node.note.includes('康定'), '应注明不是康定');
+});
+
+await check('眉山别名指向仁寿节点（数据相同的坑）', async () => {
+  const byName = resolveCity({ name: '眉山' }).node;
+  assert.equal(byName.cityId, '11004', '眉山应归到仁寿节点');
+});
+
+await check('名字带父级前缀也能解析', async () => {
+  assert.equal(resolveCity({ name: '成都都江堰' }).node.cityId, '271');
+  assert.equal(resolveCity({ name: '德阳广汉' }).node.cityId, '135');
+});
+
 
 const lines = await check('线路搜索可用且不含地铁', async () => {
   const result = await client.searchLines('1路');
@@ -48,7 +116,8 @@ const lines = await check('线路搜索可用且不含地铁', async () => {
 });
 
 await check('都江堰线路可搜到', async () => {
-  const result = await client.searchLines('都江堰1');
+  const dijiangyan = new BusClient({ cityId: '271', retries: 1 });
+  const result = await dijiangyan.searchLines('都江堰1');
   assert.ok(result.length > 0, '没有搜到都江堰1');
   assert.ok(result.every((line) => /^\d+$/.test(String(line.lineId))), '线路 id 形态异常');
 });

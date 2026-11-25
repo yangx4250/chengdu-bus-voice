@@ -115,7 +115,7 @@ final class Notify {
             } else {
                 builder = new Notification.Builder(context);
             }
-            builder.setContentTitle(title == null ? "成都公交" : title)
+            builder.setContentTitle(title == null ? appLabel(context) : title)
                     .setContentText(text == null ? "" : text)
                     .setSmallIcon(android.R.drawable.ic_popup_reminder)
                     .setContentIntent(pending)
@@ -178,5 +178,22 @@ final class Notify {
             sb.append("；读取通道信息失败：").append(e.getClass().getSimpleName());
         }
         return sb.toString();
+    }
+
+    /**
+     * 通知标题前缀。
+     *
+     * 全局接入全省后不再固定叫「成都公交」：优先用 App 名称（strings.xml），
+     * 拿不到就退回「公交」。
+     */
+    static String appLabel(Context context) {
+        try {
+            int id = context.getApplicationInfo().labelRes;
+            String label = id != 0 ? context.getString(id) : "";
+            if (label != null && !label.isEmpty()) return label;
+        } catch (Throwable ignored) {
+            // 拿不到就用兜底
+        }
+        return "公交";
     }
 }

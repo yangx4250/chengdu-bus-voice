@@ -1,17 +1,28 @@
 #!/usr/bin/env node
 /**
- * cd-bus —— 成都公交实时到站语音播报
+ * cd-bus —— 四川全省公交实时到站语音播报
  *
- *   cd-bus near                     附近站点实时到站（默认天府广场坐标）
- *   cd-bus line 1路 --stop 大业路    指定线路 + 站点，播报还有几站/几分钟
- *   cd-bus stations 1路              看这条线沿途所有站点
- *   cd-bus watch 1路 --stop 大业路   持续盯站，车快到时自动播报
+ *   cd-bus cities                    列出四川 21 个市州及数据覆盖情况
+ *   cd-bus health [--all]            全省节点探活（哪些城市真的查得到）
+ *   cd-bus near   [--city 绵阳]      附近站点实时到站
+ *   cd-bus line   1路 --stop 大业路   指定线路 + 站点
+ *   cd-bus stations 1路              线路沿途所有站点
+ *   cd-bus watch  16路 --stop 天府广场南  盯站并自动播报
  *
- * 只支持成都。数据来自车来了小程序接口，仅供个人出行参考。
+ * 数据来自车来了小程序接口，仅供个人出行参考。
+ * 城市清单与数据边界见 lib/cities.mjs。
  */
 
 import { parseArgs } from 'node:util';
-import { BusClient, BusApiError, CHENGDU } from '../lib/chelaile.mjs';
+import { BusClient, BusApiError, MultiCityClient, resolveCity } from '../lib/chelaile.mjs';
+import {
+  CITY_NODES,
+  SICHUAN_PREFECTURES,
+  coverageSummary,
+  findByName,
+  listCities,
+  nearestNode,
+} from '../lib/cities.mjs';
 import {
   buildNearbyAnnouncement,
   buildStationAnnouncement,
@@ -23,31 +34,38 @@ import { Speaker } from '../lib/speech.mjs';
 
 const DEFAULT_LAT = Number(process.env.CD_BUS_LAT ?? 30.657);
 const DEFAULT_LNG = Number(process.env.CD_BUS_LNG ?? 104.065);
+const DEFAULT_CITY = process.env.CD_BUS_CITY ?? '成都';
 
-const USAGE = `cd-bus —— 成都公交到站语音播报
+const USAGE = `cd-bus —— 四川全省公交到站语音播报
 
 用法:
-  cd-bus near   [--lat 30.657 --lng 104.065] [--limit 4]   附近站点实时到站
-  cd-bus line   <线路号> [--stop <站名>] [--dir 0|1]        指定线路到站信息
-  cd-bus stations <线路号> [--dir 0|1]                      线路沿途站点
-  cd-bus watch  <线路号> --stop <站名> [--every 30]         盯站并自动播报
-  cd-bus say    <文字>                                     试听语音后端
+  cd-bus cities                                 全省市州与数据覆盖一览
+  cd-bus health [--counties] [--json]           全省节点探活
+  cd-bus near   [--city 绵阳] [--lat 31.4 --lng 104.6]   附近站点实时到站
+  cd-bus line   <线路号> [--stop <站名>] [--dir 0|1]      指定线路到站信息
+  cd-bus stations <线路号> [--dir 0|1]                    线路沿途站点
+  cd-bus watch  <线路号> --stop <站名> [--every 30]        盯站并自动播报
+  cd-bus say    <文字>                                    试听语音后端
 
 通用参数:
+  --city <名字|cityId>     城市（默认成都；也可用 CD_BUS_CITY）
   --speak / --no-speak     是否发声（默认 line/near 不发声，watch 发声）
   --voice <auto|termux|online|system|off>   语音后端（默认 auto）
   --json                   输出原始 JSON，便于二次处理
   --lat/--lng              坐标（默认天府广场，可用 CD_BUS_LAT / CD_BUS_LNG）
 
 示例:
-  cd-bus line 1路 --stop 大业路 --speak
-  cd-bus watch 16路 --stop 天府广场南 --every 90
+  cd-bus line 1路 --city 绵阳 --stop 文昌街 --speak
+  cd-bus near --city 岳池
+  cd-bus stations 都江堰1 --city 都江堰
+  cd-bus health --counties
 `;
 
 function parse() {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     options: {
+      city: { type: 'string' },
       lat: { type: 'string' },
       lng: { type: 'string' },
       stop: { type: 'string' },
@@ -56,6 +74,8 @@ function parse() {
       limit: { type: 'string', default: '4' },
       every: { type: 'string', default: '30' },
       voice: { type: 'string', default: 'auto' },
+      counties: { type: 'boolean', default: false },
+      all: { type: 'boolean', default: false },
       speak: { type: 'boolean' },
       json: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
@@ -85,10 +105,40 @@ const padRight = (value, width) => {
   return gap > 0 ? value + ' '.repeat(gap) : value;
 };
 
+/**
+ * 造客户端：--city 优先；给了坐标且没指定城市时，按坐标自动判城市。
+ * 判出来是「无数据城市」就如实说明，并提示可用的替代节点。
+ */
+async function makeClient(values) {
+  if (values.city) {
+    return new BusClient({ cityId: /^\d+$/.test(String(values.city)) ? values.city : undefined, cityName: values.city });
+  }
+  const lat = values.lat != null ? Number(values.lat) : null;
+  const lng = values.lng != null ? Number(values.lng) : null;
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    const probe = new BusClient();
+    const info = await probe.resolveCityByGeo({ lat, lng });
+    if (info.covered === false) {
+      const hint = info.fallback?.length
+        ? `可改用 --city ${info.fallback.map((f) => f.name).join(' 或 --city ')}`
+        : '';
+      throw new BusApiError(
+        `当前位置在「${info.name}」，该地暂无实时公交数据${info.note ? `（${info.note}）` : ''}。${hint}`,
+      );
+    }
+    if (info.cityId && info.cityId !== probe.cityId) {
+      return new BusClient({ cityId: info.cityId });
+    }
+    return probe;
+  }
+  return new BusClient({ cityName: DEFAULT_CITY });
+}
+
 async function resolveLine(client, keyword, dir) {
   const lines = await client.searchLines(keyword);
-  if (!lines.length) throw new BusApiError(`成都没有查到线路「${keyword}」。`);
-  const exact = lines.filter((line) => String(line.name) === String(keyword).replace(/路$/, ''));
+  if (!lines.length) throw new BusApiError(`${client.cityName}没有查到线路「${keyword}」。`);
+  const bare = String(keyword).replace(/路$/, '');
+  const exact = lines.filter((line) => String(line.name) === String(keyword) || String(line.name) === bare);
   const pool = exact.length ? exact : lines;
   const wanted = dir == null ? pool[0] : pool.find((line) => String(line.direction) === String(dir)) ?? pool[0];
   return { picked: wanted, all: lines };
@@ -120,34 +170,113 @@ async function speakOrPrint(speaker, text, { enabled }) {
   }
 }
 
-async function cmdNear(client, values, positionals) {
-  const lat = Number(values.lat ?? DEFAULT_LAT);
-  const lng = Number(values.lng ?? DEFAULT_LNG);
-  await client.assertChengdu({ lat, lng });
+/* ------------------------------------------------------------------ cities */
 
-  const { stops, allArrivals } = await client.nearby(lat, lng, { limit: Number(values.limit) });
+function cmdCities(values) {
+  const summary = coverageSummary();
   if (values.json) {
-    console.log(JSON.stringify({ city: CHENGDU.name, lat, lng, stops, allArrivals }, null, 2));
+    console.log(JSON.stringify({ summary, cities: listCities({ includeCounties: true }) }, null, 2));
     return;
   }
 
-  console.log(c.bold(`成都 · 附近站点（${clock()}，坐标 ${lat},${lng}）`));
+  console.log(c.bold(`四川 ${summary.total} 个市州 · 数据覆盖`));
+  console.log(c.dim(`市本级有实时数据 ${summary.full.length} · 仅区县有 ${summary.partial.length} · 无数据 ${summary.none.length}\n`));
+
+  for (const pref of SICHUAN_PREFECTURES) {
+    const mark = pref.covered ? c.green('●') : pref.counties.length ? c.yellow('◐') : c.red('○');
+    const label = pref.primary ? pref.primary.name : pref.name;
+    const idText = pref.primary ? c.dim(`id=${pref.primary.cityId}`) : c.dim('—');
+    console.log(`${mark} ${padRight(label, 5)} ${padRight(idText, 12)} ${c.dim(pref.adcode)}`);
+
+    if (pref.counties.length) {
+      const items = pref.counties.map((ct) => `${ct.name}(${ct.cityId})`).join('  ');
+      console.log(`  ${c.dim('区县节点')}  ${items}`);
+    }
+    if (pref.note && !pref.covered) {
+      console.log(`  ${c.dim(pref.note)}`);
+    }
+  }
+
+  console.log(c.dim('\n● 市本级可查   ◐ 仅区县可查   ○ 无实时数据'));
+  console.log(c.dim('用 --city <名字|cityId> 指定城市，例如：cd-bus near --city 绵阳'));
+}
+
+/* ------------------------------------------------------------------ health */
+
+async function cmdHealth(values) {
+  const nodes = values.counties || values.all
+    ? CITY_NODES
+    : CITY_NODES.filter((n) => n.level === 'city');
+  const multi = new MultiCityClient({
+    cityIds: nodes.map((n) => n.cityId),
+    timeoutMs: 10000,
+    retries: 1,
+  });
+  console.log(c.dim(`探活 ${nodes.length} 个节点…`));
+  const results = await multi.healthCheck({ concurrency: 6 });
+
+  if (values.json) {
+    console.log(JSON.stringify(results, null, 2));
+    return;
+  }
+
+  for (const row of results) {
+    const mark = row.covered ? c.green('OK  ') : c.red('FAIL');
+    const extra = row.covered
+      ? `最近 ${String(row.nearest).padStart(4)} 米  ${(row.sample || []).slice(0, 2).join(' / ')}`
+      : `${row.reason || ''}`;
+    console.log(
+      `${mark} ${padRight(row.city, 5)} ${padRight(row.cityId, 7)} ` +
+      `${c.dim(padRight(row.group, 4))} ${c.dim(`${row.ms}ms`)}  ${extra}`,
+    );
+  }
+  const ok = results.filter((r) => r.covered).length;
+  console.log(c.bold(`\n可查 ${ok} / ${results.length}`));
+}
+
+/* -------------------------------------------------------------------- near */
+
+async function cmdNear(client, values) {
+  const lat = Number(values.lat ?? client.city.center?.[0] ?? DEFAULT_LAT);
+  const lng = Number(values.lng ?? client.city.center?.[1] ?? DEFAULT_LNG);
+
+  const { stops, allArrivals } = await client.nearby(lat, lng, { limit: Number(values.limit) });
+  const realDist = stops.some((st) => Number(st.distanceMeters) >= 0);
+
+  if (values.json) {
+    console.log(JSON.stringify({ city: client.cityName, cityId: client.cityId, lat, lng, stops, allArrivals }, null, 2));
+    return;
+  }
+
+  console.log(c.bold(`${client.cityName} · 附近站点（${clock()}，坐标 ${lat.toFixed(4)},${lng.toFixed(4)}）`));
+  if (!realDist && stops.length) {
+    console.log(c.yellow(`  ⚠ 这个坐标不在「${client.cityName}」的运营范围内，接口只给了兜底站点。`));
+    console.log(c.dim(`    换个坐标，或用 --city 指定别的城市。`));
+  }
   for (const stop of stops) {
-    console.log(`\n${c.cyan(`【${stop.name}】`)} ${c.dim(`距你约 ${stop.distanceMeters} 米`)}`);
+    const dist = Number(stop.distanceMeters);
+    const distText = dist >= 0 ? `距你约 ${dist} 米` : c.yellow('距离未知（超出运营范围）');
+    console.log(`\n${c.cyan(`【${stop.name}】`)} ${c.dim(distText)}`);
     if (!stop.arrivals.length) {
       console.log(c.dim('  暂无实时车辆'));
       continue;
     }
     for (const arrival of stop.arrivals.slice(0, 4)) {
       const label = arrival.arrived ? c.red('即将进站') : describeBus(arrival);
-      const name = padRight(`${arrival.lineName}路`, 7);
+      const name = padRight(`${arrival.lineName}`, 7);
       console.log(`  ${name} 往 ${padRight(arrival.toward ?? '-', 16)} ${c.yellow(label)}`);
     }
   }
 
+  if (!stops.length) {
+    console.log(c.yellow('附近没有查到站点。'));
+    return;
+  }
   const text = buildNearbyAnnouncement(stops, { maxStops: 3 });
   await speakOrPrint(new Speaker({ mode: values.voice }), text, { enabled: Boolean(values.speak) });
 }
+
+/* -------------------------------------------------------------------- line */
 
 async function cmdLine(client, values, positionals) {
   const keyword = positionals[1];
@@ -161,7 +290,7 @@ async function cmdLine(client, values, positionals) {
   }
 
   if (values.stop == null && values.order == null) {
-    console.log(c.bold(`${detail.name}路  ${detail.startSn} → ${detail.endSn}`));
+    console.log(c.bold(`${detail.name}  ${detail.startSn} → ${detail.endSn}  ${c.dim(`[${client.cityName}]`)}`));
     console.log(c.dim(`首班 ${detail.firstTime} · 末班 ${detail.lastTime} · 票价 ${detail.price || '-'} · ${detail.stations.length} 站`));
     if (all.length > 1) {
       console.log(c.dim(`同名其它走向：${all.filter((l) => l.lineId !== picked.lineId).map((l) => `${l.startSn} → ${l.endSn}(--dir ${l.direction})`).join('；')}`));
@@ -192,10 +321,10 @@ async function cmdLine(client, values, positionals) {
 async function renderArrivals(client, detail, station, asJson = false) {
   const { buses } = await client.arrivals(detail.lineId, station);
   if (asJson) {
-    console.log(JSON.stringify({ line: detail.name, station: station.name, buses }, null, 2));
+    console.log(JSON.stringify({ city: client.cityName, line: detail.name, station: station.name, buses }, null, 2));
     return buses;
   }
-  console.log(`\n${c.bold(`${detail.name}路 · ${station.name}站`)} ${c.dim(`（${clock()} 实时）`)}`);
+  console.log(`\n${c.bold(`${detail.name} · ${station.name}站`)} ${c.dim(`（${client.cityName}，${clock()} 实时）`)}`);
   if (!buses.length) {
     console.log(c.dim('  暂无即将到站的车辆（可能已收班或区间调度中）'));
     return [];
@@ -206,6 +335,8 @@ async function renderArrivals(client, detail, station, asJson = false) {
   });
   return buses;
 }
+
+/* ------------------------------------------------------------------- watch */
 
 async function cmdWatch(client, values, positionals) {
   const keyword = positionals[1];
@@ -218,7 +349,7 @@ async function cmdWatch(client, values, positionals) {
   const speaker = new Speaker({ mode: values.voice });
   const speakEnabled = values.speak !== false; // watch 默认发声
 
-  console.log(c.bold(`盯站中：${detail.name}路 → ${station.name}站`));
+  console.log(c.bold(`盯站中：${client.cityName} · ${detail.name} → ${station.name}站`));
   console.log(c.dim(`每 ${intervalMs / 1000} 秒刷新一次；车 ≤2 站或 ≤3 分钟时自动播报。Ctrl+C 结束。\n`));
 
   let lastSpoken = { text: '', at: 0 };
@@ -229,8 +360,8 @@ async function cmdWatch(client, values, positionals) {
       const { buses } = await client.arrivals(detail.lineId, station);
       const first = buses[0];
       const line = first
-        ? `${detail.name}路 还有 ${first.stationsAway} 站，${formatEta(first.etaSeconds)}`
-        : `${detail.name}路 暂无车辆`;
+        ? `${detail.name} 还有 ${first.stationsAway} 站，${formatEta(first.etaSeconds)}`
+        : `${detail.name} 暂无车辆`;
       process.stdout.write(`${c.dim(clock())}  ${line}\n`);
 
       const urgent = isUrgent(first);
@@ -267,6 +398,8 @@ async function cmdWatch(client, values, positionals) {
   process.on('SIGTERM', stop);
 }
 
+/* ---------------------------------------------------------------- stations */
+
 async function cmdStations(client, values, positionals) {
   const keyword = positionals[1];
   if (!keyword) throw new BusApiError('用法：cd-bus stations <线路号> [--dir 0|1]');
@@ -276,13 +409,15 @@ async function cmdStations(client, values, positionals) {
     console.log(JSON.stringify(detail, null, 2));
     return;
   }
-  console.log(c.bold(`${detail.name}路  ${detail.startSn} → ${detail.endSn}`));
+  console.log(c.bold(`${detail.name}  ${detail.startSn} → ${detail.endSn}  ${c.dim(`[${client.cityName}]`)}`));
   console.log(c.dim(`首班 ${detail.firstTime} · 末班 ${detail.lastTime} · ${detail.stations.length} 站`));
   detail.stations.forEach((st, i) => console.log(`  ${String(i + 1).padStart(2)}. ${st.name}`));
   if (all.length > 1) {
     console.log(c.dim(`\n同名其它走向：${all.filter((l) => l.lineId !== picked.lineId).map((l) => `${l.startSn} → ${l.endSn}（--dir ${l.direction}）`).join('；')}`));
   }
 }
+
+/* -------------------------------------------------------------------- main */
 
 async function main() {
   const { values, positionals } = parse();
@@ -292,12 +427,24 @@ async function main() {
   }
 
   const command = positionals[0];
-  const client = new BusClient();
 
   try {
     switch (command) {
+      case 'cities':
+        cmdCities(values);
+        return;
+      case 'health':
+        await cmdHealth(values);
+        return;
+      default:
+        break;
+    }
+
+    const client = await makeClient(values);
+
+    switch (command) {
       case 'near':
-        await cmdNear(client, values, positionals);
+        await cmdNear(client, values);
         break;
       case 'line':
         await cmdLine(client, values, positionals);

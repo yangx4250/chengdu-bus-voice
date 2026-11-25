@@ -35,7 +35,10 @@ public final class WatchService extends Service {
     /** 网络请求必须离开主线程（Android 会抛 NetworkOnMainThreadException）。 */
     private final java.util.concurrent.ExecutorService netPool =
             java.util.concurrent.Executors.newSingleThreadExecutor();
-    private final ChelaileClient client = new ChelaileClient();
+    /** 盯站的城市。启动时从 Intent 带入，服务重启时从 SharedPreferences 恢复。 */
+    private String cityId = ChelaileClient.CITY_ID;
+    private String cityName = ChelaileClient.CITY_NAME;
+    private ChelaileClient client = new ChelaileClient();
     private WakeKeeper wake;
     private Speech speech;
 
@@ -147,6 +150,12 @@ public final class WatchService extends Service {
             order = intent.getIntExtra("order", 1);
             lat = intent.getDoubleExtra("lat", 0);
             lng = intent.getDoubleExtra("lng", 0);
+            String wantedCity = intent.getStringExtra("cityId");
+            if (wantedCity != null && !wantedCity.isEmpty()) {
+                cityId = wantedCity;
+                cityName = ChelaileClient.cityNameOf(wantedCity);
+            }
+            client = new ChelaileClient().setCity(cityId);
             if (lineId == null) lineId = "";
             if (lineName == null) lineName = "";
             if (stationId == null) stationId = "";
@@ -161,7 +170,7 @@ public final class WatchService extends Service {
         spoke5m = false;
         spoke2s = false;
         spokeArrived = false;
-        lastMessage = lineName + "路 · " + stationName + " · 盯站中";
+        lastMessage = BusText.lineLabel(lineName) + " · " + stationName + " · 盯站中";
 
         startForeground(NOTIFICATION_ID, buildNotification(lastMessage));
         /* 息屏后 CPU 休眠会冻结 Handler 定时器 → 拿唤醒锁保活 */
@@ -195,6 +204,7 @@ public final class WatchService extends Service {
                 .putString("stationId", stationId)
                 .putString("stationName", stationName)
                 .putString("toward", toward)
+                .putString("cityId", cityId)
                 .putInt("order", order)
                 .putFloat("lat", (float) lat)
                 .putFloat("lng", (float) lng)
@@ -208,6 +218,9 @@ public final class WatchService extends Service {
         stationId = p.getString("stationId", "");
         stationName = p.getString("stationName", "");
         toward = p.getString("toward", "");
+        cityId = p.getString("cityId", ChelaileClient.CITY_ID);
+        cityName = ChelaileClient.cityNameOf(cityId);
+        client = new ChelaileClient().setCity(cityId);
         order = p.getInt("order", 1);
         lat = p.getFloat("lat", 0);
         lng = p.getFloat("lng", 0);
@@ -242,7 +255,7 @@ public final class WatchService extends Service {
             builder = new Notification.Builder(this);
         }
         return builder
-                .setContentTitle(lineName + "路 · " + stationName)
+                .setContentTitle(BusText.lineLabel(lineName) + " · " + stationName)
                 .setContentText(text)
                 .setSmallIcon(android.R.drawable.ic_menu_directions)   // 用系统图标，避免依赖生成的 R
                 .setOngoing(true)
@@ -455,12 +468,12 @@ public final class WatchService extends Service {
             Log.i(TAG, "亮屏前台，由页面播报（服务跳过避免重复）");
             return;
         }
-        String text = lineName + "路，" + stationName + "站，" + what + "。";
+        String text = BusText.lineLabel(lineName) + "，" + stationName + "站，" + what + "。";
         Log.i(TAG, "后台/息屏播报：" + text);
         /* 锁屏通知（v1.0.44）：前台服务自带的常驻通知是 IMPORTANCE_LOW，
            锁屏上只会折成一行灰字。这里另发一条高优先级通知，息屏时能直接看到
            「还有 2 站」。只在后台/息屏这条分支发 —— 亮屏时页面自己会显示。 */
-        Notify.post(this, lineName + "路 · " + stationName, what);
+        Notify.post(this, BusText.lineLabel(lineName) + " · " + stationName, what);
         LAST_SPEAK = text;
         LAST_SPEAK_AT = System.currentTimeMillis();
         if (speech != null) {

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>成都公交</title>
+<title>公交来了</title>
 <style>
   :root {
     --bg: #0b1220;
@@ -234,6 +234,32 @@
   .locbar .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: 0 0 auto; }
   .refreshnote { margin-left: auto; font-size: 11px; color: #5f6f8c; white-space: nowrap; }
   .locbar.err .dot { background: var(--hot); }
+
+  /* 顶栏城市名：纯文字，不做胶囊/边框（原来那个圆角方块太抢眼）。
+     仍然是按钮，点了能切换城市。 */
+  .citytext { flex: 0 0 auto; background: none; border: 0; padding: 2px 0 2px 2px;
+    color: #9fb4d4; font-size: var(--fs-sm); line-height: 1.2; }
+  .citytext:active { color: #cfe0ff; }
+  .citytext span { max-width: 4.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* 城市选择面板 */
+  #cityPicker { position: fixed; inset: 0; background: var(--bg); z-index: 70;
+    display: flex; flex-direction: column; }
+  #cityPicker.hidden { display: none; }
+  .cityhead { display: flex; align-items: center; gap: 8px; padding: 12px 14px;
+    border-bottom: 1px solid var(--line); }
+  .cityhead input { flex: 1; min-width: 0; background: #1a2338; border: 1px solid var(--line);
+    border-radius: 10px; color: var(--text); font-size: 15px; padding: 9px 12px; }
+  .citylist { flex: 1; overflow-y: auto; padding: 6px 14px 20px; }
+  .cityrow { padding: 11px 12px; border-radius: 12px; border: 1px solid transparent; }
+  .cityrow:active { background: #1c2539; }
+  .cityrow.active { border-color: var(--accent); background: #1a2338; }
+  .cityrow.dim { opacity: .5; }
+  .cityrow .cityname { font-size: 15px; color: var(--text); }
+  .cityrow .citynow { font-size: 11px; color: var(--accent); border: 1px solid var(--accent);
+    border-radius: 999px; padding: 1px 6px; margin-left: 6px; }
+  .cityrow .citysub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .cityfoot { padding: 10px 16px 16px; font-size: 11px; color: #5f6f8c; text-align: center; }
 
   .switch { display: flex; align-items: center; gap: 6px; color: #b9c6dd; }
   .switch input { width: 0; height: 0; opacity: 0; position: absolute; }
@@ -568,7 +594,7 @@
     <div class="gmhead">
       <div class="gmicon">👋</div>
       <div class="gmtext">
-        <div class="gmtitle">欢迎使用成都公交</div>
+        <div class="gmtitle">欢迎使用公交来了</div>
         <div class="gmsub">和「设置 → 使用说明」内容一致</div>
       </div>
     </div>
@@ -585,7 +611,8 @@
 <div id="home">
   <header class="homehead">
     <div class="topline">
-      <h1>成都公交</h1>
+      <h1 id="homeTitle">公交来了</h1>
+      <button id="cityBtn" class="citytext" title="切换城市"><span id="cityBtnName">成都</span></button>
       <span id="refreshNote" class="refreshnote"></span>
       <button id="refreshHome" class="iconbtn" title="刷新">🔄</button>
       <button id="settingsBtn" class="iconbtn" title="设置">⚙</button>
@@ -631,6 +658,15 @@
   <div id="toast"></div>
 </div>
 
+<div id="cityPicker" class="hidden">
+  <div class="cityhead">
+    <input id="citySearch" placeholder="搜城市，如 绵阳 / 都江堰" autocomplete="off">
+    <button id="cityClose" class="iconbtn">✕</button>
+  </div>
+  <div id="cityList" class="citylist"></div>
+  <div class="cityfoot">数据来自车来了；标灰的城市暂无实时公交</div>
+</div>
+
 <div id="diag" class="hidden">
   <!-- 主页：分类入口（仿系统设置） -->
   <div id="setHome">
@@ -643,6 +679,12 @@
         <div class="seticon">📖</div>
         <div class="setinfo"><div class="setname">使用说明</div>
           <div class="setsub">各按钮作用 · 图解</div></div>
+        <div class="setarrow">›</div>
+      </div>
+      <div class="setitem" id="setCity">
+        <div class="seticon">📍</div>
+        <div class="setinfo"><div class="setname">当前城市</div>
+          <div class="setsub" id="setCitySub">成都</div></div>
         <div class="setarrow">›</div>
       </div>
       <div class="setitem" id="setFont">
@@ -694,7 +736,7 @@
         <div class="setcardtitle">选择字号</div>
         <div class="fontlist" id="fontList"></div>
         <div class="fontprev" id="fontPreview">
-          <div class="fp-title">成都公交 · 示例</div>
+          <div class="fp-title">公交来了 · 示例</div>
           <div class="fp-sub">花园公交站 · P36 · 大约 3 分钟到站</div>
         </div>
         <div class="dhead">字号只影响 App 内文字，不跟随系统「字体大小」设置；改完立即生效。</div>
@@ -917,7 +959,70 @@
   "use strict";
 
   var DEFAULT_LAT = 30.657, DEFAULT_LNG = 104.065;
+  var APP_NAME = "公交来了";          /* 应用名固定；城市另在标题旁的 📍 按钮显示 */
+  var DEFAULT_CITY_ID = "007", DEFAULT_CITY_NAME = "成都";
+  var CITY_KEY = "cdbus.city";       /* 记住上次选的城市 */
   var bridge = window.AndroidBus || null;
+
+  /**
+   * 当前城市。null 表示还没确定（等定位结果）。
+   *
+   * cityId    车来了的节点 id
+   * name      显示名
+   * manual    用户手动选的（本地固定用这个城市）
+   * manualLat/manualLng  手动选择时所在的位置 —— 只用于判断「人还在附近」，
+   *            真的跨市移动了就自动跟随定位，不会把人一直锁在手动选的城市。
+   */
+  var city = loadCity();
+
+  function loadCity() {
+    try {
+      var raw = localStorage.getItem(CITY_KEY);
+      if (raw) {
+        var saved = JSON.parse(raw);
+        if (saved && saved.cityId) return { cityId: String(saved.cityId), name: saved.name || "", manual: !!saved.manual };
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function saveCity(next) {
+    city = next;
+    try { localStorage.setItem(CITY_KEY, JSON.stringify(next)); } catch (e) {}
+    var title = $("homeTitle");
+    if (title) title.textContent = APP_NAME;
+    var btn = $("cityBtnName");
+    if (btn) btn.textContent = next && next.name ? next.name : DEFAULT_CITY_NAME;
+    var sub = $("setCitySub");
+    if (sub) sub.textContent = (next && next.name ? next.name : DEFAULT_CITY_NAME) + (next && next.manual ? "（手动选择）" : "");
+  }
+
+  /**
+   * 手动选的城市现在还该不该生效。
+   *
+   * 规则：手动选择只在「选择时所在位置附近」（30 公里内）继续生效；
+   * 人已经在别的城市了就跟随定位自动切换 —— 否则人在外地却一直显示成都，
+   * 城市名不跟着定位变。
+   */
+  function manualCityStillValid(lat, lng) {
+    if (!city || !city.manual) return false;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return true;
+    var mLat = Number(city.manualLat), mLng = Number(city.manualLng);
+    if (!Number.isFinite(mLat) || !Number.isFinite(mLng)) return false;  // 没记位置 → 交给定位
+    return geoDistanceMeters(mLat, mLng, lat, lng) <= 30000;
+  }
+
+  /** 当前 cityId（未确定时用默认城市）。 */
+  function cityId() { return city && city.cityId ? city.cityId : DEFAULT_CITY_ID; }
+  function cityName() { return city && city.name ? city.name : DEFAULT_CITY_NAME; }
+
+  /** 给 rpc 参数补上当前城市 —— 所有查询都要带。 */
+  function withCity(payload) {
+    var out = payload || {};
+    out.cityId = cityId();
+    out.city = cityName();
+    return out;
+  }
 
   var state = {
     detail: null,
@@ -979,16 +1084,32 @@
       loc.textContent = text;
       loc.className = "headloc" + (isError ? " err" : "");
     }
-    var dot = document.querySelector ? document.querySelector(".headdot") : null;
+    var dot = document.querySelector ? (document.querySelector(".headdot") || null) : null;
     if (dot) dot.style.background = isError ? "var(--hot)" : "var(--ok)";
   }
 
-  /* 后台线程查询 + 轮询结果，避免同步调用卡住界面 */
+  /**
+   * 后台线程查询 + 轮询结果，避免同步调用卡住界面。
+   *
+   * 城市在这里统一注入：全省接入后，每个查询都必须知道自己查哪个城市，
+   * 在 30 多处调用点各自补 cityId 容易漏，所以只在这里补一次。
+   * 例外：语音合成（synth/synthwav）、定位（location）、权限、城市识别本身
+   * 与城市无关，不注入（city 方法要的是坐标，注入 cityId 无意义）。
+   */
+  var CITY_FREE_METHODS = {
+    synth: 1, synthwav: 1, location: 1, permissions: 1, city: 1,
+    citytable: 1, appInfo: 1, backend: 1, navApps: 1
+  };
+
   function rpc(method, payload) {
     return new Promise(function (resolve, reject) {
       if (!bridge) { reject(new Error("仅支持在 App 内使用")); return; }
+      var args = payload || {};
+      if (!CITY_FREE_METHODS[method] && !args.cityId) {
+        args = withCity(args);
+      }
       var id;
-      try { id = bridge.start(method, JSON.stringify(payload || {})); }
+      try { id = bridge.start(method, JSON.stringify(args)); }
       catch (e) { reject(e); return; }
       (function tick() {
         var res;
@@ -1234,12 +1355,20 @@
      误判成「已收班」。所以传入 arrival 时，若有在途车辆一律算在运营。 */
   function outsideService(firstTime, lastTime, arrival) {
     if (!pastLastTime(firstTime, lastTime)) return false;   // 还没到末班时间
-    /* 已过末班时间：但如果还有在途车辆（或还没到站的），说明车还在跑 */
+
+    /* 已过末班时间：只要还在途车辆（或还没到站的），就说明车还在跑。
+       实测两类数据的差别（2026-11）：
+         成都 716：etaSeconds=380/1210，arrivalAt 是真实时间戳 —— 真在跑；
+         崇州 311：etaSeconds=-1、arrivalAt=-1，只有 stationsAway 有效 ——
+                   接口没算出 ETA，但车确实在路上。
+       所以判定条件放宽成「有 stationsAway 就算在途」，不再要求 ETA 有值；
+       null/undefined 才是真没有这趟车（接口压根没给这条线）。 */
     if (arrival) {
-      var hasBus = arrival.stationsAway !== null && arrival.stationsAway !== undefined
-        && arrival.stationsAway >= 0 && arrival.etaSeconds !== null;
-      if (hasBus) return false;
-      if (arrival.preStartTime || arrival.preArrivalTime) return false;   // 待发车
+      var away = arrival.stationsAway;
+      var hasAway = away !== null && away !== undefined && Number(away) >= 0;
+      if (hasAway) return false;
+      /* 待发车（还没上路）也算在运营 */
+      if (arrival.preStartTime || arrival.preArrivalTime) return false;
     }
     return true;
   }
@@ -1948,7 +2077,10 @@
       lineName: dir.name || lineName,
       stationId: station.stationId,
       stationOrder: station.order,
-      ended: outsideService(firstTime, lastTime, null),
+      /* 没有实时数据 ≠ 已收班：区县线路经常整条线拿不到到站数据，
+         但车其实在跑。只按时间判会把它们全变灰，所以这里不判收班，
+         灰不灰交给有实时数据的那条路径决定。 */
+      ended: false,
       firstTime: firstTime,
       lastTime: lastTime
     });
@@ -2754,8 +2886,11 @@
       }
       chip.onclick = function () {
         state.station = station;
+        /* 换站就把「同站其它」一起换掉 —— 这一块讲的永远是当前选中那一站 */
+        view.pickedStation = { name: station.name, order: station.order, stationId: station.stationId, lat: station.lat, lng: station.lng };
         renderLineStations();
         renderLineView();
+        loadStationOthers().catch(function () {});
         /* 点站名 = 查这一站：刷新完直接念出这一站的到站情况。
            不走 run()（它有 state.busy 守卫，盯站轮询期间点站名会被静默吞掉），
            直接刷这一站，失败只在状态栏提示。 */
@@ -2913,6 +3048,8 @@
     $("lvbuses").className = "lvbuses hidden";
     $("lnav").className = "navrow hidden";
     $("dlist").innerHTML = '<div class="empty">加载中…</div>';
+    /* 每次进详情页都让「同站其它」回到折叠态，不继承上次的展开 */
+    resetOthersFold();
     showView("detail");
     updateWatchUI();
     updateAlightUI();
@@ -3125,6 +3262,13 @@
 
 
   /* 选中某一站（不跳页）：高亮 + 更新同站其它 + 悬浮按钮播的就是它 */
+  /**
+   * 选中某一站（不跳页）。
+   *
+   * 这里必须把 state.station 一起换掉：标题、导航、收藏、🔔 下车提醒、
+   * 播报读的都是 state.station。以前只记 view.pickedStation，
+   * 于是出现了「点了到站表第 22 站，标题和同站其它还是进页时那站」的错位。
+   */
   function pickStation(order, rowEl) {
     var st = null;
     var list2 = (view.data && view.data.stations) || [];
@@ -3132,16 +3276,22 @@
       if (Number(list2[i].order) === Number(order)) { st = list2[i]; break; }
     }
     if (!st) return;
+
+    state.station = st;
     view.pickedStation = { name: st.name, order: st.order, stationId: st.stationId, lat: st.lat, lng: st.lng };
 
+    /* 到站表的「当前」高亮、站名芯片的选中态、标题里的站名都按 state.station 走 */
     var box = document.getElementById("dlist");
     var rows2 = (box && box.children) || [];
     for (var ri = 0; ri < rows2.length; ri++) rows2[ri].classList.remove("picked");
     if (rowEl) rowEl.classList.add("picked");
 
-    run(function () {
-      return loadStationOthers({ stationId: st.stationId, name: st.name, lat: st.lat, lng: st.lng });
-    });
+    renderLineView();
+    window.cdBusLastPick = { order: st.order, name: st.name, stationId: st.stationId };
+
+    /* 不走 run()：它有 state.busy 守卫，盯站轮询 / 自动刷新期间点站会被静默吞掉，
+       同站其它就还是旧的。这里直接刷，失败不打断界面。 */
+    loadStationOthers().catch(function () {});
   }
 
   window.cdBusPickStation = pickStation;
@@ -3204,38 +3354,109 @@
 
 
   /* 同站其它线路：按当前站坐标查附近，取同一站的其它线路。
-     默认折叠，只显示标题行和「展开」按钮；点了才请求、才铺开。 */
+     默认折叠，只显示标题行和「展开」按钮；点了才铺开。
+
+     以前折叠状态存进 localStorage 一路沿用：在某一页点过「展开」之后，
+     以后每次进详情都是展开的。现在改成**每次进入详情都重置为折叠**，
+     只在本次详情页内记住展开/收起，不跨页、不跨启动。 */
   var othersFolded = true;
-  try { othersFolded = localStorage.getItem("cdbus.othersFolded") !== "0"; } catch (e) {}
+
+  /** 进入详情页时调用：把「同站其它」恢复成折叠状态。 */
+  function resetOthersFold() {
+    othersFolded = true;
+    try { localStorage.removeItem("cdbus.othersFolded"); } catch (e) {}
+  }
+  /**
+   * 「同站其它」永远跟着**用户当前选中的那一站**走。
+   *
+   * 以前这里取的是进详情页时的那一站（view.stationId / view.fromOrder），
+   * 用户接着在站名芯片上点了别的站，标题和到站表都变了，这一块却还是旧站的 ——
+   * 出现过「标题 花园公交站 · 同站其它却是 龙溪村委会」的错位。
+   *
+   * 现在优先级：
+   *   1. 显式传入的 target（点站名时）
+   *   2. state.station —— 界面上高亮的、导航/收藏/播报都在用的那一站
+   *   3. view.pickedStation（点过到站表行）
+   *   4. view.fromOrder / view.stationId（首次进页的兜底）
+   */
+  function currentOtherStation(target) {
+    if (target && (target.lat || target.stationId)) {
+      return {
+        stationId: target.stationId,
+        order: target.order,
+        name: target.name || target.stationName,
+        lat: target.lat,
+        lng: target.lng
+      };
+    }
+    var list = (view.data && view.data.stations) || [];
+    var byId = function (id) {
+      if (id === undefined || id === null || id === "") return null;
+      for (var i = 0; i < list.length; i++) {
+        if (String(list[i].stationId) === String(id)) return list[i];
+      }
+      return null;
+    };
+    var byOrder = function (order) {
+      if (order === undefined || order === null || order === "") return null;
+      for (var i = 0; i < list.length; i++) {
+        if (Number(list[i].order) === Number(order)) return list[i];
+      }
+      return null;
+    };
+
+    // 2) 界面上当前选中的站
+    var cur = state.station;
+    if (cur && (cur.order !== undefined || cur.stationId)) {
+      var hit = byOrder(cur.order) || byId(cur.stationId);
+      if (hit) return hit;
+      if (cur.lat) return cur;
+    }
+    // 3) 点过到站表行
+    var picked = view.pickedStation;
+    if (picked) {
+      var hit2 = byOrder(picked.order) || byId(picked.stationId);
+      if (hit2) return hit2;
+    }
+    // 4) 进页时的站
+    return byId(view.stationId) || byOrder(view.fromOrder);
+  }
+
+  /**
+   * 站点缺经纬度时的兜底：用站名在当前站附近搜一次，取名字最像的那个。
+   * 只用于「同站其它」的坐标补全，找不到就返回 null（那一块不显示）。
+   */
+  async function findStationCoord(station) {
+    try {
+      var data = await rpc("nearby", { lat: station.lat || 0, lng: station.lng || 0, limit: 6 });
+      var stops = (data && data.stops) || [];
+      var best = null;
+      var bestScore = Infinity;
+      stops.forEach(function (st) {
+        var d = nameDistance(String(st.name || ""), String(station.name || ""));
+        if (d < bestScore) { bestScore = d; best = st; }
+      });
+      if (best && bestScore <= 2 && best.lat) {
+        return { lat: best.lat, lng: best.lng, stationId: best.stationId };
+      }
+    } catch (e) {}
+    return null;
+  }
+
   async function loadStationOthers(target) {
     var box = $("dothers");
     if (!box || !view.data) return;
     box.innerHTML = "";
     box.className = "chips hidden";
 
-    var station = null;
-    var list = (view.data.stations || []);
-
-    if (target) {
-      // 点击某个站名：用那一站的坐标
-      station = {
-        stationId: target.stationId,
-        name: target.name || target.stationName,
-        lat: target.lat,
-        lng: target.lng
-      };
-    } else {
-      // 默认用当前详情页那一站：先按 stationId，再退回站序
-      for (var i = 0; i < list.length; i++) {
-        if (view.stationId && String(list[i].stationId) === String(view.stationId)) { station = list[i]; break; }
-      }
-      if (!station) {
-        for (var i2 = 0; i2 < list.length; i2++) {
-          if (Number(list[i2].order) === Number(view.fromOrder)) { station = list[i2]; break; }
-        }
-      }
+    var station = currentOtherStation(target);
+    if (!station) return;
+    /* 没有坐标就退回用站名去附近站里找（个别线路详情缺经纬度） */
+    if (!station.lat) {
+      var near = await findStationCoord(station);
+      if (near) station = { stationId: station.stationId, order: station.order, name: station.name, lat: near.lat, lng: near.lng };
     }
-    if (!station || !station.lat) return;
+    if (!station.lat) return;
 
     try {
       var data = await rpc("nearby", { lat: station.lat, lng: station.lng, limit: 6 });
@@ -3334,7 +3555,6 @@
       toggle.textContent = othersFolded ? "展开 ▾" : "收起 ▴";
       toggle.onclick = function () {
         othersFolded = !othersFolded;
-        try { localStorage.setItem("cdbus.othersFolded", othersFolded ? "1" : "0"); } catch (e) {}
         renderOthersBox(station, others);
       };
       label.appendChild(toggle);
@@ -3355,6 +3575,8 @@
             : (a.etaSeconds !== null ? describe(a) : (a.preStartTime ? "待发车" : "暂无实时"));
         }
         chip.textContent = text;
+        /* 有实时数据直接进；没有实时数据（不在运营时段 / 当前无车）也要能进，
+           按线路名反查线路和站点后再打开详情。 */
         if (a) {
           chip.onclick = function () {
             openDetail({
@@ -3363,11 +3585,15 @@
               stationId: a.stationId,
               stationName: stop.name,
               fromOrder: a.stationOrder,
-              title: a.lineName + "路 · " + stop.name
+              title: (a.lineName || "") + " · " + stop.name
             });
           };
         } else {
-          chip.onclick = function () { setStatus("这条线暂时没有实时数据", true); };
+          chip.onclick = function () {
+            openOtherLineWithoutRealtime(item, stop).catch(function (err) {
+              setStatus(err && err.message ? err.message : "打开线路失败", true);
+            });
+          };
         }
         box.appendChild(chip);
       });
@@ -3375,6 +3601,75 @@
     } catch (e) {
       /* 拿不到就不显示 */
     }
+  }
+
+  /**
+   * 从「同站其它」点一条没有实时数据的线路进详情页。
+   *
+   * 以前这种芯片点了只弹一句「这条线暂时没有实时数据」，等于死路：
+   * 线路明明存在，只是当前没有在途车 / 不在运营时段，用户还是想看这条线的站点和车辆。
+   *
+   * 现在先按线路名反查线路 + 站点（同 loadDirections 的两种写法规则），
+   * 找到就把 (lineId, stationId, order) 补全后照常进详情；真查不到才提示。
+   */
+  async function openOtherLineWithoutRealtime(item, stop) {
+    var rawName = String(item.label || item.name || "");
+    var bare = rawName.replace(/路$/, "");
+    var stationName = (stop && stop.name) || "";
+
+    var candidates = [];
+    try {
+      candidates = await loadDirections(rawName);
+    } catch (e) {
+      candidates = [];
+    }
+    if (!candidates.length) {
+      setStatus("「" + (rawName || "这条线") + "」没查到线路信息", true);
+      return;
+    }
+
+    /* 有 2 条（往返）时优先挑「当前站能对上」的那一条 */
+    var picked = null;
+    var pickedStation = null;
+    for (var i = 0; i < candidates.length && !picked; i++) {
+      var line = candidates[i];
+      var detail = null;
+      try {
+        detail = await rpc("detail", { lineId: line.lineId });
+      } catch (e) {
+        continue;
+      }
+      var st = findStation(detail, null, stationName);
+      /* 站名对不上就退而用离当前站最近的一站，保证进页后有落脚点 */
+      if (!st) st = nearestStation((detail && detail.stations) || []);
+      if (st) {
+        picked = { line: line, detail: detail };
+        pickedStation = st;
+      }
+    }
+
+    if (!picked) {
+      /* 站点对不上也仍然进详情，用第一条线路的第一个站 */
+      var first = candidates[0];
+      openDetail({
+        lineId: first.lineId,
+        lineName: bare,
+        stationId: "",
+        stationName: stationName,
+        fromOrder: 1,
+        title: rawName + " · " + stationName
+      });
+      return;
+    }
+
+    openDetail({
+      lineId: picked.line.lineId,
+      lineName: bare,
+      stationId: pickedStation.stationId,
+      stationName: pickedStation.name || stationName,
+      fromOrder: pickedStation.order,
+      title: rawName + " · " + (pickedStation.name || stationName)
+    });
   }
 
   /* 折叠/展开后只重画这一块，不重新发请求 */
@@ -3398,7 +3693,6 @@
     toggle.textContent = othersFolded ? "展开 ▾" : "收起 ▴";
     toggle.onclick = function () {
       othersFolded = !othersFolded;
-      try { localStorage.setItem("cdbus.othersFolded", othersFolded ? "1" : "0"); } catch (e) {}
       renderOthersBox(station, others);
     };
     label.appendChild(toggle);
@@ -3427,11 +3721,15 @@
             stationId: a.stationId,
             stationName: station.name,
             fromOrder: a.stationOrder,
-            title: a.lineName + "路 · " + station.name
+            title: (a.lineName || "") + " · " + station.name
           });
         };
       } else {
-        chip.onclick = function () { setStatus("这条线暂时没有实时数据", true); };
+        chip.onclick = function () {
+          openOtherLineWithoutRealtime(item, station).catch(function (err) {
+            setStatus(err && err.message ? err.message : "打开线路失败", true);
+          });
+        };
       }
       box.appendChild(chip);
     });
@@ -3486,6 +3784,12 @@
 
   window.cdBusWatchStation = watchStationByOrder;
   window.cdBusLoadOthers = loadStationOthers;
+  window.cdBusOpenDetail = openDetail;
+  window.cdBusOthersFolded = function () { return othersFolded; };
+  window.cdBusRefreshHome = refreshHome;
+  window.cdBusOutsideService = outsideService;
+  window.cdBusSwitchCity = switchCity;
+  window.cdBusOpenOtherNoRealtime = openOtherLineWithoutRealtime;
 
   function renderTimes(options) {
     var doScroll = !options || options.scroll !== false;
@@ -4068,9 +4372,8 @@
     var moved = !before ||
       geoDistanceMeters(before.lat, before.lng, fix.lat, fix.lng) >= 50;
     state.fix = fix;
-    var accuracy = fix.accuracy > 0 ? Math.round(fix.accuracy) + " 米" : "未知精度";
-    setLocbar((fix.stale ? "缓存位置" : "已定位") + " · " + (fix.provider || "network") +
-      " · " + accuracy);
+    /* 定位条只显示「已定位」四个字：provider / 精度 / 耗时这些调试信息不再摆到界面上 */
+    setLocbar(fix.stale ? "缓存位置" : "已定位");
     return moved;
   }
 
@@ -4085,6 +4388,12 @@
 
     if (options && options.locate) {
       try { await relocate(options.locateTimeout || 8000); } catch (e) {}
+      /* 重新定位后要再判一次城市：以前只有首次 autoLoad 识别城市，
+         从别的市回到本地（或跨市移动）时顶栏城市名不会跟着变。 */
+      var fx = state.fix;
+      if (fx && Number.isFinite(fx.lat) && Number.isFinite(fx.lng)) {
+        await resolveCityForPosition(fx.lat, fx.lng, fx).catch(function () {});
+      }
     }
 
     var lat = state.fix ? state.fix.lat : DEFAULT_LAT;
@@ -4180,20 +4489,180 @@
     }, 30000);
   }
 
+  /**
+   * 定位之后决定「当前城市」。
+   *
+   * 规则：
+   *   1. 用户手动选过城市（manual）→ 不动，只在提示条里说明「已锁定 XX」；
+   *   2. 定位能确定城市 → 用它；
+   *   3. 定位到没有实时数据的地方（德阳/广元/广安/阿坝/甘孜/凉山）→ 提示条如实说明，
+   *      并给出可替代的区县节点；默认城市保持不变，免得界面突然空白。
+   */
+  async function resolveCityForPosition(lat, lng, fix) {
+    var autoNote = state.locNote || "";
+    state.locNote = autoNote;
+
+    var info = null;
+    try {
+      info = await rpc("city", { lat: lat, lng: lng });
+    } catch (err) {
+      /* 城市识别失败不该挡住主流程：保留当前城市 */
+      info = null;
+    }
+
+    if (info && info.covered === false) {
+      var hint = (info.fallback && info.fallback.length)
+        ? "，可用「" + info.fallback.map(function (f) { return f.name; }).join("、") + "」"
+        : "";
+      var msg = "当前位置在" + info.city + "，该地暂无实时数据" + hint;
+      setLocbar(msg + "（仍显示 " + cityName() + "）", true);
+      state.locNote = msg;
+      return;
+    }
+
+    if (info && info.cityId) {
+      var changed = String(info.cityId) !== cityId();
+      /* 手动选的城市只在选它的位置附近继续生效；跨市移动了就跟随定位 */
+      if (!manualCityStillValid(lat, lng)) {
+        saveCity({
+          cityId: String(info.cityId), name: info.city || "", manual: false,
+          manualLat: null, manualLng: null,
+        });
+        if (changed) {
+          /* 换城市后缓存里的线路/站名都是旧城市的，清掉 */
+          clearCityCaches();
+          state.detail = null;
+          state.station = null;
+          state.lineView = null;
+          state.favView = null;
+        }
+      }
+      /* 城市名只显示在顶栏那处；定位行不再拼接，避免同一行里出现「已定位 · gps · 成都」 */
+
+    }
+  }
+
+  /** 换城市时清掉按线路号缓存的搜索结果，避免张冠李戴。 */
+  function clearCityCaches() {
+    try {
+      var drop = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && (k.indexOf("cdbus.lines4.") === 0 || k.indexOf("cdbus.stns1.") === 0 || k.indexOf("cdbus.ld.") === 0)) {
+          drop.push(k);
+        }
+      }
+      drop.forEach(function (k) { localStorage.removeItem(k); });
+    } catch (e) {}
+  }
+
+  /* ---------------------------------------------------------- 城市选择器 */
+
+  var cityTable = null;
+
+  async function loadCityTable() {
+    if (cityTable) return cityTable;
+    try { cityTable = await rpc("citytable", {}); } catch (e) { cityTable = []; }
+    return cityTable;
+  }
+
+  /* 由网关数据源登记的城市名 → 车来了节点，用于城市选择页的提示 */
+  function nodeNoteOf(item) {
+    if (item.covered === false) return item.note || "暂无实时数据";
+    return item.level === "county" ? "区县节点" : "市本级";
+  }
+
+  function openCityPicker() {
+    var box = $("cityPicker");
+    if (!box) return;
+    box.classList.remove("hidden");
+    renderCityPicker("");
+    $("citySearch").value = "";
+    setTimeout(function () { $("citySearch").focus(); }, 60);
+  }
+
+  function closeCityPicker() {
+    var box = $("cityPicker");
+    if (box) box.classList.add("hidden");
+    paintCityChrome();
+  }
+
+  function renderCityPicker(keyword) {
+    var list = $("cityList");
+    if (!list) return;
+    var kw = String(keyword || "").trim();
+    var items = (cityTable || []).filter(function (item) {
+      if (!kw) return true;
+      return String(item.name).indexOf(kw) >= 0 || String(item.group || "").indexOf(kw) >= 0;
+    });
+    if (!items.length) {
+      list.innerHTML = '<div class="empty">没有匹配的城市</div>';
+      return;
+    }
+    var html = "";
+    items.forEach(function (item) {
+      var disabled = item.covered === false && !item.fallbackName;
+      var active = item.cityId && String(item.cityId) === cityId();
+      html += '<div class="cityrow' + (active ? " active" : "") + (disabled ? " dim" : "") + '"' +
+        ' data-id="' + (item.cityId || "") + '" data-name="' + item.name + '"' +
+        (disabled ? ' data-disabled="1"' : '') + '>' +
+        '<div class="cityname">' + item.name + (active ? ' <span class="citynow">当前</span>' : '') + '</div>' +
+        '<div class="citysub">' + nodeNoteOf(item) +
+        (item.fallbackName ? ' · 可用 ' + item.fallbackName : '') + '</div></div>';
+    });
+    list.innerHTML = html;
+
+    var rows = list.querySelectorAll ? list.querySelectorAll(".cityrow") : [];
+    Array.prototype.forEach.call(rows, function (row) {
+      row.onclick = function () {
+        if (row.getAttribute("data-disabled") === "1") {
+          showToast(row.getAttribute("data-name") + " 暂无实时数据", true);
+          return;
+        }
+        var id = row.getAttribute("data-id");
+        var name = row.getAttribute("data-name");
+        if (!id) return;
+        switchCity(id, name, true);
+        closeCityPicker();
+      };
+    });
+  }
+
+  /** 手动/自动切城市：清缓存 → 存选择 → 重新加载附近站点。 */
+  async function switchCity(id, name, manual) {
+    if (!id) return;
+    var changed = String(id) !== cityId();
+    var fix = state.fix;
+    /* 手动选城市时记住当前位置，用来判断「人还在附近」 */
+    saveCity({
+      cityId: String(id), name: name || "", manual: !!manual,
+      manualLat: manual && fix ? fix.lat : null,
+      manualLng: manual && fix ? fix.lng : null,
+    });
+    if (changed) {
+      clearCityCaches();
+      state.detail = null;
+      state.station = null;
+      state.lineView = null;
+      state.favView = null;
+      state.fix = null;
+      $("list").innerHTML = '<div class="empty">正在加载 ' + (name || "") + ' 的公交站点…</div>';
+    }
+    showToast("已切换到 " + (name || id) + (manual ? "（手动）" : ""));
+    await refreshHome({ announce: false, budget: 18 });
+  }
+
   async function autoLoad() {
     var lat = DEFAULT_LAT, lng = DEFAULT_LNG, fix = null, reason = "";
 
     setLocbar("正在定位…");
     setStatus("定位中…");
     try {
-      var t0 = Date.now();
       fix = await locate(12000);
       lat = fix.lat;
       lng = fix.lng;
-      var cost = ((Date.now() - t0) / 1000).toFixed(1);
-      var accuracy = fix.accuracy > 0 ? Math.round(fix.accuracy) + " 米" : "未知精度";
-      setLocbar((fix.stale ? "缓存位置" : "已定位") + " · " + (fix.provider || "network") +
-        " · " + accuracy + " · 用时 " + cost + " 秒");
+      /* 只留状态词，精度/来源/耗时是调试信息，不展示 */
+      setLocbar(fix.stale ? "缓存位置" : "已定位");
     } catch (err) {
       reason = err.message || "定位失败";
       if (/权限/.test(reason)) {
@@ -4205,13 +4674,7 @@
       setLocbar(reason + "，先按天府广场显示", true);
     }
 
-    var cityInfo = await rpc("city", { lat: lat, lng: lng });
-    if (cityInfo && cityInfo.city) {
-      var bar = $("loctext");
-      if (bar && String(bar.textContent).indexOf(cityInfo.city) < 0) {
-        bar.textContent = String(bar.textContent) + " · " + cityInfo.city;
-      }
-    }
+    await resolveCityForPosition(lat, lng, fix);
     state.detail = null;
     state.station = null;
     state.lineView = null;
@@ -4909,6 +5372,16 @@
 
   /* 测试钩子：注入定位、直接触发导航（ui-smoke 用来验证导航一律步行） */
   window.cdBusSetFix = function (fix) { state.fix = fix || null; };
+  window.cdBusGetFix = function () { return state.fix; };
+  /* 城市相关的测试钩子（ui-smoke 用） */
+  window.cdBusState = function () {
+    return {
+      cityId: cityId(), city: cityName(), manual: !!(city && city.manual),
+      busy: state.busy,           /* 测试要等它落下才能触发新一轮定位 */
+    };
+  };
+  window.cdBusCityTable = function () { return loadCityTable(); };
+  window.cdBusCityIdOf = function () { return cityId(); };
   window.cdBusNavToStation = navToStation;
   window.cdBusOpenRoute = openRoutePlanner;
   window.cdBusPlanRoute = planRoute;
@@ -4926,10 +5399,10 @@
     { title: "首页 · 顶栏", items: [
       { icon: "🔄", name: "刷新",
         desc: "手动刷新附近站点和到站信息。每次刷新都会顺手重新定位，位置变了列表就跟着变。平时每 30 秒自动刷一次，从后台回来也会立即刷一次。",
-        demo: "成都公交              🔄  ⚙" },
+        demo: "公交来了              🔄  ⚙" },
       { icon: "⚙", name: "设置",
         desc: "进设置页：使用说明、字体大小、语音与播报、后台诊断、关于。",
-        demo: "成都公交              🔄  ⚙" },
+        demo: "公交来了              🔄  ⚙" },
       { icon: "📍", name: "位置提示",
         desc: "顶栏第二行显示当前定位到的位置和精度。定位失败或不准时，先去系统设置把「位置信息」权限给成「始终允许」并打开精确定位。",
         demo: "● 天府广场南附近 · 精度 12 米" }
@@ -5624,6 +6097,32 @@
   $("settingsBtn").onclick = openDiag;
   $("dClose").onclick = function () { closeDiag(); };
 
+  /* 城市切换 */
+  $("cityBtn").onclick = async function () {
+    await loadCityTable();
+    openCityPicker();
+  };
+  $("cityClose").onclick = closeCityPicker;
+  $("citySearch").oninput = function () { renderCityPicker(this.value); };
+  $("citySearch").onkeydown = function (e) {
+    if (e.key === "Enter") {
+      var list = $("cityList");
+      var rows = list && list.querySelectorAll ? list.querySelectorAll(".cityrow") : [];
+      if (rows.length === 1 && rows[0].getAttribute("data-disabled") !== "1") rows[0].click();
+    }
+  };
+
+  /* 启动时先把标题/按钮上的城市名填好 —— city 可能来自 localStorage */
+  function paintCityChrome() {
+    var title = $("homeTitle");
+    if (title) title.textContent = APP_NAME;
+    var btn = $("cityBtnName");
+    if (btn) btn.textContent = cityName();
+    var sub = $("setCitySub");
+    if (sub) sub.textContent = cityName() + (city && city.manual ? "（手动选择）" : "");
+  }
+  paintCityChrome();
+
 
   /* 设置页导航 */
   function enterSet(id) {
@@ -5653,6 +6152,11 @@
   }
 
   $("setGuide").onclick = function () { enterSet("setPageGuide"); };
+  /* 设置里的「当前城市」直接开城市选择面板（顶栏只留纯文字，入口在这也留一个） */
+  $("setCity").onclick = async function () {
+    await loadCityTable();
+    openCityPicker();
+  };
   $("guideBack").onclick = function () { backFromDiag(); };
   $("setFont").onclick = function () { enterSet("setPageFont"); };
   $("fontBack").onclick = function () { backFromDiag(); };
@@ -5670,10 +6174,10 @@
   };
   $("dMp3").onclick = function () {
     setStatus("MP3 合成中…");
-    rpc("synth", { text: "成都公交播报，语音测试。" }).then(function (res) {
+    rpc("synth", { text: "公交播报，语音测试。" }).then(function (res) {
       if (!res || !res.base64) throw new Error("合成结果为空");
       playBytes(res.base64, "audio/mpeg", "MP3测试", function () {
-        wavFallback("成都公交播报，语音测试。");
+        wavFallback("公交播报，语音测试。");
       });
     }).catch(function (e) {
       note("MP3 合成失败：" + e.message);

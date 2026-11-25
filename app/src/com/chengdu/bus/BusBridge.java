@@ -26,7 +26,34 @@ public final class BusBridge {
 
     private final MainActivity activity;
     private final Speech speech;
-    private final ChelaileClient client = new ChelaileClient();
+    /**
+     * 客户端按城市缓存：同一城市复用实例（省掉重复的 DNS/TLS 握手），
+     * 换城市时从 map 里取，没有就新建一个。
+     */
+    private final ConcurrentHashMap<String, ChelaileClient> clients = new ConcurrentHashMap<>();
+
+    private ChelaileClient clientFor(JSONObject args) {
+        String id = args.optString("cityId", "");
+        String name = args.optString("city", "");
+        ChelaileClient probe = clients.get(ChelaileClient.CITY_ID);
+        String key = id;
+        if (key == null || key.isEmpty()) {
+            if (name != null && !name.isEmpty()) {
+                key = ChelaileClient.cityIdOf(name);
+            }
+        }
+        if (key == null || key.isEmpty()) {
+            key = (probe == null ? new ChelaileClient() : probe).cityId();
+        }
+        final String want = key;
+        ChelaileClient cached = clients.get(want);
+        if (cached == null) {
+            cached = new ChelaileClient().setCity(want);
+            ChelaileClient prev = clients.putIfAbsent(want, cached);
+            if (prev != null) cached = prev;
+        }
+        return cached;
+    }
     private final Navigator navigator;
     private final ExecutorService pool = Executors.newFixedThreadPool(4);
     private final ConcurrentHashMap<String, Task> tasks = new ConcurrentHashMap<>();
@@ -164,6 +191,13 @@ public final class BusBridge {
             intent.putExtra("order", args.optInt("order", 1));
             intent.putExtra("lat", args.optDouble("lat", 0));
             intent.putExtra("lng", args.optDouble("lng", 0));
+            // 盯站要跨城市：把当前城市带进去，服务重启后也能恢复
+            String cityId = args.optString("cityId", "");
+            if (cityId.isEmpty()) {
+                String cityName = args.optString("city", "");
+                if (!cityName.isEmpty()) cityId = ChelaileClient.cityIdOf(cityName);
+            }
+            if (!cityId.isEmpty()) intent.putExtra("cityId", cityId);
             if (android.os.Build.VERSION.SDK_INT >= 26) activity.startForegroundService(intent);
             else activity.startService(intent);
         } catch (Exception e) {
@@ -210,7 +244,7 @@ public final class BusBridge {
     /** 立刻发一条锁屏通知，供设置页「试一下」按钮使用。 */
     @JavascriptInterface
     public void testLockNotify() {
-        Notify.post(activity, "成都公交 · 锁屏通知测试", "如果你在锁屏上看到这条，说明锁屏通知可用");
+        Notify.post(activity, Notify.appLabel(activity) + " · 锁屏通知测试", "如果你在锁屏上看到这条，说明锁屏通知可用");
     }
 
     /** 锁屏通知自检：把开关、权限、通道重要度、锁屏可见性一次返回，便于排查「锁屏看不到」。 */
@@ -365,7 +399,7 @@ public final class BusBridge {
 
     @JavascriptInterface
     public void testSpeak() {
-        speech.speak("成都公交播报，语音测试。", new Speech.Callback() {
+        speech.speak("公交播报，语音测试。", new Speech.Callback() {
             @Override
             public void onResult(boolean spoken, String detail) {
                 Log.i(TAG, "测试播报：" + spoken + " " + detail);
@@ -450,24 +484,24 @@ public final class BusBridge {
     private Object dispatch(String method, JSONObject args) throws Exception {
         switch (method) {
             case "lines":
-                return client.searchLines(args.optString("key"));
+                return clientFor(args).searchLines(args.optString("key"));
             case "stations":
-                return client.searchStations(args.optString("key"));
+                return clientFor(args).searchStations(args.optString("key"));
             case "pois":
-                return client.searchPois(args.optString("key"));
+                return clientFor(args).searchPois(args.optString("key"));
             case "transit": {
                 JSONObject from = args.optJSONObject("from");
                 JSONObject dest = args.optJSONObject("dest");
                 if (from == null || dest == null) throw new IllegalArgumentException("缺少起点或终点");
-                return client.transit(
+                return clientFor(args).transit(
                         from.optDouble("lat"), from.optDouble("lng"), from.optString("name"),
                         dest.optDouble("lat"), dest.optDouble("lng"), dest.optString("name"),
                         args.optString("strategy", "0"));
             }
             case "detail":
-                return client.lineDetail(args.optString("lineId"));
+                return clientFor(args).lineDetail(args.optString("lineId"));
             case "arrivals":
-                return client.arrivals(args.optString("lineId"), args.getJSONObject("station"));
+                return clientFor(args).arrivals(args.optString("lineId"), args.getJSONObject("station"));
             case "synth": {
                 String base64 = speech.synthesizeBase64(args.optString("text"));
                 return new JSONObject().put("base64", base64).put("bytes", base64.length());
@@ -477,12 +511,12 @@ public final class BusBridge {
                 return new JSONObject().put("base64", base64).put("bytes", base64.length());
             }
             case "matrix":
-                return client.stationMatrix(
+                return clientFor(args).stationMatrix(
                         args.optString("lineId"),
                         args.optInt("fromOrder", 1),
                         args.optInt("window", 10));
             case "nearby":
-                return client.nearby(args.optDouble("lat"), args.optDouble("lng"), args.optInt("limit", 5));
+                return clientFor(args).nearby(args.optDouble("lat"), args.optDouble("lng"), args.optInt("limit", 5));
             case "location": {
                 long timeout = args.optLong("timeout", 12000);
                 Locator.Fix fix = Locator.current(activity, timeout);
@@ -491,7 +525,9 @@ public final class BusBridge {
             case "permissions":
                 return new JSONObject().put("location", Locator.hasPermission(activity));
             case "city":
-                return client.assertChengdu(args.optDouble("lat"), args.optDouble("lng"));
+                return clientFor(args).assertCity(args.optDouble("lat"), args.optDouble("lng"));
+            case "citytable":
+                return ChelaileClient.cityTable();
             default:
                 throw new IllegalArgumentException("未知方法 " + method);
         }

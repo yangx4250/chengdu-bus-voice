@@ -172,8 +172,11 @@ const nearbyPayload = {
         { stationId: '028-1', stationName: '花园永泉', stationOrder: 1, lineId: '028-720-0',
           lineName: '720', toward: '郫都区客运中心', stationsAway: 0, etaSeconds: null,
           firstTime: '00:00', lastTime: '23:59', preStartTime: '09:24', arrived: false },
+        /* 已收班的线路：真实接口不会给在途车辆（stationsAway 为 null），
+           以前桩里写 away=43 是自相矛盾的「有车但已收班」，
+           会掩盖「有车不该判灰」这条规则。 */
         { stationId: '028-1', stationName: '花园永泉', stationOrder: 5, lineId: '028-716-0',
-          lineName: '716', toward: '郫都区客运中心', stationsAway: 43, etaSeconds: null,
+          lineName: '716', toward: '郫都区客运中心', stationsAway: null, etaSeconds: null,
           firstTime: ENDED_FROM, lastTime: ENDED_TO, arrived: false },
       ],
     },
@@ -316,6 +319,19 @@ const bridge = {
       return JSON.stringify({ state: 'ok', data: hit.slice(0, 3) });
     }
     if (method === 'matrix') {
+      /* 45 路：没有实时数据 → 从「同站其它」点进来时要能正常渲染 */
+      if (String(args.lineId || '').includes('028-45-')) {
+        return JSON.stringify({ state: 'ok', data: {
+          line: { lineId: '028-45-0', name: '45', startSn: '花园公交站', endSn: '双楠小区',
+                  firstTime: '06:00', lastTime: '22:30', departLeft: 0, depIntervalM: 10, preArrivalTime: '' },
+          stations: [
+            { order: 1, name: '花园公交站', stationId: '028-9', lat: 30.8, lng: 103.9 },
+            { order: 4, name: '花园永泉', stationId: '028-1', lat: 30.7, lng: 103.95 },
+          ],
+          buses: [],
+          queriedFrom: 4, queriedTo: 4,
+        } });
+      }
       /* v1.0.25 起详情页是「线路页 + 车辆」合体：站名芯片和标题都取自 matrix 的
          data.line / data.stations，桩必须按 lineId 返回对应线路，否则会串成 P02。 */
       if (String(args.lineId || '').includes('p36')) {
@@ -474,7 +490,21 @@ const bridge = {
     if (method === 'location') {
       return JSON.stringify({ state: 'ok', data: { lat: 30.657, lng: 104.065, accuracy: 30, provider: 'network', stale: false } });
     }
-    if (method === 'city') return JSON.stringify({ state: 'ok', data: { city: '成都' } });
+    /* 城市识别现在返回 { cityId, city, covered }；covered:false 表示该地无实时数据 */
+    if (method === 'city') {
+      return JSON.stringify({ state: 'ok', data: { cityId: '007', city: '成都', covered: true } });
+    }
+    if (method === 'citytable') {
+      return JSON.stringify({ state: 'ok', data: [
+        { cityId: '007', name: '成都', group: '成都', level: 'city', covered: true },
+        { cityId: '133', name: '绵阳', group: '绵阳', level: 'city', covered: true },
+        { cityId: '271', name: '都江堰', group: '成都', level: 'county', covered: true },
+        { cityId: null, name: '德阳', group: '德阳', level: 'city', covered: false,
+          note: '德阳市区暂无实时数据；广汉可用', fallbackName: '广汉' },
+        { cityId: null, name: '凉山', group: '凉山', level: 'city', covered: false,
+          note: '凉山州全域暂无实时数据' },
+      ] });
+    }
     if (method === 'nearby') return JSON.stringify({ state: 'ok', data: nearbyPayload });
     if (method === 'pois') {
       // 模拟服务端：单次最多 3 条，且不同关键词回不同地点 → 多轮收窄能挖出更多
@@ -2238,6 +2268,86 @@ else {
     if (!wasDetail) stage5.push('前置条件不对：本来就不在详情页');
   }
 
+  /* 首次进入详情时「同站其它」必须是折叠的。
+     以前折叠状态存在 localStorage 里一路沿用，点过一次展开就永远展开。 */
+  if (typeof window.cdBusOpenDetail === 'function' && typeof window.cdBusOthersFolded === 'function') {
+    /* 先人为把状态改成展开，模拟「上次展开过」 */
+    await window.cdBusLoadOthers();
+    await new Promise((r) => setTimeout(r, 300));
+    const toggle = findByClass(document.getElementById('dothers'), 'others-toggle')[0];
+    if (toggle && /展开/.test(String(toggle.textContent || ''))) {
+      toggle.onclick();
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    if (window.cdBusOthersFolded() !== false) {
+      stage5.push('前置条件失败：没能把「同站其它」弄成展开态');
+    }
+    try { localStorage.setItem('cdbus.othersFolded', '0'); } catch (e) {}
+
+    /* 重新进入详情页 —— 必须回到折叠 */
+    await window.cdBusOpenDetail({
+      lineId: '028-p02-0', lineName: 'P02',
+      stationId: '028-1', stationName: '花园永泉', fromOrder: 9,
+      title: 'P02路 · 花园永泉',
+    });
+    await new Promise((r) => setTimeout(r, 900));
+    if (window.cdBusOthersFolded() !== true) {
+      stage5.push('重新进入详情后「同站其它」没有恢复折叠');
+    }
+    const box = textOf(document.getElementById('dothers'));
+    if (!/展开/.test(box)) stage5.push('重新进入详情后没有「展开」按钮：' + box.slice(0, 80));
+    if (/45路/.test(box)) stage5.push('重新进入详情后仍铺开了线路：' + box.slice(0, 120));
+    let leftover = null;
+    try { leftover = localStorage.getItem('cdbus.othersFolded'); } catch (e) {}
+    if (leftover !== null) stage5.push('折叠状态仍被写进 localStorage：' + leftover);
+  }
+
+  /* 「同站其它」必须跟着用户当前选中的站走：
+     选第 22 站（龙溪村委会）后，这一块的标题要是龙溪村委会，不能还停在进页时那站。
+     以前这里读 view.stationId/view.fromOrder，于是出现
+     「标题 花园公交站 · 同站其它却是 龙溪村委会」这种错位。 */
+  if (typeof window.cdBusPickStation === 'function') {
+    window.__othersStations = [];
+    const origNearby = window.AndroidBus.start;
+    window.AndroidBus.start = function (method, payload) {
+      if (method === 'nearby') {
+        try { window.__othersStations.push(JSON.parse(payload || '{}')); } catch (e) {}
+      }
+      return origNearby.apply(this, arguments);
+    };
+
+    /* 核心断言：换站后「同站其它」的标题站名 = 当前选中站，且查询坐标换成新站的。
+       P02 桩里有 1（花园公交站）/ 9（花园永泉）/ 30（郫都区客运中心）三站。 */
+    window.__othersStations = [];
+    window.cdBusPickStation(9, null);
+    await new Promise((r) => setTimeout(r, 800));
+    const at9 = textOf(document.getElementById('dothers'));
+    const title9 = textOf(document.getElementById('dtitle'));
+    if (!/同站其它/.test(at9)) stage5.push('第 9 站没有渲染「同站其它」：' + at9.slice(0, 80));
+    if (!/花园永泉/.test(title9)) stage5.push('第 9 站标题不对：' + title9.slice(0, 80));
+
+    window.cdBusPickStation(30, null);
+    await new Promise((r) => setTimeout(r, 800));
+    const at30 = textOf(document.getElementById('dothers'));
+    const title30 = textOf(document.getElementById('dtitle'));
+
+    /* 标题必须换成第 30 站，不能还停在花园永泉 */
+    if (!/郫都区客运中心/.test(title30)) {
+      stage5.push('换到第 30 站后标题没换：' + title30.slice(0, 80));
+    }
+    /* 「同站其它」标签里的站名也必须跟着换 */
+    if (/同站其它 · 花园永泉/.test(at30)) {
+      stage5.push('换到第 30 站后「同站其它」仍标着花园永泉：' + at30.slice(0, 90));
+    }
+    /* 两次查询坐标必须不同（证明不是复用进页时那一站） */
+    const latLngs = window.__othersStations.map((a) => a.lat + ',' + a.lng);
+    if (new Set(latLngs).size < 2) {
+      stage5.push('两次换站的「同站其它」查的是同一坐标：' + latLngs.join(' / '));
+    }
+
+    window.AndroidBus.start = origNearby;
+  }
+
   // 顶部（方向 + 车辆）应保持 sticky，跳转后仍在
   if (!document.getElementById('dtop')) stage5.push('详情页缺少 sticky 顶部容器');
   if (!/position:\s*sticky/.test(html)) stage5.push('顶部没有 sticky 样式');
@@ -2252,6 +2362,24 @@ if (!/@media \(max-width: 360px\)/.test(html)) stage5.push('缺少窄屏适配')
   const depText = String(document.getElementById('deptext').textContent || '');
   if (!/发车预测：预计 \d{2}:\d{2} 发车/.test(depText)) stage5.push('没有显示发车预测：' + depText);
   if (!/发车间隔约 12 分钟/.test(depText)) stage5.push('没有显示发车间隔：' + depText);
+  /* 没有实时数据的线路（45路）也必须能点开 —— 以前点了只弹一句提示，是死路。
+     放在发车预测断言之后：这段会把页面切到 45 路，会影响 P02 的断言。 */
+  if (typeof window.cdBusOpenOtherNoRealtime === 'function') {
+    const beforeTitle = textOf(document.getElementById('dtitle'));
+    await window.cdBusOpenOtherNoRealtime(
+      { name: '45', label: '45路', arrival: null },
+      { name: '花园永泉', stationId: '028-1', lat: 30.7, lng: 103.95 },
+    );
+    await new Promise((r) => setTimeout(r, 900));
+    const afterTitle = textOf(document.getElementById('dtitle'));
+    const detailHidden = String(document.getElementById('detail').className).includes('hidden');
+    if (detailHidden) stage5.push('点没有实时数据的线路没有进入详情页');
+    if (!/45/.test(afterTitle)) {
+      stage5.push('点没有实时数据的线路后标题不是 45 路：' + afterTitle.slice(0, 80));
+    }
+    if (afterTitle === beforeTitle) stage5.push('点没有实时数据的线路后页面没变化');
+  }
+
   document.getElementById('back').onclick();
 }
 
@@ -3042,6 +3170,346 @@ if (stage11.length) {
   process.exit(1);
 }
 console.log('✓ 去哪儿通过：入口、POI 搜索、公交/地铁方案、坐标传参、跳转钩子');
+
+/* ---------------------------------------------------------- 多城市（四川全省） */
+
+const stage12 = [];
+{
+  /* 重新把页面跑一遍：这一轮要验的是「定位到别的城市后，附近站点确实按新城市查」。 */
+  const cityCalls = [];
+  const nearbyCalls = [];
+  /* start 与 poll 必须成对覆盖：桩的 poll 是按 start 记账的 id 取结果，
+     只覆盖 start 会让 poll 拿不到任务，返回空数组。 */
+  let seq12 = 0;
+  const pending12 = new Map();
+  window.AndroidBus.start = function (method, payload) {
+    let args = {};
+    try { args = JSON.parse(payload || '{}'); } catch (e) {}
+    let data = null;
+    /* 定位桩：给一个绵阳坐标，才能验「定位后自动切城市」 */
+    if (method === 'location') {
+      data = { lat: 31.4675, lng: 104.6796, accuracy: 30, provider: 'network', stale: false };
+    } else if (method === 'permissions') {
+      data = { location: true };
+    } else if (method === 'city') {
+      cityCalls.push(args);
+      data = { cityId: '133', city: '绵阳', covered: true };
+    } else if (method === 'nearby') {
+      nearbyCalls.push(args);
+      data = {
+        cityId: args.cityId, city: '绵阳',
+        stops: [{ stationId: 'm1', name: '富乐北路', distanceMeters: 80, lat: 31.47, lng: 104.74,
+          lineNameList: ['36'], arrivals: [
+            { lineId: 'l1', lineName: '36', toward: '建国门', stationId: 'm1',
+              stationsAway: 2, etaSeconds: 210, arrived: false }] }],
+        allArrivals: [],
+      };
+    } else if (method === 'citytable') {
+      data = [
+        { cityId: '007', name: '成都', group: '成都', level: 'city', covered: true },
+        { cityId: '133', name: '绵阳', group: '绵阳', level: 'city', covered: true },
+        { cityId: null, name: '德阳', group: '德阳', level: 'city', covered: false,
+          note: '德阳市区暂无实时数据；广汉可用', fallbackName: '广汉' },
+      ];
+    }
+    const id = 's12-' + (++seq12);
+    pending12.set(id, data);
+    return id;
+  };
+
+  window.AndroidBus.poll = function (id) {
+    if (!pending12.has(id)) return JSON.stringify({ state: 'error', error: '任务不存在' });
+    const data = pending12.get(id);
+    pending12.delete(id);
+    return JSON.stringify({ state: 'ok', data: data });
+  };
+
+  /* 触发一次定位 → 城市识别 → 首页刷新。
+     注意：run() 有 state.busy 保护，上一次自动加载还没结束时会直接返回，
+     所以要等到 busy 落下再触发，并给足时间让异步链路跑完。 */
+  for (let i = 0; i < 60; i += 1) {
+    const st = typeof window.cdBusState === 'function' ? window.cdBusState() : null;
+    if (st && st.busy === false) break;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  if (typeof window.cdBusPermission === 'function') window.cdBusPermission(true);
+  /* 城市识别 → 存盘 → refreshHome → nearby，串行几轮网络桩，给 2 秒 */
+  await new Promise((r) => setTimeout(r, 2000));
+
+  const state12 = typeof window.cdBusState === 'function' ? window.cdBusState() : null;
+  const savedCity = (() => {
+    try { return JSON.parse(localStorage.getItem('cdbus.city')); } catch (e) { return null; }
+  })();
+
+  if (!cityCalls.length) stage12.push('定位后没有调用 city 识别城市');
+  if (!savedCity || String(savedCity.cityId) !== '133') {
+    stage12.push('定位到绵阳后没有把城市存下来：' + JSON.stringify(savedCity));
+  }
+  if (!nearbyCalls.length) {
+    stage12.push('切换城市后没有重新请求 nearby');
+  } else if (String(nearbyCalls[nearbyCalls.length - 1].cityId) !== '133') {
+    stage12.push('nearby 没有带上新城市 cityId：' + JSON.stringify(nearbyCalls[nearbyCalls.length - 1]));
+  }
+
+  /* 标题是固定的应用名；城市名单独显示在标题旁的 📍 按钮上 */
+  const title = document.getElementById('homeTitle');
+  const titleText = title ? String(title.textContent || '') : '';
+  if (!/公交来了/.test(titleText)) stage12.push('标题应为应用名「公交来了」，实际：' + titleText);
+
+  /* 顶栏城市名是纯文字：不能有背景色/边框/圆角胶囊样式。
+     DOM 桩不会解析 HTML 的 class 属性，所以直接查源码。 */
+  if (document.getElementById('cityBtn')) {
+    const tag = (html.match(/<button[^>]*id="cityBtn"[^>]*>/) || [])[0] || '';
+    if (/citybtn/.test(tag)) stage12.push('顶栏城市仍是旧的胶囊样式类 citybtn：' + tag);
+    if (!/citytext/.test(tag)) stage12.push('顶栏城市没有用纯文字样式 citytext：' + tag);
+    if (!/id="cityBtnName"/.test(html)) stage12.push('顶栏城市名元素 cityBtnName 丢了');
+  } else {
+    stage12.push('顶栏找不到城市切换按钮');
+  }
+  /* 样式里必须真的没有底色和边框 */
+  const cityTextRule = (html.match(/\.citytext\s*\{([^}]*)\}/) || [])[1] || '';
+  if (/background:\s*#/.test(cityTextRule)) stage12.push('citytext 仍有背景色：' + cityTextRule.trim().slice(0, 60));
+  if (/border:\s*1px/.test(cityTextRule)) stage12.push('citytext 仍有边框：' + cityTextRule.trim().slice(0, 60));
+  if (/border-radius:\s*999px/.test(cityTextRule)) stage12.push('citytext 仍是圆角胶囊：' + cityTextRule.trim().slice(0, 60));
+  /* 设置页要有城市入口，别把功能弄丢 */
+  if (!document.getElementById('setCity')) stage12.push('设置页没有「当前城市」入口');
+
+  /* 城市按钮上的名字也应该对 */
+  const btnName = document.getElementById('cityBtnName');
+  if (!btnName || !/绵阳/.test(String(btnName.textContent || ''))) {
+    stage12.push('城市按钮名字没更新：' + (btnName ? btnName.textContent : '(缺失)'));
+  }
+
+  /* 无数据城市（德阳）应当被标灰、点它不切城市 */
+  if (typeof window.cdBusCityTable === 'function') {
+    const table = await window.cdBusCityTable();
+    const deyang = (table || []).find((t) => t.name === '德阳');
+    if (!deyang) stage12.push('城市表里没有德阳');
+    else if (deyang.covered !== false) stage12.push('德阳应标记为无数据');
+  }
+
+  if (state12 && state12.cityId && String(state12.cityId) !== '133') {
+    stage12.push('state 里的城市没切到绵阳：' + JSON.stringify(state12.cityId));
+  }
+}
+
+if (stage12.length) {
+  console.error('✗ UI 冒烟失败（多城市）：');
+  for (const f of stage12) console.error('  - ' + f);
+  process.exit(1);
+}
+/* ------------------------------------------------ 城市名跟随手机定位 */
+const stage13 = [];
+{
+  /* 让 city 接口随坐标返回不同城市：成都 / 绵阳 / 南充 */
+  const cityByPos = [
+    { lat: 30.657, lng: 104.065, cityId: '007', city: '成都' },
+    { lat: 31.4675, lng: 104.6796, cityId: '133', city: '绵阳' },
+    { lat: 30.8373, lng: 106.1107, cityId: '526', city: '南充' },
+  ];
+  let currentPos = cityByPos[0];
+  let cityTableAsked = 0;
+
+  const origStart = window.AndroidBus.start;
+  const origPoll = window.AndroidBus.poll;
+  const pending = new Map();
+  let seq = 0;
+  window.AndroidBus.start = function (method, payload) {
+    let args = {};
+    try { args = JSON.parse(payload || '{}'); } catch (e) {}
+    const id = 'c13-' + (++seq);
+    pending.set(id, { method, args });
+    return id;
+  };
+  window.AndroidBus.poll = function (id) {
+    const item = pending.get(id);
+    if (!item) return JSON.stringify({ state: 'ok', data: null });
+    pending.delete(id);
+    if (item.method === 'location') {
+      const d = { lat: currentPos.lat, lng: currentPos.lng, accuracy: 25, provider: 'gps', stale: false };
+      return JSON.stringify({ state: 'ok', data: d });
+    }
+    if (item.method === 'city') {
+      /* 按传进来的坐标找最近的城市 */
+      let best = cityByPos[0], bd = Infinity;
+      for (const c of cityByPos) {
+        const d2 = (c.lat - item.args.lat) ** 2 + (c.lng - item.args.lng) ** 2;
+        if (d2 < bd) { bd = d2; best = c; }
+      }
+      return JSON.stringify({ state: 'ok', data: { cityId: best.cityId, city: best.city, covered: true } });
+    }
+    if (item.method === 'citytable') {
+      cityTableAsked += 1;
+      return JSON.stringify({ state: 'ok', data: [
+        { cityId: '007', name: '成都', group: '成都', level: 'city', covered: true },
+        { cityId: '133', name: '绵阳', group: '绵阳', level: 'city', covered: true },
+        { cityId: '526', name: '南充', group: '南充', level: 'city', covered: true },
+      ] });
+    }
+    if (item.method === 'nearby') {
+      return JSON.stringify({ state: 'ok', data: { stops: [], allArrivals: [] } });
+    }
+    if (item.method === 'permissions') return JSON.stringify({ state: 'ok', data: { location: true } });
+    return JSON.stringify({ state: 'ok', data: null });
+  };
+
+  async function settle(ms) { await new Promise((r) => setTimeout(r, ms)); }
+
+  /* 1) 先在成都定位 */
+  currentPos = cityByPos[0];
+  if (typeof window.cdBusPermission === 'function') window.cdBusPermission(true);
+  await settle(1200);
+  if (window.cdBusCityIdOf() !== '007') {
+    stage13.push('成都定位后城市应为 007，实际 ' + window.cdBusCityIdOf());
+  }
+
+  /* 2) 人移动到绵阳 → 刷新（带 locate）后城市名必须跟着变 */
+  currentPos = cityByPos[1];
+  await window.cdBusRefreshHome({ locate: true });
+  await settle(900);
+
+  if (window.cdBusCityIdOf() !== '133') {
+    stage13.push('移动到绵阳后城市没跟随定位：' + window.cdBusCityIdOf());
+  }
+  const topName = String(document.getElementById('cityBtnName').textContent || '');
+  if (!/绵阳/.test(topName)) stage13.push('顶栏城市名没跟着定位变：' + topName);
+
+  /* 3) 再移动到南充 */
+  currentPos = cityByPos[2];
+  await window.cdBusRefreshHome({ locate: true });
+  await settle(900);
+  if (window.cdBusCityIdOf() !== '526') {
+    stage13.push('移动到南充后城市没跟随定位：' + window.cdBusCityIdOf());
+  }
+  if (!/南充/.test(String(document.getElementById('cityBtnName').textContent || ''))) {
+    stage13.push('顶栏城市名没跟到南充');
+  }
+
+  /* 4) 手动选绵阳（人此时在南充）：就地锁定，原地刷新要保持在绵阳 —— 这是用户明确选择 */
+  await window.cdBusSwitchCity('133', '绵阳', true);
+  await settle(400);
+  if (window.cdBusCityIdOf() !== '133') stage13.push('手动切绵阳失败');
+  if (!window.cdBusState().manual) stage13.push('手动选择没有标记 manual');
+
+  /* 仍在选择时所在的位置 → 手动选择继续有效，不能被定位改回去 */
+  await window.cdBusRefreshHome({ locate: true });
+  await settle(900);
+  if (window.cdBusCityIdOf() !== '133') {
+    stage13.push('原地刷新把手动选的绵阳改掉了：' + window.cdBusCityIdOf());
+  }
+
+  /* 5) 人真的搬到成都（远离手动选择时的位置）→ 手动选择让位，跟随定位到成都 */
+  currentPos = cityByPos[0];
+  await window.cdBusRefreshHome({ locate: true });
+  await settle(1000);
+  if (window.cdBusCityIdOf() !== '007') {
+    stage13.push('跨市移动到成都后仍锁在手动选的绵阳：' + window.cdBusCityIdOf());
+  }
+  if (window.cdBusState().manual) stage13.push('跨市后 manual 标记没有清掉');
+
+  window.AndroidBus.start = origStart;
+  window.AndroidBus.poll = origPoll;
+}
+
+if (stage13.length) {
+  console.error('✗ UI 冒烟失败（城市跟随定位）：');
+  for (const f of stage13) console.error('  - ' + f);
+  process.exit(1);
+}
+/* ---------------------------------------------- 定位行只显示状态词 */
+const stage14 = [];
+{
+  /* 定位成功后，loctext 里只应有「已定位」（或「缓存位置」），
+     不该出现 provider（gps/network）、精度（N 米）、耗时（用时 N 秒） */
+  const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  /* 用当前桩再触发一次定位刷新 */
+  if (typeof window.cdBusRefreshHome === 'function') {
+    await window.cdBusRefreshHome({ locate: true });
+    await settle(900);
+  }
+  const text = String(document.getElementById('loctext').textContent || '');
+  if (!/已定位|缓存位置/.test(text)) {
+    stage14.push('定位行没有「已定位」：' + text);
+  }
+  if (/gps|network|未知精度/.test(text)) {
+    stage14.push('定位行仍显示定位来源：' + text);
+  }
+  if (/\d+\s*米/.test(text)) {
+    stage14.push('定位行仍显示精度数值：' + text);
+  }
+  if (/用时/.test(text)) {
+    stage14.push('定位行仍显示耗时：' + text);
+  }
+  /* 城市名不该再拼到这一行（顶栏已独立显示） */
+  if (/·/.test(text)) {
+    stage14.push('定位行还有分隔符拼接：' + text);
+  }
+
+  /* 源码层面也确认：定位成功的两处 setLocbar 调用不再拼额外字段 */
+  if (/setLocbar\([^)]*provider/.test(html)) stage14.push('代码里定位行仍拼 provider');
+  if (/setLocbar\([^)]*accuracy/.test(html)) stage14.push('代码里定位行仍拼精度');
+}
+
+if (stage14.length) {
+  console.error('✗ UI 冒烟失败（定位行文案）：');
+  for (const f of stage14) console.error('  - ' + f);
+  process.exit(1);
+}
+/* ------------------------------ 有在途车辆时不能判「不在运营时段」 */
+const stage15 = [];
+{
+  const os = window.cdBusOutsideService;
+  if (typeof os !== 'function') {
+    stage15.push('outsideService 没有导出，无法校验');
+  } else {
+    /* 时间设成一定「过了末班」的线路：07:40-13:00 */
+    const first = '07:40', last = '13:00';
+
+    /* 1) 有 stationsAway、但 ETA 是 null（区县线路常见）→ 不能判灰 */
+    if (os(first, last, { stationsAway: 9, etaSeconds: null }) !== false) {
+      stage15.push('有车但 ETA 为 null 被判成不在运营时段');
+    }
+    /* 2) 有 stationsAway、ETA 是 -1（崇州实测）→ 不能判灰 */
+    if (os(first, last, { stationsAway: 6, etaSeconds: -1 }) !== false) {
+      stage15.push('有车但 ETA 为 -1 被判成不在运营时段');
+    }
+    /* 3) stationsAway 为 0（即将到站）→ 不能判灰 */
+    if (os(first, last, { stationsAway: 0, etaSeconds: null }) !== false) {
+      stage15.push('车已到站却被判成不在运营时段');
+    }
+    /* 4) 待发车 → 不能判灰 */
+    if (os(first, last, { stationsAway: null, etaSeconds: null, preStartTime: '09:20' }) !== false) {
+      stage15.push('待发车被判成不在运营时段');
+    }
+    /* 5) 真的没车（stationsAway 为 null 且无待发）→ 应判灰 */
+    if (os(first, last, { stationsAway: null, etaSeconds: null }) !== true) {
+      stage15.push('确实没车却没判不在运营时段');
+    }
+    /* 6) 数据缺失（首末班为空）→ 不判灰，避免整片变灰 */
+    if (os(undefined, undefined, { stationsAway: 3, etaSeconds: -1 }) !== false) {
+      stage15.push('首末班缺失时把有车的线路判灰了');
+    }
+
+    /* 7) 源码层面：无实时数据的补查格子不该只凭时间判灰 */
+    if (/ended:\s*outsideService\(firstTime,\s*lastTime,\s*null\)/.test(html)) {
+      stage15.push('补查格子仍只凭时间判收班（区县线路会整片变灰）');
+    }
+  }
+}
+
+if (stage15.length) {
+  console.error('✗ UI 冒烟失败（收班误判）：');
+  for (const f of stage15) console.error('  - ' + f);
+  process.exit(1);
+}
+console.log('✓ 收班判定通过：有车（含 ETA 为 -1/null）不判灰、待发车不判灰、真没车才变淡');
+
+console.log('✓ 定位行精简通过：只显示「已定位」，无来源/精度/耗时/城市拼接');
+
+console.log('✓ 城市跟随定位通过：跨市移动自动切换、顶栏与状态同步、手动选择就地有效·跨市让位给定位');
+
+console.log('✓ 多城市通过：定位识别城市、切换后重查 nearby、标题固定应用名、城市按钮同步、无数据城市标记');
 
 // 首页有 30 秒自动刷新定时器，测试用完直接退出
 process.exit(0);
