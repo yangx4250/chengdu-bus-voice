@@ -56,7 +56,7 @@ $ cd-bus near --city 绵阳
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.0.60）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 92 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.1.7）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 730 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
