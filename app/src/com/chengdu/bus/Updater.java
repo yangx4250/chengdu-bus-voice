@@ -216,7 +216,10 @@ public final class Updater {
     private Release checkFromGitee() {
         HttpURLConnection conn = null;
         try {
-            String url = "https://gitee.com/api/v5/repos/" + GT_REPO + "/releases?page=1&per_page=1";
+            /* 注意：Gitee 的 releases 列表按创建时间**正序**返回（最老的排前面），
+               和 GitHub 相反。实测 v1.3.1 排在 v1.3.2 之前，取 [0] 会拿到旧版本，
+               用户就永远收不到更新。所以这里取一页（20 条）再按版本号挑最大的。 */
+            String url = "https://gitee.com/api/v5/repos/" + GT_REPO + "/releases?page=1&per_page=20";
             conn = (HttpURLConnection) new URL(url).openConnection();
             conn.setConnectTimeout(CONNECT_TIMEOUT);
             conn.setReadTimeout(READ_TIMEOUT);
@@ -226,7 +229,18 @@ public final class Updater {
             String body = readAll(conn.getInputStream());
             org.json.JSONArray arr = new org.json.JSONArray(body);
             if (arr.length() == 0) return null;
-            org.json.JSONObject rel = arr.getJSONObject(0);
+
+            /* 挑版本号最大的那条（跳过 prerelease） */
+            org.json.JSONObject rel = null;
+            int best = -1;
+            for (int i = 0; i < arr.length(); i++) {
+                org.json.JSONObject r = arr.getJSONObject(i);
+                if (r.optBoolean("prerelease", false)) continue;
+                String t = r.optString("tag_name", "");
+                int v = normalize(t);
+                if (v > best) { best = v; rel = r; }
+            }
+            if (rel == null) return null;
             String tag = rel.optString("tag_name", "");
             if (tag.isEmpty()) return null;
             /* 附件里找 APK */

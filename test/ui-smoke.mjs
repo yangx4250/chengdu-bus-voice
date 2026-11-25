@@ -3821,6 +3821,31 @@ if (stage18.length) {
   for (const f of stage18) console.error('  - ' + f);
   process.exit(1);
 }
+/* ---------------------------- Gitee 版本选择：必须取最大版本号，不能取第 0 条 */
+const stage19 = [];
+{
+  const updaterSrc = readSafe('app/src/com/chengdu/bus/Updater.java');
+  /* Gitee 的 releases 列表按创建时间正序返回（最老的在前），
+     GitHub 是倒序。实测 v1.3.1 排在 v1.3.2 之前 —— 取 [0] 会拿到旧版本，
+     用户永远收不到更新。必须遍历挑最大。 */
+  if (!/int best = -1/.test(updaterSrc) || !/if \(v > best\)/.test(updaterSrc)) {
+    stage19.push('Gitee 版本选择没有取「最大版本号」，取第 0 条会拿到旧版本');
+  }
+  if (!/per_page=20/.test(updaterSrc)) {
+    stage19.push('Gitee 只拉 1 条 release，无法挑最大版本');
+  }
+  if (!/prerelease/.test(updaterSrc)) {
+    stage19.push('没有跳过 prerelease 版本');
+  }
+}
+
+if (stage19.length) {
+  console.error('✗ UI 冒烟失败（Gitee 版本选择）：');
+  for (const f of stage19) console.error('  - ' + f);
+  process.exit(1);
+}
+console.log('✓ Gitee 版本选择通过：拉多条 release 按版本号取最大、跳过 prerelease');
+
 console.log('✓ 在线更新通过：入口与进度条、桥接方法、全状态处理、权限引导、启动静默检查、清单与版本比较');
 
 console.log('✓ 末班在途通过：末班已过且有车才显示、未到末班不显示、无车不显示、缺数据不显示');
