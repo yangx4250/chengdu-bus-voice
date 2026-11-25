@@ -2572,7 +2572,9 @@
     }
     renderLineDirections();
     renderLineBuses();
-    renderLineStations();
+    /* scroll: true → 站名条横向滚到「离我最近」的站。
+       自动刷新（每 30 秒）和手动刷新都会走到这里。 */
+    renderLineStations({ scroll: true });
     renderLineNav();
     renderStationFavRow();
   }
@@ -2842,7 +2844,8 @@
       lv.buses = buses;
       lv.busesAt = Date.now();
       renderLineBuses();
-      renderLineStations();
+      /* 车辆位置更新后也让站名条对准「离我最近」 */
+      renderLineStations({ scroll: true });
     } catch (e) {
       /* 静默失败，保留上一次的图标 */
     }
@@ -3049,8 +3052,15 @@
       };
       box.appendChild(chip);
     });
-    if (opts && opts.scroll && nearestId) {
-      /* 没有选中站时，把「离我最近」那个芯片滚到横向中间 */
+    /* 刷新后对准「离我最近」那一站。
+       规则分两种，避免打架：
+         - 用户自己选过站（.chip.on 存在）→ 以他选的为准，只保证它在可视区
+           （centerActiveChip 有「已可见就不动」的保护，不会打断浏览）
+         - 没选过站 → 滚到「最近」那站居中
+       以前这里只调 centerActiveChip，没有 .on 就什么都不滚，
+       所以自动刷新后站名条停在开头、找不到自己那一站。 */
+    var hasActive = box.querySelector && box.querySelector(".chip.on");
+    if (opts && opts.scroll && !hasActive && nearestId) {
       var target = box.querySelector ? box.querySelector(".chip.nearest") : null;
       if (target) {
         setTimeout(function () {
@@ -3065,6 +3075,7 @@
           } catch (e) { box.scrollLeft = left; }
         }, 80);
       }
+      return;      /* 交给上面的定时器，别再让 centerActiveChip 抢滚动 */
     }
     centerActiveChip(box);
   }
@@ -3343,9 +3354,11 @@
       if (!lv.buses) lv.buses = [];
       if (!lv.busesAt) lv.busesAt = 0;
       state.lineView = lv;
+      /* 每次重画都让站名条滚到「离我最近」那一站 ——
+         以前只有首次进页会滚，之后的自动/手动刷新都保持旧位置，
+         看起来像「刷新后没对准我」。到站表的纵向滚动仍只在首次进页做，
+         避免打断用户正在看的内容。 */
       renderLineView();
-      /* 只有首次进入（从首页/搜索点进详情）滚到当前站这一次；
-         之后无论手动刷新还是定时/回前台自动刷新，都保持用户当前浏览位置不动 */
       var wantScroll = view.scrollOnLoad;
       view.scrollOnLoad = false;
       renderTimes({ scroll: wantScroll, nearest: wantScroll });
@@ -3936,6 +3949,17 @@
   window.cdBusOutsideService = outsideService;
   window.cdBusIsLastBusInTransit = isLastBusInTransit;
   window.cdBusLineView = function () { return state.lineView; };
+  /* 测试用：站名条该滚到哪。返回 'nearest' | 'active' | 'none' */
+  window.cdBusScrollIntent = function (opts) {
+    var box = $("lchips");
+    if (!box) return "none";
+    var hasActive = box.querySelector && box.querySelector(".chip.on");
+    var lv = state.lineView;
+    var nearSt = lv && lv.stations ? nearestStation(lv.stations) : null;
+    if (!hasActive && nearSt) return "nearest";
+    if (hasActive) return "active";
+    return "none";
+  };
   window.cdBusSwitchCity = switchCity;
   window.cdBusOpenOtherNoRealtime = openOtherLineWithoutRealtime;
 
