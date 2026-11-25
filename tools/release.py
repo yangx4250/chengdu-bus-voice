@@ -37,6 +37,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 GH_OWNER_REPO = "yangx4250/chengdu-bus-voice"
 GT_OWNER_REPO = "yangxiao436426/chengdu-bus-voice"
+GT_USER = "yangxiao436426"   # Gitee 的 https 推送需要「用户名:token@」，
+                             # 只给 token 会被 git 当成密码去交互询问，无终端就失败
 APK_ASSET_NAME = "chengdu-bus-latest.apk"
 APK_BUILD_PATH = os.path.join(ROOT, "build", "公交来了.apk")
 APK_PHONE_DIR = "/sdcard/Download/DSH-Go"
@@ -195,13 +197,22 @@ def git_commit_push(version_name, gh_token, gt_token):
     else:
         ok("已推 GitHub")
 
-    # Gitee
-    gt_url = f"https://{gt_token}@gitee.com/{GT_OWNER_REPO}.git"
-    p = run(["git", "push", gt_url, "main", "--tags"], check=False)
+    # Gitee：先推分支（必须成功），tag 单独推（可能已由 Release 自动创建，不算失败）
+    gt_url = f"https://{GT_USER}:{gt_token}@gitee.com/{GT_OWNER_REPO}.git"
+    p = run(["git", "push", gt_url, "main"], check=False)
     if p.returncode != 0:
-        print(f"   ⚠ Gitee 推送失败：{(p.stderr or '')[-300:]}")
+        print(f"   ⚠ Gitee 分支推送失败：{(p.stderr or '')[-300:]}")
     else:
-        ok("已推 Gitee")
+        ok("已推 Gitee 分支")
+    p = run(["git", "push", gt_url, "tag", tag], check=False)
+    err = (p.stderr or "") + (p.stdout or "")
+    if p.returncode != 0:
+        if "already exists" in err or "已存在" in err:
+            ok(f"tag {tag} 在 Gitee 已存在（Release 自动创建）")
+        else:
+            print(f"   ⚠ Gitee tag 推送失败：{err[-200:]}")
+    else:
+        ok(f"已推 tag {tag} 到 Gitee")
 
 
 def release_github(version_name, title, notes, token):
