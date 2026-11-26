@@ -4582,6 +4582,45 @@ console.log('✓ 站名条滚动通过：自动刷新保持原位、手动刷新
     process.exit(1);
   }
   console.log('✓ 进详情页对准最近站通过：任何入口都滚到最近站、自动刷新不滚、没定位才退回选中站');
+
+/* ---------------------- 站名条居中：末尾半屏空白 + 重试 */
+{
+  const fail = [];
+  /* 靠后的站（离我最近常常是倒数第几站）要能居中，scrollLeft 就不能被
+     scrollWidth - clientWidth 顶住，所以列表末尾必须补一段空白 */
+  if (!/\.chipspacer/.test(html)) fail.push('没有 .chipspacer 样式（末尾半屏空白）');
+  if (!/sp\.className = "chipspacer"/.test(html)) fail.push('渲染站名条时没有插入 chipspacer 节点');
+  if (!/function chipSpacer/.test(html)) fail.push('没有 chipSpacer()');
+  if (!/function centerChipNow/.test(html)) fail.push('没有 centerChipNow()');
+  if (!/function pinChipCenter/.test(html)) fail.push('没有 pinChipCenter()');
+  /* 进详情页那一屏必须用 pinChipCenter 钉住最近站 */
+  const block = (html.match(/if \(opts && opts\.scroll\) \{[\s\S]{0,700}?\n    \}/) || [''])[0];
+  if (!/pinChipCenter\(box, target\)/.test(block)) {
+    fail.push('opts.scroll 分支没有用 pinChipCenter 对准最近站');
+  }
+  /* smooth 会被重画打断，所以居中这里不能再走 scrollTo({behavior:'smooth'}) */
+  const centerFn = (html.match(/function centerChipNow[\s\S]*?\n  \}/) || [''])[0];
+  if (/behavior:\s*["']smooth["']/.test(centerFn)) {
+    fail.push('centerChipNow 里用了 smooth 滚动，会被重画打断');
+  }
+  if (!/box\.scrollLeft = target/.test(centerFn)) {
+    fail.push('centerChipNow 没有直接赋值 scrollLeft');
+  }
+  /* 页面刚显示、布局还没算好时要能重试 */
+  if (!/delays = \[0, 50, 150, 350, 700\]/.test(html)) {
+    fail.push('pinChipCenter 没有重试时间表');
+  }
+  if (!/touchstart/.test(html) || !/touched/.test(html)) {
+    fail.push('用户自己滑动时没有停手');
+  }
+
+  if (fail.length) {
+    console.error('✗ UI 冒烟失败（站名条居中）：');
+    for (const f of fail) console.error('  - ' + f);
+    process.exit(1);
+  }
+  console.log('✓ 站名条居中通过：末尾有半屏空白可居中、直接赋值不被重画打断、布局没好会重试、用户滑动就停手');
+}
 }
 
 /* ---------------------- 更新源顺序：Gitee 必须是首次检测与下载的第一顺位 */

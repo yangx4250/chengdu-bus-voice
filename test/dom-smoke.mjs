@@ -78,6 +78,50 @@ for (const e of entries) {
   if (!visible) fail.push(`点 #${e.id}（${e.label}）没有切到 #${e.view}（class：${before} → ${after}）`);
 }
 
+/* 站名条居中算法（jsdom 没有布局，所以给元素喂假 rect 直接验算）：
+   进详情页时「离我最近」那一站必须正好落在可视区中间，靠后的站也一样。 */
+{
+  const win = dom.window;
+  const box = doc.createElement('div');
+  Object.defineProperty(box, 'clientWidth', { value: 400, configurable: true });
+  box.getBoundingClientRect = () => ({ left: 0, right: 400, width: 400, top: 0, bottom: 0 });
+  box.scrollLeft = 0;
+  const chips = [];
+  for (let i = 0; i < 24; i++) {
+    const c = doc.createElement('div');
+    c.className = 'chip';
+    c.getBoundingClientRect = () => ({
+      left: i * 100 - box.scrollLeft, right: i * 100 + 90 - box.scrollLeft,
+      width: 90, top: 0, bottom: 0,
+    });
+    box.appendChild(c);
+    chips.push(c);
+  }
+  const sp = doc.createElement('div');
+  sp.className = 'chipspacer';
+  box.appendChild(sp);
+
+  const center = win.cdBusCenterChipNow;
+  if (typeof center !== 'function') {
+    fail.push('没有导出 cdBusCenterChipNow，滚动算法没法验证');
+  } else {
+    for (const idx of [0, 11, 21, 23]) {
+      box.scrollLeft = 0;
+      center(box, chips[idx]);
+      const want = Math.max(0, idx * 100 - 155);      // 芯片中心对准 400/2
+      if (Math.abs(box.scrollLeft - want) > 2) {
+        fail.push(`第 ${idx + 1} 站居中失败：scrollLeft=${Math.round(box.scrollLeft)}，应该是 ${want}`);
+      }
+    }
+    // 页面还隐藏（clientWidth 为 0）时要老实返回 false，交给重试
+    const hiddenBox = doc.createElement('div');
+    Object.defineProperty(hiddenBox, 'clientWidth', { value: 0, configurable: true });
+    if (center(hiddenBox, chips[0]) !== false) {
+      fail.push('页面隐藏时（clientWidth=0）应该返回 false 让调用方重试，结果返回了 true');
+    }
+  }
+}
+
 if (fail.length) {
   console.error('✗ 真 DOM 冒烟失败：');
   for (const f of fail) console.error('  - ' + f);
