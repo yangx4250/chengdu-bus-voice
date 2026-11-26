@@ -80,6 +80,8 @@ public final class Updater {
     private volatile boolean cancelled = false;
     /** 最近一次检查得到的下载地址（Gitee 的，带 tag，优先用）。 */
     private volatile String lastDownloadUrl = "";
+    /** 最近一次检查到的 tag，用于拼 Gitee 的确定路径（检查没跑过则为空）。 */
+    private volatile String lastTag = "";
 
     public Updater(Activity activity) {
         this.activity = activity;
@@ -186,8 +188,9 @@ public final class Updater {
                     data.put("hasUpdate", remote > local);
                     data.put("url", rel.downloadUrl);
                     data.put("source", rel.source);
-                    /* 记住这次检查到的下载地址，下载时优先用它 */
+                    /* 记住这次检查到的地址和 tag，下载时优先用 */
                     lastDownloadUrl = rel.downloadUrl;
+                    lastTag = rel.tag;
                     emit(listener, "checked", data);
                 } catch (Throwable e) {
                     Log.w(TAG, "检查更新失败", e);
@@ -304,8 +307,16 @@ public final class Updater {
 
     /** 按 Gitee → 代理 → GitHub 直连的顺序检查。 */
     private Release fetchLatest() {
+        /* 首次检测固定走 Gitee —— 国内直连可用（实测 0.5s），
+           不依赖第三方代理，也不需要梯子。后面的代理/GitHub 只是兜底。 */
+        Log.i(TAG, "首次检测：Gitee");
         Release r = checkFromGitee();
-        if (r != null) return r;
+        if (r != null) {
+            Log.i(TAG, "Gitee 命中：" + r.tag);
+            return r;
+        }
+        Log.w(TAG, "Gitee 不可用，退到 GitHub 代理");
+
         r = checkFromGithubRedirect("https://gh-proxy.com/");
         if (r != null) return r;
         r = checkFromGithubRedirect("https://ghfast.top/");
@@ -355,15 +366,31 @@ public final class Updater {
             @Override
             public void run() {
                 try {
-                    /* 优先用检查阶段拿到的地址（Gitee 带 tag，最准） */
+                    /* 优先用检查阶段拿到的地址（Gitee 带 tag，最准）。
+                       检查没跑过（lastDownloadUrl 空）时，DOWNLOAD_SOURCES 的第一条
+                       就是 Gitee 的固定路径，所以仍会先试 Gitee。 */
+                    /* 下载源顺序：Gitee 永远第一。
+                       以前 DOWNLOAD_SOURCES 里 Gitee 那条带 "LATEST_TAG" 占位符，
+                       会被下面的过滤条件跳过 —— 如果用户没先点「检查更新」就点下载，
+                       Gitee 根本不会被尝试，直接跳到第三方代理。现在用真实 tag 拼。 */
                     java.util.List<String> urls = new java.util.ArrayList<>();
+                    java.util.Set<String> seenUrl = new java.util.HashSet<>();
+
+                    /* ① 检查阶段拿到的确切地址 */
                     String first = lastDownloadUrl;
-                    if (first != null && !first.isEmpty()) urls.add(first);
+                    if (first != null && !first.isEmpty() && seenUrl.add(first)) {
+                        urls.add(first);
+                    }
+                    /* ② 用已知 tag 拼 Gitee 的确定路径（仓库名、文件名都是固定的） */
+                    if (lastTag != null && !lastTag.isEmpty()) {
+                        String giteeUrl = "https://gitee.com/" + GT_REPO
+                                + "/releases/download/" + lastTag + "/" + APK_NAME;
+                        if (seenUrl.add(giteeUrl)) urls.add(giteeUrl);
+                    }
+                    /* ③ 兜底：代理和 GitHub 直连 */
                     for (String u : DOWNLOAD_SOURCES) {
-                        if (u != null && !u.isEmpty() && !u.contains("LATEST_TAG")
-                                && !urls.contains(u)) {
-                            urls.add(u);
-                        }
+                        if (u == null || u.isEmpty() || u.contains("LATEST_TAG")) continue;
+                        if (seenUrl.add(u)) urls.add(u);
                     }
 
                     File dir = ApkProvider.dir(activity);

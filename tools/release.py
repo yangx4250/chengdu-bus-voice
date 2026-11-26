@@ -174,17 +174,28 @@ def build_apk():
     ok(f"APK 已生成：{os.path.getsize(APK_BUILD_PATH)} 字节")
 
 
-def run_tests():
-    """两套测试都要过。"""
+def run_tests(attempts=2):
+    """两套测试都要过。
+
+    冒烟测试打的是车来了真实接口，偶发会返回 status 01（限流/服务端抖动）。
+    这种情况重跑一次通常就过，不该因此让整个发版失败 ——
+    但也不能无限重试掩盖真问题，所以最多试 2 次。
+    """
     for name, cmd in [("冒烟测试", ["node", "test/smoke.mjs"]),
                       ("界面测试", ["node", "test/ui-smoke.mjs"])]:
-        print(f"   {name}…")
-        p = run(cmd, check=False)
-        out = (p.stdout or "") + (p.stderr or "")
-        if p.returncode != 0:
-            die(f"{name}未通过：\n{out[-1500:]}")
-        m = re.search(r"全部通过：(\d+) 项", out)
-        ok(f"{name}通过" + (f"（{m.group(1)} 项）" if m else ""))
+        for attempt in range(1, attempts + 1):
+            print(f"   {name}…" + (f"（第 {attempt} 次）" if attempt > 1 else ""))
+            p = run(cmd, check=False)
+            out = (p.stdout or "") + (p.stderr or "")
+            if p.returncode == 0:
+                m = re.search(r"全部通过：(\d+) 项", out)
+                ok(f"{name}通过" + (f"（{m.group(1)} 项）" if m else ""))
+                break
+            if attempt < attempts:
+                print(f"   ⚠ {name}失败，可能接口偶发限流，重试…")
+                time.sleep(5)
+        else:
+            die(f"{name}连续 {attempts} 次未通过：\n{out[-1500:]}")
     ok("测试全部通过")
 
 

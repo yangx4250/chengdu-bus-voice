@@ -3514,8 +3514,18 @@ const stage15 = [];
   if (typeof os !== 'function') {
     stage15.push('outsideService 没有导出，无法校验');
   } else {
-    /* 用一条一定「已过末班」的线路：07:40-13:00（当前时间远超末班） */
-    const first = '07:40', last = '13:00';
+    /* 不能写死时间（比如 07:40-13:00 在早上跑就不是「已过末班」）。
+       按当前时间动态造一条一定已收班的线路：
+       首班 = 当前 -5 小时，末班 = 当前 -1 分钟。 */
+    const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+    const hhmm = (m) => {
+      const v = ((m % 1440) + 1440) % 1440;
+      return String(Math.floor(v / 60)).padStart(2, '0') + ':' + String(v % 60).padStart(2, '0');
+    };
+    const first = hhmm(nowMin - 300);
+    /* 末班要给足余量：pastLastTime 有「末班后 5 分钟仍算在运营」的宽限，
+       设成 now-1 会落在宽限内，判不成已收班。用 now-60 稳妥。 */
+    const last = hhmm(nowMin - 60);
 
     /* 1) 最后一辆车还没到本站（away > 0）→ 不算收班，保持白色 */
     if (os(first, last, { stationsAway: 2 }) !== false) {
@@ -3541,8 +3551,7 @@ const stage15 = [];
       stage15.push('待发车被判成收班');
     }
     /* 6) 还没到末班时间 → 一律不算收班（哪怕车已驶过）。
-          不要用「当前时间 +N 小时」构造，跨午夜时会算出已过的末班，用例自身就错。
-          用 24 小时运营线路（00:00-23:59）：任何时刻都在区间内。 */
+          用 24 小时运营线路（00:00-23:59）：任何时刻都在区间内，不依赖跑测试的时间。 */
     if (os('00:00', '23:59', { stationsAway: -3 }) !== false) {
       stage15.push('还没到末班时间就把线路判成收班（24 小时线路被误判）');
     }
@@ -3889,6 +3898,57 @@ if (stage20.length) {
   process.exit(1);
 }
 console.log('✓ 站名条滚动通过：自动刷新保持原位、手动刷新才回最近站、点站名不滚、切方向回最近');
+
+/* ---------------------- 更新源顺序：Gitee 必须是首次检测与下载的第一顺位 */
+const stage21 = [];
+{
+  const src = readSafe('app/src/com/chengdu/bus/Updater.java');
+
+  /* 1) fetchLatest 的第一句必须调 checkFromGitee */
+  const fetchBody = (src.match(/private Release fetchLatest\(\) \{([\s\S]*?)\n    \}/) || [])[1] || '';
+  if (!fetchBody) {
+    stage21.push('找不到 fetchLatest()');
+  } else {
+    const giteePos = fetchBody.indexOf('checkFromGitee()');
+    const proxyPos = fetchBody.indexOf('gh-proxy.com');
+    const ghPos = fetchBody.indexOf('checkFromGithubRedirect("")');
+    if (giteePos < 0) {
+      stage21.push('fetchLatest 没有调用 checkFromGitee');
+    } else {
+      if (proxyPos >= 0 && proxyPos < giteePos) stage21.push('GitHub 代理排在 Gitee 之前');
+      if (ghPos >= 0 && ghPos < giteePos) stage21.push('GitHub 直连排在 Gitee 之前');
+    }
+  }
+
+  /* 2) Gitee 的 URL 必须在其它源之前出现在 DOWNLOAD_SOURCES 里 */
+  const arr = (src.match(/DOWNLOAD_SOURCES = \{([\s\S]*?)\};/) || [])[1] || '';
+  if (!arr) {
+    stage21.push('找不到 DOWNLOAD_SOURCES');
+  } else {
+    const iGitee = arr.indexOf('gitee.com');
+    const iProxy = arr.indexOf('gh-proxy.com');
+    if (iGitee < 0) stage21.push('DOWNLOAD_SOURCES 里没有 Gitee 源');
+    else if (iProxy >= 0 && iProxy < iGitee) stage21.push('代理源排在 Gitee 之前');
+  }
+
+  /* 3) 下载时不能用占位符把 Gitee 过滤掉（这是上一版的真 bug） */
+  if (/!u\.contains\("LATEST_TAG"\)/.test(src) && !/lastTag/.test(src)) {
+    stage21.push('Gitee 下载路径仍靠占位符，会被过滤条件跳过');
+  }
+  if (!/lastTag/.test(src)) {
+    stage21.push('没有记住检查到的 tag，下载时拼不出 Gitee 的确定路径');
+  }
+  if (!/releases\/download\/" \+ lastTag/.test(src)) {
+    stage21.push('下载时没有用真实 tag 拼 Gitee 路径（没先检查就下载会跳过 Gitee）');
+  }
+}
+
+if (stage21.length) {
+  console.error('✗ UI 冒烟失败（更新源顺序）：');
+  for (const f of stage21) console.error('  - ' + f);
+  process.exit(1);
+}
+console.log('✓ 更新源顺序通过：首次检测与下载都以 Gitee 为第一顺位、不会被占位符跳过');
 
 console.log('✓ Gitee 版本选择通过：拉多条 release 按版本号取最大、跳过 prerelease');
 
