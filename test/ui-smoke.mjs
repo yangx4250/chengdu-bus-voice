@@ -4446,6 +4446,7 @@ console.log('✓ 地铁首末班通过：19 条线路双向齐备、时间合法
   }
 
   console.log('✓ 地铁下车提醒通过：定位触发、地铁 600 米/不传站序、有轨 250 米/传站序、可取消、互斥、界面链路完整');
+}
 
 /* ---------------------- 地铁站：站点导航 + 出入口列表 */
 {
@@ -4522,7 +4523,6 @@ console.log('✓ 地铁首末班通过：19 条线路双向齐备、时间合法
   const sample = names.slice(0, 3).map((n) => n + ' ' + exits[n].map((x) => x[0]).join('')).join('，');
   console.log('✓ 地铁出入口/导航通过：' + names.length + ' 个站有出入口（' + sample + '…），导航走 openNavPickFor，文字已转义');
 }
-}
 
 console.log('✓ 到站表行通过：时间固定右边、站名在自己列内折行、行内无铃铛');
 
@@ -4582,6 +4582,7 @@ console.log('✓ 站名条滚动通过：自动刷新保持原位、手动刷新
     process.exit(1);
   }
   console.log('✓ 进详情页对准最近站通过：任何入口都滚到最近站、自动刷新不滚、没定位才退回选中站');
+}
 
 /* ---------------------- 站名条居中：末尾半屏空白 + 重试 */
 {
@@ -4621,6 +4622,65 @@ console.log('✓ 站名条滚动通过：自动刷新保持原位、手动刷新
   }
   console.log('✓ 站名条居中通过：末尾有半屏空白可居中、直接赋值不被重画打断、布局没好会重试、用户滑动就停手');
 }
+
+/* ---------------------- 深色 / 浅色模式 */
+{
+  const fail = [];
+  if (!/id="modeSw"/.test(html)) fail.push('设置页没有浅色模式开关 #modeSw');
+  if (!/id="setMode"/.test(html)) fail.push('设置页没有外观这一行 #setMode');
+  if (!/function applyMode/.test(html)) fail.push('没有 applyMode()');
+  if (!/function setMode/.test(html)) fail.push('没有 setMode()');
+  if (!/cdbus\.mode/.test(html)) fail.push('明暗设置没存 localStorage');
+  if (!/applyMode\(modeNow\(\)\)/.test(html)) fail.push('启动时没有应用已保存的明暗');
+
+  /* 默认浅色：modeNow 里只有明确存过 dark 才是深色 */
+  const modeFn = (html.match(/function modeNow\(\)[\s\S]*?\n  \}/) || [''])[0];
+  if (!/=== "dark"/.test(modeFn)) fail.push('modeNow 没有判断 dark');
+  if (/return "dark";\s*\n  \}/.test(modeFn)) fail.push('modeNow 的兜底还是深色（应默认浅色）');
+  if (!/return "light";/.test(modeFn)) fail.push('modeNow 的兜底不是浅色');
+
+  /* 两套配色都写在 CSS 里，缺一项就会有一块地方不跟着变 */
+  const cssAll = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  const lightBlock = (cssAll.match(/:root \{[\s\S]*?\n  \}/) || [''])[0];
+  const darkBlock = (cssAll.match(/html\[data-mode="dark"\] \{[\s\S]*?\n  \}/) || [''])[0];
+  if (!lightBlock) fail.push('没有 :root 浅色配色');
+  if (!darkBlock) fail.push('没有 html[data-mode="dark"] 深色配色');
+  const need = ['--bg', '--bg2', '--card', '--card2', '--line', '--line2', '--press',
+    '--text', '--text2', '--muted', '--muted2', '--accent', '--ok', '--warn', '--err'];
+  for (const [name, blk] of [['浅色', lightBlock], ['深色', darkBlock]]) {
+    for (const k of need) {
+      if (!new RegExp(k + ':\\s*#').test(blk)) fail.push(name + '配色缺 ' + k);
+    }
+  }
+  /* 浅色默认：:root 的底色必须是浅的，深色块的必须是深的 */
+  const pick = (blk, k) => (blk.match(new RegExp(k + ':\\s*(#[0-9a-fA-F]{6})')) || [])[1] || '';
+  const luma = (hex) => {
+    const v = hex.replace('#', '');
+    const c = [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16) / 255)
+      .map((x) => (x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4)));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  if (luma(pick(lightBlock, '--bg')) < 0.5) fail.push(':root 的底色不是浅色');
+  if (luma(pick(darkBlock, '--bg')) > 0.1) fail.push('深色的底色不够深');
+  if (!/color-scheme:\s*light/.test(lightBlock)) fail.push('浅色没设 color-scheme');
+  if (!/color-scheme:\s*dark/.test(darkBlock)) fail.push('深色没设 color-scheme');
+
+  /* 首屏前定明暗（head 里那段脚本），否则会先闪一下浅色再变深 */
+  const head = html.slice(0, html.indexOf('<body'));
+  if (!/cdbus\.mode/.test(head)) fail.push('head 里没有首屏前定明暗的脚本');
+
+  /* 样式表里除了这两块定义，不能再有写死的深蓝灰 */
+  const rest = cssAll.replace(lightBlock, '').replace(darkBlock, '');
+  const leftovers = ['#0e1626', '#1b2436', '#22304a', '#34415e', '#b9c6dd', '#16233d', '#16233a']
+    .filter((c) => rest.includes(c));
+  if (leftovers.length) fail.push('样式表里还有写死的深色：' + leftovers.join(' '));
+
+  if (fail.length) {
+    console.error('✗ UI 冒烟失败（明暗模式）：');
+    for (const f of fail) console.error('  - ' + f);
+    process.exit(1);
+  }
+  console.log('✓ 明暗模式通过：默认浅色、开关+整行可切、两套配色齐全、首屏前定明暗、样式表无写死深色');
 }
 
 /* ---------------------- 更新源顺序：Gitee 必须是首次检测与下载的第一顺位 */

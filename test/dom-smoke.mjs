@@ -122,89 +122,68 @@ for (const e of entries) {
   }
 }
 
-/* 主题色：设置 → 主题色，9 个颜色（红橙黄绿青蓝紫 + 黑白），点了立刻生效并记住 */
+/* 深色 / 浅色：整站换色，不只是换个按钮；默认必须是浅色 */
 {
   const root = doc.documentElement;
-  const getv = (k) => root.style.getPropertyValue(k);
-  const cellOf = (id) => doc.querySelector('#themeGrid .themecell[data-theme="' + id + '"]');
+  const cs = (k) => dom.window.getComputedStyle(root).getPropertyValue(k).trim();
+  const sw = doc.getElementById('modeSw');
+  const row = doc.getElementById('setMode');
+  const lum = (hex) => {
+    const v = String(hex).replace('#', '');
+    const c = [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16) / 255)
+      .map((x) => (x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4)));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  const cr = (a, b) => {
+    const l1 = lum(a), l2 = lum(b);
+    return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+  };
 
-  const row = doc.getElementById('setTheme');
-  if (!row) {
-    fail.push('设置页没有「主题色」入口 #setTheme');
-  } else if (typeof row.onclick !== 'function') {
-    fail.push('#setTheme 没绑上 onclick');
-  } else {
-    row.onclick();
-    const cells = doc.querySelectorAll('#themeGrid .themecell');
-    if (cells.length !== 9) fail.push('主题色应该有 9 个，实际 ' + cells.length);
-    const names = [...cells].map((c) => c.querySelector('.themename').textContent);
-    const want = ['红', '橙', '黄', '绿', '青', '蓝', '紫', '黑', '白'];
-    if (names.join('') !== want.join('')) fail.push('颜色不对：' + names.join(' '));
+  /* 默认浅色：没点过任何东西就应该是浅底深字 */
+  if (root.getAttribute('data-mode')) fail.push('第一次打开不是浅色（data-mode=' + root.getAttribute('data-mode') + '）');
+  const initial = { bg: cs('--bg'), card: cs('--card'), text: cs('--text') };
+  if (lum(initial.bg) < 0.5) fail.push('默认底色不是浅色：' + initial.bg);
+  if (lum(initial.text) > 0.5) fail.push('默认文字不是深色：' + initial.text);
+  if (!sw || sw.checked !== true) fail.push('默认浅色时开关不是打开状态');
 
-    const seen = new Set();
-    for (const id of want.map((_, i) => cells[i].getAttribute('data-theme'))) {
-      const c = cellOf(id);
-      if (!c || typeof c.onclick !== 'function') { fail.push('色块 ' + id + ' 点不了'); continue; }
-      c.onclick();
-      const accent = getv('--accent');
-      if (!/^#[0-9a-f]{6}$/.test(accent)) fail.push('主题 ' + id + ' 没写 --accent：' + accent);
-      if (!getv('--on-accent')) fail.push('主题 ' + id + ' 缺 --on-accent');
-      if (!getv('--accent-line')) fail.push('主题 ' + id + ' 缺 --accent-line');
-      if (!getv('--accent-bg')) fail.push('主题 ' + id + ' 缺 --accent-bg');
-      if (!getv('--accent-soft')) fail.push('主题 ' + id + ' 缺 --accent-soft');
-      seen.add(accent);
-      if (dom.window.localStorage.getItem('cdbus.theme') !== id) {
-        fail.push('主题 ' + id + ' 没写进 localStorage');
-      }
-      if (doc.querySelectorAll('#themeGrid .themecell.on').length !== 1) {
-        fail.push('主题 ' + id + ' 的选中态不是唯一一个');
-      }
+  if (!sw) fail.push('设置页没有「浅色模式」开关 #modeSw');
+  else if (typeof sw.onchange !== 'function') fail.push('#modeSw 没绑 onchange');
+  if (!row || typeof row.onclick !== 'function') fail.push('#setMode 整行点不了');
+
+  const snap = () => ({
+    bg: cs('--bg'), card: cs('--card'), line: cs('--line'),
+    text: cs('--text'), text2: cs('--text2'), muted: cs('--muted'),
+  });
+
+  /* 切到深色 */
+  sw.checked = false; sw.onchange.call(sw);
+  const dark = snap();
+  if (root.getAttribute('data-mode') !== 'dark') fail.push('切不到深色');
+  if (dom.window.localStorage.getItem('cdbus.mode') !== 'dark') fail.push('深色没写进 localStorage');
+  if (lum(dark.bg) > 0.1) fail.push('深色模式的底色不够深：' + dark.bg);
+
+  /* 切回浅色 */
+  sw.checked = true; sw.onchange.call(sw);
+  const light = snap();
+  if (root.getAttribute('data-mode')) fail.push('切不回浅色');
+  if (dom.window.localStorage.getItem('cdbus.mode') !== 'light') fail.push('浅色没写进 localStorage');
+
+  for (const [name, p] of [['深色', dark], ['浅色', light]]) {
+    for (const [k, v] of Object.entries(p)) {
+      if (!/^#[0-9a-f]{6}$/i.test(v)) fail.push(name + '模式 ' + k + ' 不是颜色：' + v);
     }
-    if (seen.size !== 9) fail.push('9 个主题只有 ' + seen.size + ' 种颜色');
-
-    /* 关键：换主题要换整站配色，不能只换按钮。
-       底色、卡片、边框、文字都必须是主题算出来的，而且互不相同。 */
-    const bgs = new Set(), cards = new Set(), lines = new Set(), texts = new Set();
-    const lum = (hex) => {
-      const v = hex.replace('#', '');
-      const c = [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16) / 255)
-        .map((x) => (x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4)));
-      return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-    };
-    const cr = (a, b) => {
-      const l1 = lum(a), l2 = lum(b);
-      return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
-    };
-    for (const id of want.map((_, i) => cells[i].getAttribute('data-theme'))) {
-      cellOf(id).onclick();
-      const bg = getv('--bg'), card = getv('--card'), line = getv('--line'), text = getv('--text');
-      for (const [k, v] of [['--bg', bg], ['--card', card], ['--line', line], ['--text', text]]) {
-        if (!/^#[0-9a-f]{6}$/i.test(v)) fail.push(id + ' 的 ' + k + ' 不是颜色：' + v);
-      }
-      bgs.add(bg); cards.add(card); lines.add(line); texts.add(text);
-      if (bg === card) fail.push(id + ' 的底色和卡片色一样，看不出层次');
-      /* 正文对比度至少 7:1，浅色主题（白）也不会糊 */
-      const ratio = cr(text, bg);
-      if (ratio < 7) fail.push(id + ' 正文对比度只有 ' + ratio.toFixed(1) + ':1');
-    }
-    if (bgs.size !== 9) fail.push('9 个主题只有 ' + bgs.size + ' 种底色（应该整站换色）');
-    if (cards.size !== 9) fail.push('9 个主题只有 ' + cards.size + ' 种卡片色');
-    if (lines.size !== 9) fail.push('9 个主题只有 ' + lines.size + ' 种边框色');
-
-    /* 白主题必须是浅底深字，黑主题必须是纯黑底 */
-    cellOf('white').onclick();
-    if (lum(getv('--bg')) < 0.5) fail.push('白主题的底色不够浅');
-    cellOf('black').onclick();
-    if (getv('--bg').toLowerCase() === '#ffffff') fail.push('黑主题的底色不对');
-    /* 每个主题：压在主题色实底上的字都要看得清（最低 3:1，按钮是粗体大字） */
-    for (const id of want.map((_, i) => cells[i].getAttribute('data-theme'))) {
-      cellOf(id).onclick();
-      const c = cr(getv('--on-accent'), getv('--accent'));
-      if (c < 3) fail.push(id + ' 主题按钮上的字对比度只有 ' + c.toFixed(1) + ':1');
-    }
-    cellOf('white').onclick();
-    if (doc.getElementById('setThemeSub').textContent !== '白') fail.push('设置页小字没跟着变');
+    if (p.bg === p.card) fail.push(name + '模式的底色和卡片色一样，没有层次');
+    const ratio = cr(p.text, p.bg);
+    if (ratio < 7) fail.push(name + '模式正文对比度只有 ' + ratio.toFixed(1) + ':1');
+    if (cr(p.muted, p.card) < 3) fail.push(name + '模式次要文字对比度太低');
   }
+
+  /* 整行点击要能来回切 */
+  const before = root.getAttribute('data-mode');
+  row.onclick();
+  if (root.getAttribute('data-mode') === before) fail.push('点整行没有切换明暗');
+  row.onclick();
+  if (root.getAttribute('data-mode') !== before) fail.push('点整行第二次没切回去');
 }
 
 if (fail.length) {
