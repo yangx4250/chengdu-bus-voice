@@ -3635,11 +3635,11 @@ const stage16 = [];
   if (!/order:\s*3/.test(wrapRule)) stage16.push('refwrap 不在第三位（刷新按钮会错位）：' + wrapRule.trim());
   const setM = (setRule.match(/margin:\s*([^;]+)/) || [])[1] || '';
   const wrapM = (wrapRule.match(/margin:\s*([^;]+)/) || [])[1] || '';
-  if (!/0 0 0 2px/.test(setM.trim())) {
-    stage16.push('设置按钮左边距不对：' + setM.trim());
+  if (setM.trim() !== "0" && setM.trim() !== "") {
+    stage16.push('设置按钮应无额外外边距（贴边）：' + setM.trim());
   }
-  if (!/0 2px 0 0/.test(wrapM.trim())) {
-    stage16.push('refwrap 右边距不对，标题会偏：' + wrapM.trim());
+  if (wrapM.trim() !== "0" && wrapM.trim() !== "") {
+    stage16.push('refwrap 应无额外外边距（贴边）：' + wrapM.trim());
   }
   /* 真正贴到屏幕边：body 有 padding，顶栏必须用负外边距抵消掉，
      否则按钮只能贴到内容区边缘（用户截图里就是这种情况）。 */
@@ -3649,6 +3649,19 @@ const stage16 = [];
   if (!/margin-right:\s*calc\(-1 \* var\(--pad\)\)/.test(topRule)) {
     stage16.push('顶栏没有抵消右内边距');
   }
+  /* 光有负边距不够：容器宽度还得补上两侧 pad，否则右边会差一截
+     （实测曾多出约 2×--pad 的空白，按钮离右边 27 CSS px）。 */
+  if (!/width:\s*calc\(100% \+ 2 \* var\(--pad\)\)/.test(topRule)) {
+    stage16.push('顶栏宽度没有补上两侧 pad，右侧会留一截空白：' + topRule.trim().slice(0, 90));
+  }
+  if (!/box-sizing:\s*border-box/.test(topRule)) {
+    stage16.push('顶栏没有 box-sizing:border-box，宽度计算会含边距导致溢出');
+  }
+  /* 两侧按钮不能有额外外边距（会破坏贴边） */
+  const setM2 = (setRule.match(/margin:\s*([^;]+)/) || [])[1] || '';
+  const wrapM2 = (wrapRule.match(/margin:\s*([^;]+)/) || [])[1] || '';
+  if (/[1-9]\d*px/.test(setM2)) stage16.push('设置按钮仍有额外左外边距：' + setM2);
+  if (/[1-9]\d*px/.test(wrapM2)) stage16.push('刷新容器仍有额外右外边距：' + wrapM2);
 
   /* 窄屏媒体查询里不能再把刷新按钮撑开（旧规则 flex:1 1 40% 会让它跑到中间） */
   if (/#near, #refreshHome \{ flex:/.test(html)) {

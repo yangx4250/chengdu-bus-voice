@@ -233,10 +233,20 @@
        3) 两侧元素宽度不等时 margin:auto 只能平分剩余空间，标题会偏。
      现在的做法：两侧按钮固定同宽 44px + 对称边距，标题 flex:1 居中，
      倒计时绝对定位、完全不参与布局。 */
+  /* 顶栏要真正贴到屏幕左右边。
+     body 有 padding: var(--pad)，负边距把它抵掉之后，
+     再用 width:100vw + margin-left:-50vw 也好、100%+负边距也好，
+     都会因为「谁先算宽度」而差一截（实测右边多出约 2×--pad）。
+
+     可靠做法：把 topline 拉出文档流边界 —— 左对齐到 -pad，
+     宽度直接用 100vw 减去两倍 padding 之外的「真实可视宽度」。
+     这里用 calc(100% + 2*pad) 明确表达「父宽度 + 两侧各补 pad」。 */
   .homehead .topline { display: flex; align-items: center;
-    width: 100%; gap: 0; min-height: 44px;
-    /* body 有 padding: var(--pad)，负边距把它抵掉，按钮才能真正贴到屏幕边 */
-    margin-left: calc(-1 * var(--pad)); margin-right: calc(-1 * var(--pad)); }
+    gap: 0; min-height: 44px;
+    width: calc(100% + 2 * var(--pad));
+    margin-left: calc(-1 * var(--pad));
+    margin-right: calc(-1 * var(--pad));
+    box-sizing: border-box; }
 
   /* 顶栏只有三个参与布局的元素：设置、标题、刷新。
      设置和刷新用相同的固定宽度占位（各占 44px），中间标题 flex:1 居中 ——
@@ -245,7 +255,7 @@
   #refreshHome.edgebtn { flex: 0 0 44px; width: 44px; height: 44px;
     display: flex; align-items: center; justify-content: center; padding: 0; }
   /* 左右边距、宽度完全对称 → 标题精确落在屏幕中线 */
-  #settingsBtn.edgebtn { order: 1; margin: 0 0 0 2px; }
+  #settingsBtn.edgebtn { order: 1; margin: 0; }
 
   /* 标题：占满中间，文字居中 */
   .homehead .topline h1 { order: 2; flex: 1 1 auto; min-width: 0;
@@ -256,7 +266,7 @@
      不占横向空间 → 标题仍在屏幕正中，与左侧按钮对称。 */
   .homehead .refwrap { order: 3; flex: 0 0 44px; width: 44px;
     display: flex; flex-direction: column; align-items: center;
-    margin: 0 2px 0 0; }
+    margin: 0; }
   #refreshHome.edgebtn { order: 0; }
 
   /* 倒计时数字：按钮正下方，11px 灰字，不挡点击 */
@@ -268,7 +278,10 @@
      居中轴差了几个像素，看起来和标题对不齐。 */
   .homehead .locline { display: flex; align-items: center; justify-content: center;
     gap: 6px; flex-wrap: wrap;
-    margin-left: calc(-1 * var(--pad)); margin-right: calc(-1 * var(--pad)); }
+    width: calc(100% + 2 * var(--pad));
+    margin-left: calc(-1 * var(--pad));
+    margin-right: calc(-1 * var(--pad));
+    box-sizing: border-box; }
   .headdot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok);
     flex: 0 0 auto; }
   .headloc { flex: 0 1 auto; min-width: 0; font-size: var(--fs-sm); color: var(--muted);
