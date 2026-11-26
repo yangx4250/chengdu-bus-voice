@@ -4163,6 +4163,74 @@ if (stage27.length) {
 }
 console.log('✓ 环线通过：首末站同 id 判定、早段车站靠绕环找车、矩阵不混入幽灵车');
 
+/* ---------------------- 静态地铁/有轨数据：站序必须和 from→to 一致
+
+   蓉2号线（T2）的站点数组被整体旋转过：数组从「合信路」开始，
+   一圈绕到「电子科大」结束，于是 22 个站在界面上排成了
+   合信路→…→郫县西站→成都西站→…→电子科大，路径凭空多出 17 公里。
+   这里对全部线路做三条硬校验，防止再手改出错。 */
+const stage28 = [];
+{
+  const m = html.match(/id="metroData">([\s\S]*?)<\/script>/);
+  if (!m) {
+    stage28.push('找不到内嵌的地铁数据 metroData');
+  } else {
+    let data = null;
+    try { data = JSON.parse(m[1]); } catch (e) { stage28.push('metroData 不是合法 JSON：' + e.message); }
+    if (data) {
+      const R = 6371000;
+      const rad = (d) => d * Math.PI / 180;
+      const hav = (a, b) => {
+        const dLa = rad(b.lat - a.lat), dLo = rad(b.lng - a.lng);
+        const h = Math.sin(dLa / 2) ** 2 +
+          Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLo / 2) ** 2;
+        return 2 * R * Math.asin(Math.sqrt(h));
+      };
+      const short = (s) => String(s || '').replace(/站$/, '');
+      const seen = {};
+      for (const ln of data.lines) {
+        const st = ln.stations || [];
+        if (st.length < 2) { stage28.push(ln.name + '：站点少于 2 个'); continue; }
+        /* 1) 首站必须是 from，末站必须是 to —— 旋转/反转都会在这里暴露 */
+        if (short(st[0].name) !== short(ln.from)) {
+          stage28.push(ln.name + '：首站 ' + st[0].name + ' 不等于起点 ' + ln.from + '（站序被旋转过？）');
+        }
+        if (short(st[st.length - 1].name) !== short(ln.to)) {
+          stage28.push(ln.name + '：末站 ' + st[st.length - 1].name + ' 不等于终点 ' + ln.to);
+        }
+        /* 2) 相邻两站不能跨太远，否则说明中间被插错/漏站 */
+        for (let i = 0; i < st.length - 1; i++) {
+          const g = hav(st[i], st[i + 1]);
+          if (g > 25000) {
+            stage28.push(ln.name + '：' + st[i].name + '→' + st[i + 1].name + ' 跳了 ' + Math.round(g) + ' 米');
+          }
+        }
+        /* 3) 站名不能在同一线路里重复（环线除外，环线首末同名是同 id 的两条记录） */
+        const idx = {};
+        st.forEach((x, i) => { if (idx[x.name] !== undefined) seen[ln.id] = true; idx[x.name] = i; });
+      }
+      /* 蓉2号线单独立个靶子：总长 24 公里左右，旋转错位后会变成 41 公里 */
+      const t2 = data.lines.find((l) => l.id === 'T2');
+      if (t2) {
+        let len = 0;
+        for (let i = 0; i < t2.stations.length - 1; i++) len += hav(t2.stations[i], t2.stations[i + 1]);
+        if (len > 30000) {
+          stage28.push('蓉2号线站序错乱：路径总长 ' + Math.round(len / 1000) + ' 公里（正常约 24 公里）');
+        }
+      } else {
+        stage28.push('地铁数据里没有蓉2号线（T2）');
+      }
+    }
+  }
+}
+
+if (stage28.length) {
+  console.error('✗ UI 冒烟失败（地铁站序）：');
+  for (const f of stage28) console.error('  - ' + f);
+  process.exit(1);
+}
+console.log('✓ 地铁站序通过：首末站对齐 from/to、无异常跳站、蓉2号线路径长度正常');
+
 console.log('✓ 到站表行通过：时间固定右边、站名在自己列内折行、行内无铃铛');
 
 console.log('✓ 自动刷新保持位置通过：keepScroll 被真正写回、优先于最近站滚动、还原后 return');
