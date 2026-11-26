@@ -114,20 +114,31 @@ def md5_of(path):
     return h.hexdigest()
 
 
-def download_md5(url, timeout=180):
-    """从公开地址下载并算 md5，用于上传后校验。"""
-    req = urllib.request.Request(url, headers={"User-Agent": "cdbus-release"})
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            h = hashlib.md5()
-            while True:
-                chunk = r.read(1 << 16)
-                if not chunk:
-                    break
-                h.update(chunk)
-            return h.hexdigest()
-    except Exception as e:
-        return f"ERR:{str(e)[:80]}"
+def download_md5(url, timeout=180, attempts=3):
+    """从公开地址下载并算 md5，用于上传后校验。
+
+    GitHub 的下载 CDN 偶尔会连续几十秒不响应（实测一次发版整体从 120 秒
+    涨到 394 秒），单次超时会造成「假失败」。所以重试几次，
+    并把「超时」和「md5 不符」分开报告 —— 两者含义完全不同。
+    """
+    last = ""
+    for attempt in range(1, attempts + 1):
+        req = urllib.request.Request(url, headers={"User-Agent": "cdbus-release"})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                h = hashlib.md5()
+                while True:
+                    chunk = r.read(1 << 16)
+                    if not chunk:
+                        break
+                    h.update(chunk)
+                return h.hexdigest()
+        except Exception as e:
+            last = str(e)[:80]
+            if attempt < attempts:
+                print(f"   ⚠ 下载校验第 {attempt} 次失败（{last}），重试…")
+                time.sleep(5)
+    return f"ERR:{last}"
 
 
 # ------------------------------------------------------------ 版本与构建
@@ -358,7 +369,10 @@ def verify_download(name, url, local_md5):
     if remote == local_md5:
         ok(f"{name} 校验通过（md5 {local_md5}）")
         return True
-    print(f"   ⚠ {name} md5 不一致：远端 {remote} / 本地 {local_md5}")
+    if str(remote).startswith("ERR:"):
+        print(f"   ⚠ {name} 下载校验没跑通（网络问题，非文件错误）：{remote[4:]}")
+    else:
+        print(f"   ⚠ {name} md5 真的不一致：远端 {remote} / 本地 {local_md5}")
     return False
 
 
