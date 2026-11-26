@@ -3895,13 +3895,27 @@ const stage20 = [];
   if (/点站名[\s\S]{0,200}renderLineView\(\)/.test(html)) {
     stage20.push('点站名的路径还在无参调用 renderLineView');
   }
-  /* 5) 决策顺序：没选中站时优先 nearest */
-  const scrollBlock = html.slice(html.indexOf('if (opts && opts.scroll && !hasActive && nearestId)'));
-  if (!scrollBlock || !/\.chip\.nearest/.test(scrollBlock.slice(0, 800))) {
-    stage20.push('滚动分支没有用 .chip.nearest 作为目标');
+  /* 5) 决策顺序：**进页/手动刷新/切方向一律对准最近站**，不再看有没有选中站
+        （用户要求：无论从哪里进详情页，站名条都定到离我最近那一站） */
+  const blockStart = html.indexOf('if (opts && opts.scroll) {');
+  const scrollBlock = blockStart >= 0 ? html.slice(blockStart, blockStart + 900) : '';
+  if (!scrollBlock) {
+    stage20.push('找不到 scroll 分支');
+  } else {
+    if (!/\.chip\.nearest/.test(scrollBlock)) {
+      stage20.push('滚动分支没有用 .chip.nearest 作为目标');
+    }
+    if (/!hasActive/.test(scrollBlock)) {
+      stage20.push('滚动分支还在判断「有没有选中站」，导致从首页车辆进来时不会对准最近站');
+    }
   }
-  if (!/var hasActive = box\.querySelector && box\.querySelector\("\.chip\.on"\)/.test(html)) {
-    stage20.push('没有先判断「是否已选中某站」');
+  /* 没有定位时要补一次定位再对齐，否则第一次进详情页停在哪全靠运气 */
+  if (!/relocate\(6000\)/.test(html) || !/nearestRetrying/.test(html)) {
+    stage20.push('进详情页时没有定位就没有补定位，最近站永远滚不过去');
+  }
+  /* 最近站排在 60 站之后时也要画出来 */
+  if (!/var cap = 60;/.test(html) || !/slice\(0, cap\)/.test(html)) {
+    stage20.push('站名条只画前 60 站，最近站在后面时滚不过去');
   }
 }
 
@@ -4417,6 +4431,60 @@ console.log('✓ 到站表行通过：时间固定右边、站名在自己列内
 console.log('✓ 自动刷新保持位置通过：keepScroll 被真正写回、优先于最近站滚动、还原后 return');
 
 console.log('✓ 站名条滚动通过：自动刷新保持原位、手动刷新才回最近站、点站名不滚、切方向回最近');
+
+/* ---------------------- 进详情页：站名条一律对准「离我最近」那一站
+
+   用户要求：无论从哪里进详情页（首页车辆、站名芯片、收藏卡、搜索、同站其它），
+   上方横向站点条都要定到离我最近那一站，而不是停在某个被点过的站上。 */
+{
+  const fail = [];
+  const intent = window.cdBusScrollIntent;
+  const setFix = window.cdBusSetFix;
+  const setLineView = window.cdBusSetLineView;
+  if (typeof intent !== 'function' || typeof setFix !== 'function' || typeof setLineView !== 'function') {
+    fail.push('缺少 cdBusScrollIntent / cdBusSetFix / cdBusSetLineView 调试钩子');
+  } else {
+    /* 造一条线路：用 1 号线的真实坐标，站序 1..N */
+    const md = JSON.parse(html.match(/id="metroData">([\s\S]*?)<\/script>/)[1]);
+    const src = md.lines.find((l) => l.id === '1').stations;
+    const stations = src.map((st, i) => ({
+      order: i + 1, name: st.name, stationId: 'sid-' + i, lat: st.lat, lng: st.lng,
+    }));
+    const lv = { lineId: 'TEST', name: '测试线', stations: stations };
+    setLineView(lv);
+
+    /* 定位到第 8 站；同时把「选中站」设成第 2 站（模拟从首页某辆车点进来） */
+    const near = stations[7];
+    setFix({ lat: near.lat, lng: near.lng, accuracy: 15, stale: false });
+    window.cdBusSetStation ? window.cdBusSetStation(stations[1]) : null;
+
+    if (intent({ scroll: true }) !== 'nearest') {
+      fail.push('进详情页（scroll:true）没有对准最近站，实际：' + intent({ scroll: true }));
+    }
+    /* 自动刷新必须保持原位 */
+    if (intent({ scroll: false }) !== 'none') {
+      fail.push('自动刷新仍会滚动站名条，应为 none，实际：' + intent({ scroll: false }));
+    }
+    if (intent() !== 'none') {
+      fail.push('无参调用仍在滚动站名条');
+    }
+    /* 没定位 → 退回选中站，而不是乱滚 */
+    setFix(null);
+    const noFix = intent({ scroll: true });
+    if (noFix !== 'active' && noFix !== 'none') {
+      fail.push('没有定位时的回退值异常：' + noFix);
+    }
+    /* 收尾，别影响后面的用例 */
+    setLineView(null);
+  }
+
+  if (fail.length) {
+    console.error('✗ UI 冒烟失败（进详情页对准最近站）：');
+    for (const f of fail) console.error('  - ' + f);
+    process.exit(1);
+  }
+  console.log('✓ 进详情页对准最近站通过：任何入口都滚到最近站、自动刷新不滚、没定位才退回选中站');
+}
 
 /* ---------------------- 更新源顺序：Gitee 必须是首次检测与下载的第一顺位 */
 const stage21 = [];

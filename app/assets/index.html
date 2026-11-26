@@ -3083,6 +3083,8 @@
     }
   }
 
+  var nearestRetrying = false;
+
   function renderLineStations(opts) {
     var box = $("lchips");
     if (!box) return;
@@ -3101,7 +3103,24 @@
     var nearSt = nearestStation(lv.stations);
     var nearestId = nearSt ? nearSt.stationId : null;
     var nearestOrder = nearSt ? Number(nearSt.order) : null;
-    lv.stations.slice(0, 60).forEach(function (station) {
+    /* 进/刷详情页却还没有定位：补一次定位，拿到坐标后重新对齐到最近站。
+       只补一次，别每次重画都发请求。 */
+    if (opts && opts.scroll && !nearSt && !nearestRetrying) {
+      nearestRetrying = true;
+      relocate(6000).then(function () {
+        nearestRetrying = false;
+        if (state.lineView === lv) renderLineStations({ scroll: true });
+      }).catch(function () { nearestRetrying = false; });
+    }
+    /* 站名条默认只画前 60 站；最近站在更后面就把上限撑到它，
+       否则「滚到最近站」找不到目标节点 */
+    var cap = 60;
+    if (nearSt) {
+      for (var ni = 0; ni < lv.stations.length; ni++) {
+        if (Number(lv.stations[ni].order) === nearestOrder) { cap = Math.max(cap, ni + 1); break; }
+      }
+    }
+    lv.stations.slice(0, cap).forEach(function (station) {
       var chip = document.createElement("div");
       /* 招呼站会共用 stationId，最近站/选中都按 order 比，避免一串一起亮 */
       var isNearest = nearestOrder !== null && Number(station.order) === nearestOrder;
@@ -3184,9 +3203,12 @@
       return;
     }
 
-    var hasActive = box.querySelector && box.querySelector(".chip.on");
-    if (opts && opts.scroll && !hasActive && nearestId) {
-      var target = box.querySelector ? box.querySelector(".chip.nearest") : null;
+    /* scroll=true（进详情页 / 手动刷新 / 切方向）：**一律对准「离我最近」那一站**，
+       不管是从哪儿进来的、也不管当前有没有选中别的站 —— 用户要的是
+       「打开就看到我这一站」，而不是停在某个被点过的站上。
+       没有定位（没有最近站）时才退回选中站。 */
+    if (opts && opts.scroll) {
+      var target = nearestId && box.querySelector ? box.querySelector(".chip.nearest") : null;
       if (target) {
         setTimeout(function () {
           var rect = target.getBoundingClientRect ? target.getBoundingClientRect() : null;
@@ -3199,8 +3221,9 @@
             else box.scrollLeft = left;
           } catch (e) { box.scrollLeft = left; }
         }, 80);
+        return;    /* 交给上面的定时器，别再让 centerActiveChip 抢滚动 */
       }
-      return;      /* 交给上面的定时器，别再让 centerActiveChip 抢滚动 */
+      /* 没有定位 / 最近站不在列表里：退回对准选中站，总比停在开头强 */
     }
     centerActiveChip(box);
   }
@@ -4081,16 +4104,17 @@
   window.cdBusOutsideService = outsideService;
   window.cdBusIsLastBusInTransit = isLastBusInTransit;
   window.cdBusLineView = function () { return state.lineView; };
-  /* 测试用：站名条该滚到哪。返回 'nearest' | 'active' | 'none' */
+  /* 测试/调试用：站名条该滚到哪。返回 'nearest' | 'active' | 'none'
+     —— 这就是 renderLineStations 的决策规则的文字版。 */
   window.cdBusScrollIntent = function (opts) {
-    var box = $("lchips");
-    if (!box) return "none";
-    var hasActive = box.querySelector && box.querySelector(".chip.on");
     var lv = state.lineView;
-    var nearSt = lv && lv.stations ? nearestStation(lv.stations) : null;
-    if (!hasActive && nearSt) return "nearest";
-    if (hasActive) return "active";
-    return "none";
+    if (!lv || !lv.stations || !lv.stations.length) return "none";
+    /* 自动刷新（scroll 为假）保持原位，什么都不动 */
+    if (!(opts && opts.scroll)) return "none";
+    /* 进页 / 手动刷新 / 切方向：一律对准「离我最近」那一站 */
+    if (nearestStation(lv.stations)) return "nearest";
+    /* 没定位才退回选中站 */
+    return state.station ? "active" : "none";
   };
   window.cdBusSwitchCity = switchCity;
   window.cdBusOpenOtherNoRealtime = openOtherLineWithoutRealtime;
@@ -5813,6 +5837,8 @@
 
   /* 测试钩子：注入定位、直接触发导航（ui-smoke 用来验证导航一律步行） */
   window.cdBusSetFix = function (fix) { state.fix = fix || null; };
+  /* 调试用：直接塞一条 lineView，方便验证站名条滚动规则 */
+  window.cdBusSetLineView = function (lv) { state.lineView = lv || null; };
   window.cdBusGetFix = function () { return state.fix; };
   /* 城市相关的测试钩子（ui-smoke 用） */
   window.cdBusState = function () {
