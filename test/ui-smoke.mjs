@@ -4683,6 +4683,46 @@ console.log('✓ 站名条滚动通过：自动刷新保持原位、手动刷新
   console.log('✓ 明暗模式通过：默认浅色、开关+整行可切、两套配色齐全、首屏前定明暗、样式表无写死深色');
 }
 
+/* ---------------------- 自适应状态栏：系统栏跟着页面的明暗变 */
+{
+  const fail = [];
+  const act = readSafe('app/src/com/chengdu/bus/MainActivity.java');
+  const br = readSafe('app/src/com/chengdu/bus/BusBridge.java');
+
+  /* 原生侧：状态栏/导航栏颜色 + 图标亮暗 */
+  if (!/public void applySystemBar\(/.test(act)) fail.push('MainActivity 没有 applySystemBar()');
+  if (!/setStatusBarColor/.test(act)) fail.push('没有设置状态栏颜色');
+  if (!/setNavigationBarColor/.test(act)) fail.push('没有设置导航栏颜色');
+  if (!/APPEARANCE_LIGHT_STATUS_BARS/.test(act)) fail.push('Android 11+ 没处理状态栏图标亮暗');
+  if (!/SYSTEM_UI_FLAG_LIGHT_STATUS_BAR/.test(act)) fail.push('老版本没处理状态栏图标亮暗');
+  /* 浅色要有浅底、深色要有深底，两边都得对上页面配色 */
+  if (!/#F4F6F9/.test(act)) fail.push('浅色状态栏颜色和页面底色对不上');
+  if (!/#0B1220/.test(act)) fail.push('深色状态栏颜色和页面底色对不上');
+  /* 启动时先按上次的选择刷一遍，别闪 */
+  if (!/applySystemBar\(isLightModeSaved\(\)\)/.test(act)) fail.push('启动时没有先按保存的模式刷系统栏');
+  if (!/PREF_LIGHT/.test(act)) fail.push('明暗模式没存 SharedPreferences');
+  /* WebView 底色也要跟着变（原来是写死深蓝） */
+  if (/setBackgroundColor\(Color\.parseColor\("#0B1220"\)\)/.test(act)) {
+    fail.push('WebView 底色还写死深蓝');
+  }
+
+  /* 桥：页面 → 原生 */
+  if (!/public void setUiMode\(String mode\)/.test(br)) fail.push('BusBridge 没有 setUiMode(String)');
+  if (!/@JavascriptInterface/.test(br)) fail.push('缺少 JavascriptInterface');
+  /* 页面：切模式时调用 */
+  if (!/bridge\.setUiMode\(m\)/.test(html)) fail.push('页面切换明暗时没通知原生');
+  /* 老版本 App 没有这个方法，必须容错 */
+  const call = (html.match(/try \{[^}]{0,120}bridge\.setUiMode[^}]{0,40}\} catch \(e\) \{\}/) || [''])[0];
+  if (!call) fail.push('调用 setUiMode 没有 try/catch 兜底');
+
+  if (fail.length) {
+    console.error('✗ UI 冒烟失败（自适应状态栏）：');
+    for (const f of fail) console.error('  - ' + f);
+    process.exit(1);
+  }
+  console.log('✓ 自适应状态栏通过：状态栏/导航栏跟着明暗切色、图标反色、启动先刷、WebView 底色跟着变');
+}
+
 /* ---------------------- 更新源顺序：Gitee 必须是首次检测与下载的第一顺位 */
 const stage21 = [];
 {

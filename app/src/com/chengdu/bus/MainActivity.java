@@ -12,6 +12,8 @@ import android.os.PowerManager;
 import android.util.Log;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.view.View;
+import android.view.WindowInsetsController;
 import android.webkit.WebViewClient;
 
 /**
@@ -52,6 +54,9 @@ public final class MainActivity extends Activity {
 
         speech = new Speech(this);
 
+        /* 先按上次的明暗把系统栏刷一次，避免启动瞬间状态栏是黑的、页面却是白的 */
+        applySystemBar(isLightModeSaved());
+
         web = new WebView(this);
         WebSettings settings = web.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -72,7 +77,7 @@ public final class MainActivity extends Activity {
            字号改由 App 内「设置 → 字体大小」控制（页面用 CSS 变量 --font-scale），
            这样系统「字体大小」滑块调大调小都不会影响本 App 的排版。 */
         settings.setTextZoom(100);
-        web.setBackgroundColor(Color.parseColor("#0B1220"));
+        web.setBackgroundColor(barColor(isLightModeSaved()));
 
         // 长按不选文字、不弹菜单（页面里只用到点按）
         web.setLongClickable(false);
@@ -282,5 +287,76 @@ public final class MainActivity extends Activity {
             web.destroy();
         }
         super.onDestroy();
+    }
+
+    /* ------------------------------------------------------------ 自适应状态栏
+
+       页面支持深色/浅色两套界面，系统状态栏和导航栏必须跟着变：
+         - 浅色界面：状态栏刷成页面底色 #F4F6F9，图标转成深色（否则白字贴白底看不见）；
+         - 深色界面：状态栏 #0B1220，图标转成浅色。
+       Android 11（API 30）起用 WindowInsetsController 的 appearance 位，
+       更老的版本退回 setSystemUiVisibility 的 LIGHT_STATUS_BAR / LIGHT_NAVIGATION_BAR。
+       上一次的选择存在 SharedPreferences，启动时先按它刷一遍，避免闪一下深色。 */
+
+    private static final String PREFS = "cdbus";
+    private static final String PREF_LIGHT = "light";
+
+    private boolean isLightModeSaved() {
+        try {
+            return getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PREF_LIGHT, true);
+        } catch (Exception e) {
+            return true;                      /* App 默认浅色 */
+        }
+    }
+
+    private static int barColor(boolean light) {
+        return Color.parseColor(light ? "#F4F6F9" : "#0B1220");
+    }
+
+    /** 把状态栏/导航栏刷成当前界面模式。必须在 UI 线程。 */
+    public void applySystemBar(final boolean light) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    int bg = barColor(light);
+                    android.view.Window w = getWindow();
+                    w.setStatusBarColor(bg);
+                    w.setNavigationBarColor(bg);
+                    if (web != null) web.setBackgroundColor(bg);
+
+                    if (Build.VERSION.SDK_INT >= 30) {
+                        WindowInsetsController c = w.getInsetsController();
+                        if (c != null) {
+                            int mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                                    | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                            c.setSystemBarsAppearance(light ? mask : 0, mask);
+                        }
+                    } else {
+                        View decor = w.getDecorView();
+                        int flags = decor.getSystemUiVisibility();
+                        if (light) flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                        else flags &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                        if (Build.VERSION.SDK_INT >= 26) {
+                            if (light) flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+                            else flags &= ~View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+                        }
+                        decor.setSystemUiVisibility(flags);
+                    }
+                } catch (Throwable t) {
+                    Log.w("CdBus", "设置系统栏失败", t);
+                }
+            }
+        });
+    }
+
+    /** 页面切明暗时调这里：立即生效并记下来，下次启动直接用。 */
+    public void setUiMode(boolean light) {
+        try {
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(PREF_LIGHT, light).apply();
+        } catch (Exception e) {
+            Log.w("CdBus", "保存明暗模式失败", e);
+        }
+        applySystemBar(light);
     }
 }

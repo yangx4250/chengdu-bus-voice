@@ -6336,6 +6336,12 @@
       if (m === "dark") root.setAttribute("data-mode", "dark");
       else root.removeAttribute("data-mode");
     }
+    /* 让系统状态栏/导航栏跟着换：浅色界面用浅底深图标，深色反过来。
+       老版本 App 没有这个方法，出错就算了，界面照样能用。 */
+    try {
+      if (bridge && bridge.setUiMode) bridge.setUiMode(m);
+    } catch (e) {}
+
     var sw = $("modeSw");
     if (sw) sw.checked = m === "light";
     var sub = $("setModeSub");

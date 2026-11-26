@@ -534,6 +534,16 @@ public final class BusBridge {
         });
     }
 
+    /** 页面把当前明暗模式告诉原生：状态栏/导航栏的颜色和图标亮暗要跟着变。 */
+    @JavascriptInterface
+    public void setUiMode(String mode) {
+        try {
+            activity.setUiMode(!"dark".equalsIgnoreCase(mode == null ? "" : mode.trim()));
+        } catch (Exception e) {
+            Log.w(TAG, "设置系统栏失败", e);
+        }
+    }
+
     /** 页面当前在哪个视图（home / detail），供返回键判断。 */
     @JavascriptInterface
     public void setView(String name) {
