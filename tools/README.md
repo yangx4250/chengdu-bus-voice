@@ -71,3 +71,29 @@ tag 已存在（Gitee 建 Release 时自动建的）不算失败。
 - **两个仓库都要公开**，否则 App 匿名下载不到
 - 签名 keystore 不能换，换了所有用户都得卸载重装
 - `sdk/` 下的依赖不提交，换机器要自己准备
+
+## 地铁数据：首末班 / 出入口
+
+两个脚本都把结果直接写进 `app/assets/index.html` 里的 `metroData`，
+数据变了重跑一次就行，不用手改那个巨大的 JSON。
+
+```bash
+# 每个方向的首班车 / 末班车（19 条线）
+python3 tools/fetch-metro-times.py --dry-run
+python3 tools/fetch-metro-times.py
+
+# 各站出入口 A/B/C/D 口 + 每个口跨哪几条路（360/394 个站）
+python3 tools/fetch-metro-exits.py --dry-run
+python3 tools/fetch-metro-exits.py            # 全量约 20~40 分钟（官网限流）
+python3 tools/fetch-metro-exits.py --offline  # 只重算，不联网，几秒
+```
+
+- 首末班来自 `https://www.chengdurail.com/op/station-time`；
+- 出入口来自 `https://www.chengdurail.com/op/stations/{stationNo}` 的
+  `data.entrances.roundInfo`，都是官网自己页面在用的接口；
+- `<stationNo>` 从 `op/station-time` 的站点列表里取，同名换乘站只抓一次；
+- **官网限流很凶**（返回 `code 1502 服务器繁忙`），脚本带重试和
+  `build/metro-exits-cache.json` 磁盘缓存，中断了重跑会接着抓，不会从头再来。
+  `build/` 是 gitignore 的，换机器缓存会丢。
+- 有轨电车（蓉2号线、M-TR）在路面站台上下车，本来就没有编号出入口，
+  界面上会单独显示一句说明，不算数据缺失。

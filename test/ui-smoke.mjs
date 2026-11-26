@@ -4398,6 +4398,28 @@ console.log('✓ 地铁首末班通过：19 条线路双向齐备、时间合法
     if (!panel.includes('提醒我下车')) {
       fail.push('地铁站面板里没有「提醒我下车」按钮，实际：' + panel.slice(0, 120));
     }
+    if (!panel.includes('出入口')) {
+      fail.push('地铁站面板里没有出入口区块，实际：' + panel.slice(0, 160));
+    }
+    if (!panel.includes('导航到')) {
+      fail.push('地铁站面板里没有「导航到」按钮，实际：' + panel.slice(0, 160));
+    }
+    const navBtn = document.getElementById('mnavBtn');
+    if (!navBtn || typeof navBtn.onclick !== 'function') {
+      fail.push('「导航到」按钮没有绑定点击事件');
+    } else {
+      navBtn.onclick();
+      await new Promise((r) => setTimeout(r, 60));
+      const pick = document.getElementById('dnavpick');
+      if (!String(pick.className || '').includes('guidemodal') || String(pick.className || '').includes('hidden')) {
+        fail.push('点「导航到」没有弹出地图选择层');
+      }
+      const t = document.getElementById('dnavpickTitle');
+      if (!t || !String(t.textContent).includes(st.name)) {
+        fail.push('导航选择层的标题里没有站名，实际：' + (t && t.textContent));
+      }
+      if (typeof window.cdBusCloseNavPick === 'function') window.cdBusCloseNavPick();
+    }
     const btn = document.getElementById('malightToggle');
     if (!btn || typeof btn.onclick !== 'function') {
       fail.push('「提醒我下车」按钮没有绑定点击事件');
@@ -4424,6 +4446,54 @@ console.log('✓ 地铁首末班通过：19 条线路双向齐备、时间合法
   }
 
   console.log('✓ 地铁下车提醒通过：定位触发、地铁 600 米/不传站序、有轨 250 米/传站序、可取消、互斥、界面链路完整');
+
+/* ---------------------- 地铁站：站点导航 + 出入口列表 */
+{
+  const fail = [];
+  const md = JSON.parse(html.match(/id="metroData">([\s\S]*?)<\/script>/)[1]);
+  const exits = md.exits || {};
+  const names = Object.keys(exits);
+  if (!names.length) {
+    fail.push('metroData 里没有 exits（出入口数据没抓进来）');
+  } else {
+    if (names.length < 300) fail.push('出入口只覆盖 ' + names.length + ' 个站，太少');
+    /* 结构校验：每条是 [口编号, 街道说明] */
+    let bad = 0;
+    for (const n of names) {
+      const arr = exits[n];
+      if (!Array.isArray(arr) || !arr.length) { bad++; continue; }
+      for (const x of arr) {
+        /* 口编号：A / B1 / C2，或者成都东客站那种「东广场」 */
+        if (!Array.isArray(x) || typeof x[0] !== 'string' || !x[0] || x[0].length > 8) { bad++; break; }
+        if (/[（(]/.test(x[0])) { bad++; break; }   // 括号状态要拆到第三个元素
+      }
+    }
+    if (bad) fail.push('有 ' + bad + ' 个站的出入口结构不合法');
+    /* 抽查几个大站：出入口数量应该合理 */
+    const sample = names.slice(0, 5).map((n) => n + ':' + exits[n].length);
+    if (exits['天府广场'] && exits['天府广场'].length < 3) {
+      fail.push('天府广场出入口只有 ' + exits['天府广场'].length + ' 个，明显不对');
+    }
+  }
+
+  /* 界面：面板要能拿到出入口 HTML 和导航按钮 */
+  if (!/function metroExitsHtml/.test(html)) fail.push('没有 metroExitsHtml');
+  if (!/function metroNavBtnHtml/.test(html)) fail.push('没有 metroNavBtnHtml');
+  if (!/出\s*入口|出入口/.test(html)) fail.push('界面上看不到「出入口」字样');
+  if (!/openNavPickFor/.test(html)) fail.push('没有 openNavPickFor（地铁站导航入口）');
+  /* 站口说明是外部数据，必须转义 */
+  if (!/function escHtml/.test(html) || !/escHtml\(loc\)/.test(html)) {
+    fail.push('出入口文字没有转义就直接拼 HTML');
+  }
+
+  if (fail.length) {
+    console.error('✗ UI 冒烟失败（地铁导航/出入口）：');
+    for (const f of fail) console.error('  - ' + f);
+    process.exit(1);
+  }
+  const sample = names.slice(0, 3).map((n) => n + ' ' + exits[n].map((x) => x[0]).join('')).join('，');
+  console.log('✓ 地铁出入口/导航通过：' + names.length + ' 个站有出入口（' + sample + '…），导航走 openNavPickFor，文字已转义');
+}
 }
 
 console.log('✓ 到站表行通过：时间固定右边、站名在自己列内折行、行内无铃铛');
