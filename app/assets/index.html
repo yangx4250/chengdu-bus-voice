@@ -435,25 +435,32 @@
   .gmbtns button.ghost { background: transparent; border: 1px solid var(--line);
     color: var(--muted); }
 
-  /* 站点行：站名第一行，时间单独一行。
-     单排时站名被时间挤到中间截断（实测「郫都区客运中心」只剩一半），
-     所以改成各自占一行，谁也不抢谁的空间。 */
-  .srow { flex-wrap: wrap; row-gap: 0; }
-
+  /* 站点行：序号 | 站名 | 时间（时间固定在最右，不换行、不与站名抢位）。
+     站名太长时在**自己那一列内部**折行，行高自然变高，
+     时间始终停在右边同一位置 —— 行为跟站名条上"长站名竖排"同理。 */
   .dhead { color: var(--muted); font-size: 13px; margin: 6px 2px 10px; }
-  .srow { display: flex; align-items: center; gap: 6px; padding: 9px 12px;
+  .srow { display: flex; align-items: center; gap: 8px; padding: 9px 12px;
     background: var(--card); border: 1px solid var(--line);
-    border-radius: 12px; margin-bottom: 6px; flex-wrap: wrap; }
-  /* 站名：第一行独占（序号右侧整条），绝不与时间抢宽度 */
+    border-radius: 12px; margin-bottom: 6px; }
+
+  /* 序号：固定宽度，不参与压缩 */
+  .srow .idx { flex: 0 0 22px; }
+
+  /* 站名：可以折行；flex:1 占满剩余宽度，但不会把时间挤走
+     （时间是 flex:0 0 auto，先按内容定宽）。 */
   .srow .sname { flex: 1 1 auto; min-width: 0; font-size: 15px;
     line-height: 1.35; word-break: break-all; }
-  /* 时间：强制换到第二行，左边对齐到站名下方（序号宽度 + gap 的缩进） */
-  .srow .swhen { flex: 0 0 100%; margin-left: 28px; font-size: 14px;
-    font-weight: 600; color: var(--accent); white-space: nowrap; }
+
+  /* 时间：固定在右边同一列。给一个最小宽度，
+     这样「4 分 30 秒 · 11:15」和「30 秒 · 11:59」都占同样宽度，
+     不同行的站名列起点一致、时间右对齐看起来整齐。 */
+  .srow .swhen { flex: 0 0 auto; min-width: 96px; text-align: right;
+    font-size: 14px; font-weight: 600; color: var(--accent);
+    white-space: nowrap; }
   .srow.hot .swhen { color: var(--hot); }
   .srow.passed { opacity: .45; }
   .srow.passed .swhen { color: var(--muted); font-weight: 400; }
-  .srow .idx { color: var(--muted); font-size: 12px; width: 22px; text-align: right; }
+  .srow .idx { color: var(--muted); font-size: 12px; text-align: right; }
   .srow { scroll-margin-top: var(--top-h, 210px); }
   .srow.current { border-color: var(--accent); background: #17233a; }
   .srow.picked { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -616,7 +623,6 @@
   .srow .sname, .srow .swhen { font-size: var(--fs); }
   /* 系统字体放大时的防挤压：时间不换行、站名可换行、行内元素不重叠 */
   .srow .swhen { flex: 0 0 auto; white-space: nowrap; }
-  .srow .idx { flex: 0 0 auto; }
   .srow .sname { flex: 1 1 auto; min-width: 0; word-break: break-all; }
   /* 顶部标题/副标题在字体大时允许换行，不截断成省略号 */
   .detail-head .titles div:first-child,

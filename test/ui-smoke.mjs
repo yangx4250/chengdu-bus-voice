@@ -3952,16 +3952,26 @@ const stage23 = [];
   if (/\.srow \.actions \{/.test(html)) stage23.push('还留着 .srow .actions 样式（两排版遗留）');
   if (/data-bell/.test(html)) stage23.push('行内仍有铃铛元素');
 
-  /* 站名与时间必须各占一行：时间 flex:0 0 100% 强制换行，
-     否则单排时站名会被时间挤到中间截断（实测「郴都区客运中心」只剩一半）。 */
+  /* 时间必须固定在右边同一列（不换行、不抢站名宽度）：
+     flex:0 0 auto + nowrap + 最小宽度 + 右对齐。
+     站名 flex:1 在自己的列里折行，行高变高、时间位置不变。 */
   const whenRule2 = (html.match(/\.srow \.swhen \{([^}]*)\}/) || [])[1] || '';
-  if (!/flex:\s*0 0 100%/.test(whenRule2)) {
-    stage23.push('时间没有强制独占一行（flex:0 0 100%），会和站名抢宽度：' + whenRule2.trim().slice(0, 70));
+  if (!/flex:\s*0 0 auto/.test(whenRule2)) {
+    stage23.push('时间没有 flex:0 0 auto，会被站名挤压：' + whenRule2.trim().slice(0, 70));
   }
   if (!/white-space:\s*nowrap/.test(whenRule2)) stage23.push('时间没有 nowrap，会被断行');
+  if (!/min-width:\s*\d+px/.test(whenRule2)) {
+    stage23.push('时间列没有最小宽度，不同长度的时间会让站名列起点跳动');
+  }
+  if (!/text-align:\s*right/.test(whenRule2)) stage23.push('时间没有右对齐');
+  /* 站名必须能在自己列内折行 */
+  const nameRule2 = (html.match(/\.srow \.sname \{([^}]*)\}/) || [])[1] || '';
+  if (!/word-break:\s*break-all/.test(nameRule2)) stage23.push('站名不能折行，长站名会被截断');
+  if (/white-space:\s*nowrap/.test(nameRule2)) stage23.push('站名设了 nowrap，长站名无法折行');
+  /* 行容器不能整体 wrap（那会把时间推到第二行） */
   const rowRule2 = (html.match(/\.srow \{ display: flex;([^}]*)\}/) || [])[1] || '';
-  if (!/flex-wrap:\s*wrap/.test(rowRule2)) {
-    stage23.push('行容器没有 flex-wrap:wrap，时间换不到第二行');
+  if (/flex-wrap:\s*wrap/.test(rowRule2)) {
+    stage23.push('行容器整体 wrap，时间会被推到第二行（要求时间始终在右边）');
   }
   /* 3) 站名必须允许折行（不能 nowrap、不能省略号截断） */
   const nameRule = (html.match(/\.srow \.sname \{([^}]*)\}/) || [])[1] || '';
@@ -4069,7 +4079,7 @@ console.log('✓ 更新弹窗通过：发现新版即弹、立即更新触发下
 
 console.log('✓ 下车提醒按钮通过：行内铃铛已移除、按钮排在盯站后、可开关且有高亮');
 
-console.log('✓ 到站表行通过：站名与时间各占一行、长站名折行不截断、行内无铃铛');
+console.log('✓ 到站表行通过：时间固定右边、站名在自己列内折行、行内无铃铛');
 
 console.log('✓ 自动刷新保持位置通过：keepScroll 被真正写回、优先于最近站滚动、还原后 return');
 
