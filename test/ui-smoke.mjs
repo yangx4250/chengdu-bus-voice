@@ -4015,6 +4015,50 @@ if (stage24.length) {
   for (const f of stage24) console.error('  - ' + f);
   process.exit(1);
 }
+/* ---------------------- 发现新版本时弹窗提醒 */
+const stage25 = [];
+{
+  /* 1) 弹窗结构齐全 */
+  for (const id of ['updModal', 'updModalVer', 'updModalGo', 'updModalLater',
+                    'updModalState', 'updModalBarWrap']) {
+    if (!new RegExp('id="' + id + '"').test(html)) {
+      stage25.push('更新弹窗缺少 #' + id);
+    }
+  }
+  /* 2) 发现新版必须开弹窗，不能只 toast */
+  if (!/updOpenModal\(latest\)/.test(html)) {
+    stage25.push('发现新版本时没有调用 updOpenModal');
+  }
+  const checkedBlock = html.slice(html.indexOf('updLast = { latest: latest'));
+  if (!/updOpenModal/.test(checkedBlock.slice(0, 900))) {
+    stage25.push('checked 分支里没有弹窗调用');
+  }
+  /* 3) 「以后再说」要记住版本，同一版不再自动弹 */
+  if (!/updSkipVersion/.test(html)) stage25.push('没有记录「以后再说」的版本');
+  if (!/UPD_SKIP_KEY/.test(html)) stage25.push('没有 skip 的存储键');
+  /* 4) 手动检查时即使 skip 过也要弹 */
+  if (!/if \(!silent \|\| skipped !== latest\)/.test(html)) {
+    stage25.push('手动检查被 skip 记录挡住了（手动应总能弹）');
+  }
+  /* 5) 立即更新要触发下载 */
+  if (!/\$\("updModalGo"\)\.onclick/.test(html)) stage25.push('「立即更新」按钮没有绑定');
+  const goBlock = html.slice(html.indexOf('$("updModalGo").onclick'));
+  if (!/updDownload\(\)/.test(goBlock.slice(0, 300))) stage25.push('「立即更新」没有调用下载');
+  /* 6) 以后再说要关闭并记 skip */
+  const laterBlock = html.slice(html.indexOf('$("updModalLater").onclick'));
+  if (!/updSkipVersion/.test(laterBlock.slice(0, 300))) stage25.push('「以后再说」没有记 skip');
+  if (!/updCloseModal/.test(laterBlock.slice(0, 300))) stage25.push('「以后再说」没有关闭弹窗');
+  /* 7) 下载中弹窗要显示进度 */
+  if (!/updModalBarFill/.test(html)) stage25.push('弹窗里没有进度条填充元素');
+}
+
+if (stage25.length) {
+  console.error('✗ UI 冒烟失败（更新弹窗）：');
+  for (const f of stage25) console.error('  - ' + f);
+  process.exit(1);
+}
+console.log('✓ 更新弹窗通过：发现新版即弹、立即更新触发下载、以后再说记住版本、手动检查总能弹');
+
 console.log('✓ 下车提醒按钮通过：行内铃铛已移除、按钮排在盯站后、可开关且有高亮');
 
 console.log('✓ 到站表行通过：单排紧凑、长站名折行不截断');

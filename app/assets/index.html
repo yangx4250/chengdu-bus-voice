@@ -427,6 +427,14 @@
   .detail-head .titles div:last-child { font-size: var(--fs-sm); color: var(--muted);
     margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+  /* 更新弹窗里的进度条与按钮排 */
+  .updmodalbar { height: 6px; background: #1d2740; border-radius: 999px;
+    margin-top: 12px; overflow: hidden; }
+  .gmbtns { display: flex; gap: 10px; margin-top: 16px; }
+  .gmbtns button { flex: 1 1 0; }
+  .gmbtns button.ghost { background: transparent; border: 1px solid var(--line);
+    color: var(--muted); }
+
   /* 站点行单排：序号 + 站名 + 时间 + 🔔(跟在时间后面)。
      卡片比两排版矮一截，一屏能多看几站。
      站名过长时由 flex 压缩、自动折到第二行（不截断成省略号）。 */
@@ -738,6 +746,27 @@
   </div>
   <div id="cityList" class="citylist"></div>
   <div class="cityfoot">数据来自车来了；标灰的城市暂无实时公交</div>
+</div>
+
+<!-- 发现新版本时的弹窗：比 toast 显眼，且能直接点「立即更新」 -->
+<div id="updModal" class="guidemodal hidden">
+  <div class="gmbox">
+    <div class="gmhead">
+      <span class="gmicon">🎉</span>
+      <div class="gmtext">
+        <div class="gmtitle">发现新版本</div>
+        <div class="gmsub" id="updModalVer">—</div>
+      </div>
+    </div>
+    <div class="updmodalbar" id="updModalBarWrap" style="display:none">
+      <div class="updbar-fill" id="updModalBarFill"></div>
+    </div>
+    <div class="gmsub" id="updModalState" style="margin-top:10px"></div>
+    <div class="gmbtns">
+      <button id="updModalLater" class="ghost">以后再说</button>
+      <button id="updModalGo" class="primary">立即更新</button>
+    </div>
+  </div>
 </div>
 
 <div id="diag" class="hidden">
@@ -6346,6 +6375,7 @@
 
   var updTimer = null;
   var updLast = { latest: '', hasUpdate: false };
+  var updSilent = true;   /* 本次检查是不是启动时的静默检查 */
 
   function updEl(id) { return $(id); }
 
@@ -6387,7 +6417,7 @@
   }
 
   /** 处理一次更新状态（由轮询调用）。 */
-  function updHandle(state, data) {
+  function updHandle(state, data, silent) {
     if (!state) return;
     if (state === "checking") {
       updSetState("正在检查…");
@@ -6411,8 +6441,12 @@
         else if (/github/.test(s2)) srcName = "（GitHub）";
         updSetState("有新版本 " + latest + srcName + "，可以下载安装");
         updShowActions(true);
-        /* 启动时的静默检查也要让用户知道 */
-        showToast("发现新版本 " + latest);
+        /* 静默检查发现新版 → 弹窗提醒（toast 太容易错过）。
+           「以后再说」过的同一版本不再自动弹，但手动检查仍会弹。 */
+        var skipped = updSkippedVersion();
+        if (!silent || skipped !== latest) {
+          updOpenModal(latest);
+        }
       } else {
         updSetState("已是最新版本");
         updShowActions(false);
@@ -6433,6 +6467,15 @@
       var pct = Number(data.percent || 0);
       updSetState("下载中 " + pct + "%");
       updSetBar(pct);
+      /* 弹窗打开时也显示进度 */
+      var mbar = $("updModalBarWrap");
+      var mfill = $("updModalBarFill");
+      var mstate = $("updModalState");
+      if (mbar && mfill) {
+        mbar.style.display = "";
+        mfill.style.width = Math.max(0, Math.min(100, pct)) + "%";
+      }
+      if (mstate) mstate.textContent = "下载中 " + pct + "%";
       return;
     }
     if (state === "verifying") {
@@ -6442,6 +6485,10 @@
     if (state === "ready") {
       updSetBar(null);
       updSetState("下载完成（" + Math.round((data.size || 0) / 1024) + " KB）");
+      var mr = $("updModalBarWrap");
+      if (mr) mr.style.display = "none";
+      var ms = $("updModalState");
+      if (ms) ms.textContent = "下载完成，正在打开安装…";
       /* 检查安装权限：没有就引导去开 */
       var canInstall = false;
       try { canInstall = bridge && bridge.updateCanInstall ? Boolean(bridge.updateCanInstall()) : false; } catch (e) {}
@@ -6460,6 +6507,10 @@
     if (state === "error") {
       updSetBar(null);
       updSetState(data.message || "更新失败");
+      var me = $("updModalState");
+      if (me) me.textContent = data.message || "更新失败";
+      var mg = $("updModalGo");
+      if (mg) { mg.disabled = false; mg.textContent = "重试"; }
       showToast(data.message || "更新失败", true);
       return;
     }
@@ -6473,6 +6524,46 @@
     }
   }
 
+  /* 「以后再说」记在 localStorage：同一版本只主动弹一次，
+     用户下次手动点「检查更新」仍可看到。 */
+  var UPD_SKIP_KEY = "cdbus.updSkip";
+
+  function updSkippedVersion() {
+    try { return localStorage.getItem(UPD_SKIP_KEY) || ""; } catch (e) { return ""; }
+  }
+
+  function updSkipVersion(v) {
+    try { localStorage.setItem(UPD_SKIP_KEY, v || ""); } catch (e) {}
+  }
+
+  function updOpenModal(latest) {
+    var modal = $("updModal");
+    if (!modal) return;
+    var ver = $("updModalVer");
+    if (ver) ver.textContent = "版本 " + latest + "（当前 " + curVersionName() + "）";
+    var st = $("updModalState");
+    if (st) st.textContent = "";
+    var bar = $("updModalBarWrap");
+    if (bar) bar.style.display = "none";
+    var go = $("updModalGo");
+    if (go) { go.disabled = false; go.textContent = "立即更新"; }
+    modal.classList.remove("hidden");
+  }
+
+  function updCloseModal() {
+    var modal = $("updModal");
+    if (modal) modal.classList.add("hidden");
+  }
+
+  function curVersionName() {
+    try {
+      if (bridge && bridge.updateVersion) {
+        return JSON.parse(bridge.updateVersion() || "{}").name || "";
+      }
+    } catch (e) {}
+    return "";
+  }
+
   function updStartPoll() {
     updStopPoll();
     updTimer = setInterval(function () {
@@ -6480,7 +6571,7 @@
       try {
         var raw = bridge.updatePoll();
         var res = JSON.parse(raw || "{}");
-        updHandle(res.state, res.data || {});
+        updHandle(res.state, res.data || {}, updSilent);
       } catch (e) {
         updStopPoll();
       }
@@ -6500,6 +6591,7 @@
     updShowActions(false);
     updSetBar(null);
     if (manual) updSetState("正在检查…");
+    updSilent = !manual;
     updStartPoll();
     try { bridge.updateCheck(!manual); } catch (e) { updSetState("检查失败"); }
   }
@@ -6562,6 +6654,22 @@
   /* 在线更新 */
   $("updCheck").onclick = function () { updCheck(true); };
   $("updGo").onclick = function () { updDownload(); };
+
+  /* 更新弹窗：立即更新 / 以后再说 */
+  $("updModalGo").onclick = function () {
+    var go = $("updModalGo");
+    if (go) { go.disabled = true; go.textContent = "下载中…"; }
+    updDownload();
+  };
+  $("updModalLater").onclick = function () {
+    /* 记住这个版本，同一版本不再自动弹 */
+    if (updLast.latest) updSkipVersion(updLast.latest);
+    updCloseModal();
+  };
+  /* 点遮罩也能关（不记 skip，下次还会提醒） */
+  $("updModal").onclick = function (ev) {
+    if (ev && ev.target === this) updCloseModal();
+  };
   $("voiceBack").onclick = function () { backFromDiag(); };
   $("diagBack").onclick = function () { backFromDiag(); };
   $("aboutBack").onclick = function () { backFromDiag(); };
