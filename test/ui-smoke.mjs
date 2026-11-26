@@ -1364,8 +1364,8 @@ if (!stationChips.length) {
     await new Promise((r) => setTimeout(r, 200));   // loadNavApps 是异步的
     const navBtns = findByClass(lnav, 'navbtn');
     if (!navBtns.length) stage2.push('导航按钮条没有按钮');
-    else if (navBtns.length !== 3) {
-      stage2.push('导航行应有 3 个按钮（导航/收藏/盯站），实际 ' + navBtns.length + ' 个');
+    else if (navBtns.length !== 4) {
+      stage2.push('导航行应有 4 个按钮（导航/收藏/盯站/下车提醒），实际 ' + navBtns.length + ' 个');
     } else {
       /* 点「导航」→ 弹出地图选择层，里面列出已装的地图 App */
       const beforeNav = navLog.length;
@@ -3948,23 +3948,12 @@ if (stage22.length) {
 /* ------------------ 到站表行：单排紧凑、🔔 跟在时间后、长站名折行 */
 const stage23 = [];
 {
-  /* 1) 必须是单排：.actions 不能再是 100% 宽度（那是两排版的做法） */
-  const actionsRule = (html.match(/\.srow \.actions \{([^}]*)\}/) || [])[1] || '';
-  if (/flex:\s*0 0 100%/.test(actionsRule)) {
-    stage23.push('🔔 仍独占一整行（两排布局），卡片还是很高');
+  /* 行内已无 🔔（统一移到顶部按钮排），这里只查「单排不残留两排版式」 */
+  if (/\.srow \.actions \{/.test(html)) {
+    stage23.push('还留着 .srow .actions 样式（两排版遗留）');
   }
-  if (!/flex:\s*0 0 auto/.test(actionsRule)) {
-    stage23.push('.actions 没有改成行内自适应宽度：' + actionsRule.trim().slice(0, 60));
-  }
-  /* 2) 🔔 必须排在时间之后（DOM 顺序） */
-  const tpl = html.slice(html.indexOf('<span class="sname">'));
-  const seg = tpl.slice(0, tpl.indexOf('</div>'));
-  const iWhen = seg.indexOf('class="swhen"');
-  const iBell = seg.indexOf('data-bell');
-  if (iWhen < 0) stage23.push('找不到时间元素');
-  if (iBell < 0) stage23.push('找不到铃铛元素');
-  if (iWhen >= 0 && iBell >= 0 && iBell < iWhen) {
-    stage23.push('铃铛排在时间之前，要求是放在时间后面');
+  if (/data-bell/.test(html)) {
+    stage23.push('行内仍有铃铛元素');
   }
   /* 3) 站名必须允许折行（不能 nowrap、不能省略号截断） */
   const nameRule = (html.match(/\.srow \.sname \{([^}]*)\}/) || [])[1] || '';
@@ -3986,7 +3975,49 @@ if (stage23.length) {
   for (const f of stage23) console.error('  - ' + f);
   process.exit(1);
 }
-console.log('✓ 到站表行通过：单排紧凑、🔔 在时间后、长站名折行不截断');
+/* ------------------ 下车提醒从「每行 🔔」改成「顶部按钮排一个」 */
+const stage24 = [];
+{
+  /* 1) 到站表行里不能再有自己的铃铛 */
+  if (/data-bell/.test(html)) stage24.push('到站表每行仍有独立铃铛（data-bell）');
+  const rowTpl = (html.match(/'<span class="swhen">' \+ when \+ clock \+([\s\S]{0,160})/) || [])[1] || '';
+  if (/bell/.test(rowTpl)) stage24.push('行模板里还在拼铃铛');
+  if (!/\.srow \.bell/.test(html) === false) {
+    /* 样式残留也查一下（可以留，但元素没了就该清） */
+  }
+  if (/\.srow \.bell \{/.test(html)) stage24.push('行内铃铛的样式没清理');
+
+  /* 2) 按钮排必须有「下车提醒」，且排在「盯站」之后 */
+  if (!/renderAlightBtn/.test(html)) {
+    stage24.push('没有 renderAlightBtn，顶部按钮排缺下车提醒');
+  }
+  const navBody = (html.match(/function renderLineNav\(\) \{([\s\S]*?)\n  \}/) || [])[1] || '';
+  const iFav = navBody.indexOf('makeStationFavBtn');
+  const iWatch = navBody.indexOf('renderLineWatchBtn');
+  const iAlight = navBody.indexOf('renderAlightBtn');
+  if (iAlight < 0) {
+    stage24.push('renderLineNav 里没挂下车提醒按钮');
+  } else {
+    if (iWatch >= 0 && iAlight < iWatch) stage24.push('下车提醒排在盯站之前，要求是之后');
+    if (iFav >= 0 && iAlight < iFav) stage24.push('下车提醒排在收藏之前');
+  }
+
+  /* 3) 按钮要能开关切换，且开启时有高亮样式 */
+  const alightBody = (html.match(/function renderAlightBtn\(target\) \{([\s\S]*?)\n  \}/) || [])[1] || '';
+  if (!/alightRunning && alightDest/.test(alightBody)) stage24.push('按钮没有读取提醒状态');
+  if (!/startAlight\(target\.order\)/.test(alightBody)) stage24.push('按钮没有调用 startAlight');
+  if (!/已开提醒/.test(alightBody)) stage24.push('按钮没有「已开提醒」的状态文案');
+  if (!/\.alightbtn\.on/.test(html)) stage24.push('下车提醒按钮没有开启态样式');
+}
+
+if (stage24.length) {
+  console.error('✗ UI 冒烟失败（下车提醒按钮位置）：');
+  for (const f of stage24) console.error('  - ' + f);
+  process.exit(1);
+}
+console.log('✓ 下车提醒按钮通过：行内铃铛已移除、按钮排在盯站后、可开关且有高亮');
+
+console.log('✓ 到站表行通过：单排紧凑、长站名折行不截断');
 
 console.log('✓ 自动刷新保持位置通过：keepScroll 被真正写回、优先于最近站滚动、还原后 return');
 
