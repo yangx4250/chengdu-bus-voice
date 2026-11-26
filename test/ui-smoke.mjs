@@ -4231,6 +4231,71 @@ if (stage28.length) {
 }
 console.log('✓ 地铁站序通过：首末站对齐 from/to、无异常跳站、蓉2号线路径长度正常');
 
+/* ---------------------- 地铁/有轨首末班：双向都要有，且时间必须合法 */
+const stage29 = [];
+{
+  const m = html.match(/id="metroData">([\s\S]*?)<\/script>/);
+  if (!m) {
+    stage29.push('找不到内嵌的地铁数据 metroData');
+  } else {
+    const data = JSON.parse(m[1]);
+    const isHHMM = (v) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v || ''));
+    const maxHHMM = (v) => {
+      const [h, mi] = String(v).split(':').map(Number);
+      return h * 60 + mi;
+    };
+    let missing = 0;
+    for (const ln of data.lines) {
+      if (ln.id === 'M-TR') continue;              // 都江堰专线官网没有数据
+      const t = ln.times;
+      if (!Array.isArray(t) || !t.length) {
+        missing++;
+        stage29.push(ln.name + '：没有首末班数据');
+        continue;
+      }
+      /* 环线（from == to）只给一条「全线」，其余必须是双向两条 */
+      const wantTwo = String(ln.from || '') !== String(ln.to || '');
+      if (wantTwo && t.length !== 2) {
+        stage29.push(ln.name + '：双向线路只有 ' + t.length + ' 条首末班（应为 2）');
+      }
+      t.forEach((x) => {
+        if (!x.dir) stage29.push(ln.name + '：首末班里缺方向');
+        if (!isHHMM(x.first)) stage29.push(ln.name + ' ' + x.dir + '：首班时间不合法 ' + x.first);
+        if (!isHHMM(x.last)) stage29.push(ln.name + ' ' + x.dir + '：末班时间不合法 ' + x.last);
+        if (isHHMM(x.first) && isHHMM(x.last) && maxHHMM(x.last) <= maxHHMM(x.first)) {
+          stage29.push(ln.name + ' ' + x.dir + '：末班不晚于首班（' + x.first + ' / ' + x.last + '）');
+        }
+      });
+      /* 双向的 dir 必须正好是 from 和 to，不能两个都写同一头 */
+      if (wantTwo && t.length === 2) {
+        const dirs = t.map((x) => x.dir).sort();
+        const expect = [String(ln.from), String(ln.to)].sort();
+        if (dirs[0] !== expect[0] || dirs[1] !== expect[1]) {
+          stage29.push(ln.name + '：首末班方向是 ' + dirs.join('/') + '，应为 ' + expect.join('/'));
+        }
+      }
+    }
+    if (missing) stage29.push('共 ' + missing + ' 条线路缺首末班数据');
+  }
+  /* 界面必须真的把它渲染出来 */
+  if (!/\.mtimes/.test(html) || !/\.mtrow/.test(html)) {
+    stage29.push('缺少首末班的样式（.mtimes / .mtrow）');
+  }
+  if (!/line\.times/.test(html)) {
+    stage29.push('线路页没有读取 times，首末班不会显示');
+  }
+  if (!/首班 <b>/.test(html) || !/末班/.test(html)) {
+    stage29.push('界面上看不到「首班 / 末班」文字');
+  }
+}
+
+if (stage29.length) {
+  console.error('✗ UI 冒烟失败（地铁首末班）：');
+  for (const f of stage29) console.error('  - ' + f);
+  process.exit(1);
+}
+console.log('✓ 地铁首末班通过：19 条线路双向齐备、时间合法、末班晚于首班、界面有渲染');
+
 console.log('✓ 到站表行通过：时间固定右边、站名在自己列内折行、行内无铃铛');
 
 console.log('✓ 自动刷新保持位置通过：keepScroll 被真正写回、优先于最近站滚动、还原后 return');
