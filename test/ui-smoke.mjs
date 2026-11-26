@@ -3948,12 +3948,20 @@ if (stage22.length) {
 /* ------------------ 到站表行：单排紧凑、🔔 跟在时间后、长站名折行 */
 const stage23 = [];
 {
-  /* 行内已无 🔔（统一移到顶部按钮排），这里只查「单排不残留两排版式」 */
-  if (/\.srow \.actions \{/.test(html)) {
-    stage23.push('还留着 .srow .actions 样式（两排版遗留）');
+  /* 行内已无 🔔（统一移到顶部按钮排） */
+  if (/\.srow \.actions \{/.test(html)) stage23.push('还留着 .srow .actions 样式（两排版遗留）');
+  if (/data-bell/.test(html)) stage23.push('行内仍有铃铛元素');
+
+  /* 站名与时间必须各占一行：时间 flex:0 0 100% 强制换行，
+     否则单排时站名会被时间挤到中间截断（实测「郴都区客运中心」只剩一半）。 */
+  const whenRule2 = (html.match(/\.srow \.swhen \{([^}]*)\}/) || [])[1] || '';
+  if (!/flex:\s*0 0 100%/.test(whenRule2)) {
+    stage23.push('时间没有强制独占一行（flex:0 0 100%），会和站名抢宽度：' + whenRule2.trim().slice(0, 70));
   }
-  if (/data-bell/.test(html)) {
-    stage23.push('行内仍有铃铛元素');
+  if (!/white-space:\s*nowrap/.test(whenRule2)) stage23.push('时间没有 nowrap，会被断行');
+  const rowRule2 = (html.match(/\.srow \{ display: flex;([^}]*)\}/) || [])[1] || '';
+  if (!/flex-wrap:\s*wrap/.test(rowRule2)) {
+    stage23.push('行容器没有 flex-wrap:wrap，时间换不到第二行');
   }
   /* 3) 站名必须允许折行（不能 nowrap、不能省略号截断） */
   const nameRule = (html.match(/\.srow \.sname \{([^}]*)\}/) || [])[1] || '';
@@ -4061,7 +4069,7 @@ console.log('✓ 更新弹窗通过：发现新版即弹、立即更新触发下
 
 console.log('✓ 下车提醒按钮通过：行内铃铛已移除、按钮排在盯站后、可开关且有高亮');
 
-console.log('✓ 到站表行通过：单排紧凑、长站名折行不截断');
+console.log('✓ 到站表行通过：站名与时间各占一行、长站名折行不截断、行内无铃铛');
 
 console.log('✓ 自动刷新保持位置通过：keepScroll 被真正写回、优先于最近站滚动、还原后 return');
 
