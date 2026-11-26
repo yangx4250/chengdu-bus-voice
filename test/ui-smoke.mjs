@@ -4481,6 +4481,17 @@ console.log('✓ 地铁首末班通过：19 条线路双向齐备、时间合法
   if (!/function metroNavBtnHtml/.test(html)) fail.push('没有 metroNavBtnHtml');
   if (!/出\s*入口|出入口/.test(html)) fail.push('界面上看不到「出入口」字样');
   if (!/openNavPickFor/.test(html)) fail.push('没有 openNavPickFor（地铁站导航入口）');
+  /* 导航弹层必须在所有 view 容器之外：地铁页打开时 #detail 是隐藏的，
+     弹层要是还挂在 #detail 里面，点了就是「没反应」 */
+  const pickAt = html.indexOf('<div id="dnavpick"');
+  const detailAt = html.indexOf('<div id="detail"');
+  const viewsEndAt = html.indexOf('<script type="application/json" id="metroData">');
+  if (pickAt < 0) {
+    fail.push('找不到 #dnavpick');
+  } else if (viewsEndAt > 0 && pickAt < viewsEndAt) {
+    fail.push('导航弹层 #dnavpick 还挂在某个 view 容器里面（地铁页打开时父容器是隐藏的，点了不会弹）');
+  }
+
   /* 站口说明是外部数据，必须转义 */
   if (!/function escHtml/.test(html) || !/escHtml\(loc\)/.test(html)) {
     fail.push('出入口文字没有转义就直接拼 HTML');
