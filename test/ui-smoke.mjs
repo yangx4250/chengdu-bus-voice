@@ -4481,15 +4481,32 @@ console.log('✓ 地铁首末班通过：19 条线路双向齐备、时间合法
   if (!/function metroNavBtnHtml/.test(html)) fail.push('没有 metroNavBtnHtml');
   if (!/出\s*入口|出入口/.test(html)) fail.push('界面上看不到「出入口」字样');
   if (!/openNavPickFor/.test(html)) fail.push('没有 openNavPickFor（地铁站导航入口）');
-  /* 导航弹层必须在所有 view 容器之外：地铁页打开时 #detail 是隐藏的，
-     弹层要是还挂在 #detail 里面，点了就是「没反应」 */
+  /* 导航弹层要同时满足两条，缺一条就是「点了没反应」：
+     ① 不能挂在某个 view 容器里 —— 地铁页打开时 #detail 是隐藏的，父容器隐藏则弹层看不见；
+     ② 必须在主 <script> 之前 —— 脚本是边解析边执行的，晚于脚本的节点
+        在 $("dnavpickCancel") 那一刻还不存在，会抛 TypeError 把后面所有按钮绑定全打断。 */
   const pickAt = html.indexOf('<div id="dnavpick"');
-  const detailAt = html.indexOf('<div id="detail"');
-  const viewsEndAt = html.indexOf('<script type="application/json" id="metroData">');
+  const mainScriptAt = html.indexOf('<script>\n(function () {');
   if (pickAt < 0) {
     fail.push('找不到 #dnavpick');
-  } else if (viewsEndAt > 0 && pickAt < viewsEndAt) {
-    fail.push('导航弹层 #dnavpick 还挂在某个 view 容器里面（地铁页打开时父容器是隐藏的，点了不会弹）');
+  } else if (mainScriptAt > 0 && pickAt > mainScriptAt) {
+    fail.push('导航弹层 #dnavpick 排在主脚本之后，脚本执行时它还不在 DOM 里，会抛 TypeError 打断后面的按钮绑定');
+  }
+
+  /* 同一条规则对所有静态节点都成立：脚本里 $("x").onclick 用到的 id，
+     它的标记必须出现在主脚本之前，否则 setStatus 之外的所有绑定都会中断。 */
+  {
+    const bindIds = [...html.matchAll(/\$\("([A-Za-z0-9_]+)"\)\.(onclick|onchange|oninput|onkeydown|onkeyup|onblur|onfocus)\s*=/g)]
+      .map((m) => m[1]);
+    const late = [];
+    for (const id of new Set(bindIds)) {
+      const at = html.search(new RegExp('id="' + id + '"[ >]'));
+      if (at < 0) continue;                       // 动态创建的，跳过
+      if (mainScriptAt > 0 && at > mainScriptAt) late.push(id);
+    }
+    if (late.length) {
+      fail.push('这些节点的标记排在主脚本之后，绑定时会抛 TypeError：' + late.join('、'));
+    }
   }
 
   /* 站口说明是外部数据，必须转义 */

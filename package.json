@@ -20,12 +20,16 @@
     "near": "node bin/cd-bus.mjs near",
     "cities": "node bin/cd-bus.mjs cities",
     "health": "node bin/cd-bus.mjs health",
-    "test": "node test/smoke.mjs && node test/ui-smoke.mjs",
+    "test": "node test/smoke.mjs && node test/ui-smoke.mjs && node test/dom-smoke.mjs",
     "test:smoke": "node test/smoke.mjs",
-    "test:ui": "node test/ui-smoke.mjs"
+    "test:ui": "node test/ui-smoke.mjs",
+    "test:dom": "node test/dom-smoke.mjs"
   },
   "dependencies": {
     "jpeg-js": "^0.4.4",
     "pngjs": "^7.0.0"
+  },
+  "devDependencies": {
+    "jsdom": "^31.0.1"
   }
 }

@@ -193,7 +193,8 @@ def run_tests(attempts=2):
     但也不能无限重试掩盖真问题，所以最多试 2 次。
     """
     for name, cmd in [("冒烟测试", ["node", "test/smoke.mjs"]),
-                      ("界面测试", ["node", "test/ui-smoke.mjs"])]:
+                      ("界面测试", ["node", "test/ui-smoke.mjs"]),
+                      ("真 DOM 测试", ["node", "test/dom-smoke.mjs"])]:
         for attempt in range(1, attempts + 1):
             print(f"   {name}…" + (f"（第 {attempt} 次）" if attempt > 1 else ""))
             p = run(cmd, check=False)
