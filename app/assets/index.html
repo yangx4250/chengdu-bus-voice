@@ -228,6 +228,7 @@
   .mtrow .mspan { flex: 0 0 auto; margin-left: auto; font-size: var(--fs);
     color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .mtrow .mspan b { color: var(--text); font-weight: 600; }
+  .mtip { color: var(--muted); font-size: 12px; margin: 2px 2px 10px; }
 
   .empty { color: var(--muted); font-size: 14px; text-align: center; padding: 24px 8px; }
 
@@ -382,6 +383,13 @@
   /* 按钮排里的下车提醒：开启时红色高亮，和盯站的蓝色区分开 */
   .navrow .navbtn.alightbtn.on { border-color: var(--hot); color: #ffd9d4; background: #3a1f22; }
   #alightbar { border-color: var(--hot); }
+  #malight { border-color: var(--hot); }
+  /* 地铁站面板里的「到站提醒」按钮 */
+  .mabtns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .mabtn { flex: 0 0 auto; padding: 8px 12px; border-radius: 10px; font-size: var(--fs);
+    background: rgba(255,255,255,.07); color: var(--text); border: 1px solid var(--line); }
+  .mabtn.on { background: #2a1a1e; border-color: var(--hot); color: #ff8a8a; }
+  .mabtn:active { opacity: .75; }
   #alightbar .dot3 { width: 7px; height: 7px; border-radius: 50%; background: var(--hot); flex: 0 0 auto; }
   .alightcard { background: #2a1a1e; border: 1px solid var(--hot); border-radius: 14px;
     padding: 12px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
@@ -996,6 +1004,11 @@
       </div>
     </div>
     <div id="mlines" class="chips"></div>
+  </div>
+  <div id="malight" class="selbar hidden">
+    <span class="dot3"></span>
+    <span class="seltext" id="malighttext"></span>
+    <span id="malightStop" class="dwatchstop">取消</span>
   </div>
   <div id="mstation"></div>
   <div id="mlist"><div class="empty">选一条线路查看站点</div></div>
@@ -5349,7 +5362,7 @@
     }
     alightDest = { name: target.name, order: target.order, stationId: target.stationId,
                    lat: target.lat || 0, lng: target.lng || 0 };
-    alightLine = { lineId: view.lineId, lineName: view.lineName || "",
+    alightLine = { lineId: view.lineId, lineName: view.lineName || "", kind: "bus",
                    toward: (view.data && view.data.line && view.data.line.endSn) || "" };
     alightRunning = true;
     alightSpeakEvent = 0;
@@ -5372,7 +5385,7 @@
     if (view.name === "detail" && view.data) renderTimes({ scroll: false });
   }
 
-  function stopAlight() {
+  function stopAlight(silent) {
     alightRunning = false;
     alight.remaining = -1;
     alight.distance = null;
@@ -5385,7 +5398,9 @@
     }
     // 本地存储一起清：服务侧和页面侧都别忘了这条提醒
     try { localStorage.removeItem(ALIGHT_KEY); } catch (e) {}
-    setStatus(alightDest ? "已取消下车提醒（" + alightDest.name + "）" : "已取消下车提醒");
+    if (!silent) {
+      setStatus(alightDest ? "已取消下车提醒（" + alightDest.name + "）" : "已取消下车提醒");
+    }
     updateAlightUI();
     if (view.name === "detail" && view.data) renderTimes({ scroll: false });
   }
@@ -5465,7 +5480,10 @@
   }
 
   function alightLinePrefix() {
-    return alight.lineName ? alight.lineName + "路，" : "";
+    if (!alight.lineName) return "";
+    /* 地铁/有轨的车线名自带「号线」「线」「环线」，再加「路」就成「1号线路」了 */
+    if (alightLine && alightLine.kind === "metro") return alight.lineName + "，";
+    return alight.lineName + "路，";
   }
 
   /* 到站后的自动收尾：效果等同用户点了「取消」，但提示语不同 */
@@ -5552,6 +5570,17 @@
     card.onclick = function () {
       if (!alightLine || !alightLine.lineId) return;
       var dest = alightDest || {};
+      /* 地铁/有轨的下车提醒：回到地铁页并把线路选上 */
+      if (alightLine.kind === "metro") {
+        var ml = null;
+        var all = loadMetroData().lines;
+        for (var q = 0; q < all.length; q++) {
+          if (String(all[q].id) === String(alightLine.lineId)) { ml = all[q]; break; }
+        }
+        openMetro();
+        if (ml) selectMetroLine(ml);
+        return;
+      }
       openDetail({
         lineId: alightLine.lineId,
         lineName: alightLine.lineName || "",
@@ -5568,6 +5597,7 @@
 
   function updateAlightUI() {
     updateAlightBar();
+    updateMetroAlightBar();
     renderAlightCard();
   }
 
@@ -5586,6 +5616,134 @@
   window.cdBusStartAlight = startAlight;
   window.cdBusStopAlight = stopAlight;
   window.cdBusAlightPoll = alightPoll;
+
+  /* ------------------------------------------------ 地铁 / 有轨 下车提醒
+
+     地铁没有实时车辆数据（车来了不给），所以不能像公交那样按「还有几站」算。
+     这里完全靠**手机定位**：把终点站的经纬度交给原生 AlightService，
+     每 15 秒量一次距离，进了到站半径就响铃播报。
+
+     两个来源差异要区别对待：
+       · 有轨电车（蓉2号线、M-TR）在地面跑，GPS 准，把整条线路的站序也传下去，
+         能报「还有 N 站」；
+       · 地铁在隧道里只有基站/WiFi 定位，精度几百米，站序会乱跳，
+         所以只传终点坐标、纯按距离判断，到站半径也放大到 600 米。 */
+
+  function metroLineById(id) {
+    var all = loadMetroData().lines || [];
+    for (var i = 0; i < all.length; i++) {
+      if (String(all[i].id) === String(id)) return all[i];
+    }
+    return null;
+  }
+
+  function metroAlightRunningFor(lineId, stationName) {
+    if (!alightRunning || !alightDest || !alightLine) return false;
+    if (alightLine.kind !== "metro") return false;
+    if (String(alightLine.lineId) !== String(lineId)) return false;
+    if (stationName === undefined) return true;
+    return String(alightDest.name) === String(stationName);
+  }
+
+  function startMetroAlight(line, st, index) {
+    if (!bridge || !bridge.startAlightService) {
+      setStatus("下车提醒要在 App 里用（需要后台定位）", true);
+      return;
+    }
+    /* 同一时间只跑一条提醒，先收掉上一条 */
+    if (alightRunning) stopAlight(true);
+
+    var isTram = line.kind === "tram";
+    var list = [];
+    if (isTram) {
+      for (var i = 0; i < line.stations.length; i++) {
+        list.push({
+          order: i + 1,
+          lat: line.stations[i].lat || 0,
+          lng: line.stations[i].lng || 0
+        });
+      }
+    }
+    alightDest = {
+      name: st.name,
+      order: index + 1,
+      stationId: "",
+      lat: st.lat || 0,
+      lng: st.lng || 0
+    };
+    alightLine = {
+      lineId: line.id,
+      lineName: metroLabel(line),
+      toward: line.to || "",
+      kind: "metro",
+      isTram: isTram
+    };
+    alightRunning = true;
+    alightSpeakEvent = 0;
+    alightSpeakAt = 0;
+    alight.remaining = -1;
+    alight.distance = null;
+    alight.arrived = false;
+    alight.message = "";
+    alightSave();
+    try {
+      bridge.startAlightService(JSON.stringify({
+        lineName: alightLine.lineName,
+        toward: alightLine.toward,
+        destName: alightDest.name,
+        destOrder: alightDest.order,
+        destLat: alightDest.lat,
+        destLng: alightDest.lng,
+        /* 地铁用大一点的到站半径（地下定位精度差），有轨电车用默认值 */
+        arriveMeters: isTram ? 250 : 600,
+        stations: JSON.stringify(list)
+      }));
+    } catch (e) {}
+    setStatus("下车提醒已开 · " + st.name + " · 到站前 15 秒看一次定位");
+    updateAlightUI();
+    startAlightTimer();
+    renderMetroAlightBar();
+    if (state.metroStationShown) showMetroStation(state.metroStationShown);
+  }
+
+  function stopMetroAlight() {
+    if (alightLine && alightLine.kind === "metro") stopAlight();
+  }
+
+  /* 地铁页顶部的提醒状态条 */
+  function renderMetroAlightBar() {
+    var bar = $("malight");
+    if (!bar) return;
+    var on = alightRunning && alightLine && alightLine.kind === "metro";
+    if (!on) { bar.className = "selbar hidden"; return; }
+    bar.className = "selbar";
+    var text = "下车提醒：" + (alight.destName || "") + "　" + alightLine.lineName;
+    var state = alightStateText();
+    if (alight.message && alight.message !== state) text += " · " + alight.message;
+    else if (state) text += " · " + state;
+    if (alightLine.isTram === false && !alight.fresh && !alight.arrived) {
+      text += " · 定位中…（地下可能没有信号）";
+    } else if (!alight.fresh && !alight.arrived) {
+      text += " · 定位中…";
+    }
+    var el = $("malighttext");
+    if (el) el.textContent = text;
+  }
+
+  function updateMetroAlightBar() { renderMetroAlightBar(); }
+
+  /* 测试与「首页提醒卡片」共用：选中某条地铁线 / 展示某个地铁站 */
+  window.cdBusSelectMetroLine = function (id) {
+    var line = metroLineById(id);
+    if (!line) return false;
+    openMetro();
+    selectMetroLine(line);
+    return true;
+  };
+  window.cdBusMetroShowStation = showMetroStation;
+  window.cdBusStartMetroAlight = startMetroAlight;
+  window.cdBusStopMetroAlight = stopMetroAlight;
+  window.cdBusMetroAlightRunning = metroAlightRunningFor;
 
   /* ------------------------------------------------------------ 语音自检 */
 
@@ -6015,9 +6173,11 @@
     loadMetroData();
     showView("metro");
     metroLine = null;
+    state.metroStationShown = null;
     renderMetroLines();
     $("mstation").innerHTML = "";
     $("mlist").innerHTML = '<div class="empty">选一条线路查看站点</div>';
+    updateMetroAlightBar();
   }
 
   function renderMetroLines() {
@@ -6038,6 +6198,8 @@
 
   function selectMetroLine(line) {
     metroLine = line;
+    state.metroStationShown = null;
+    updateMetroAlightBar();
     renderMetroLines();
     var list = $("mlist");
     list.innerHTML = "";
@@ -6070,6 +6232,12 @@
       list.appendChild(box);
     }
 
+    /* 一句提示：提醒按钮在站点面板里，不点开站点看不到 */
+    var tip = document.createElement("div");
+    tip.className = "mtip";
+    tip.textContent = "点任意站点可设「到站提醒」，靠手机定位，到站前会响";
+    list.appendChild(tip);
+
     var transfers = loadMetroData().transfers;
     line.stations.forEach(function (st, i) {
       var row = document.createElement("div");
@@ -6092,10 +6260,42 @@
     });
   }
 
+  /* 地铁站面板里的「到站提醒」按钮：开了再点就是取消 */
+  function metroAlightBtnHtml() {
+    if (!metroLine) return "";
+    var st = state.metroStationShown;
+    if (!st) return "";
+    var on = metroAlightRunningFor(metroLine.id, st.name);
+    var label = on ? "🔔 提醒中 · 到 " + st.name + " 已开" : "🔔 到 " + st.name + " 提醒我下车";
+    return '<span class="mabtn' + (on ? " on" : "") + '" id="malightToggle">' + label + '</span>';
+  }
+
+  function bindMetroAlightBtn() {
+    var btn = $("malightToggle");
+    if (!btn || !metroLine) return;
+    btn.onclick = function (ev) {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      var st = state.metroStationShown;
+      if (!st) return;
+      if (metroAlightRunningFor(metroLine.id, st.name)) {
+        stopMetroAlight();
+      } else {
+        var idx = 0;
+        for (var i = 0; i < metroLine.stations.length; i++) {
+          if (metroLine.stations[i] === st) { idx = i; break; }
+        }
+        startMetroAlight(metroLine, st, idx);
+      }
+      showMetroStation(st);
+    };
+  }
+
   async function showMetroStation(st) {
+    state.metroStationShown = st;
     var panel = $("mstation");
     panel.innerHTML = '<div class="bus"><div class="head"><span class="line-name">' + st.name +
       '</span><span class="toward">查询附近公交…</span></div></div>';
+    var alive = true;
     var transfer = loadMetroData().transfers[st.name];
     var head = '<div class="head"><span class="line-name">' + st.name + '</span><span class="toward">' +
       (transfer ? "换乘 " + transfer.join("/") : "地铁站") + '</span></div>';
@@ -6116,11 +6316,17 @@
           html += '<div class="meta">' + a.lineName + "路　" + text + "</div>";
         });
       });
-      html += '<div class="meta" style="margin-top:8px;opacity:.6">地铁实时到站请用「成都地铁」App</div></div>';
+      html += '<div class="meta" style="margin-top:8px;opacity:.6">地铁实时到站请用「成都地铁」App</div>';
+      html += '<div class="mabtns">' + metroAlightBtnHtml() + '</div></div>';
+      if (!alive) return;
       panel.innerHTML = html;
+      bindMetroAlightBtn();
     } catch (e) {
+      if (!alive) return;
       panel.innerHTML = '<div class="bus">' + head +
-        '<div class="meta" style="margin-top:6px">附近公交查询失败：' + e.message + '</div></div>';
+        '<div class="meta" style="margin-top:6px">附近公交查询失败：' + e.message + '</div>' +
+        '<div class="mabtns">' + metroAlightBtnHtml() + '</div></div>';
+      bindMetroAlightBtn();
     }
   }
 
@@ -7030,6 +7236,13 @@
     // 搜索页重跑一次同样的关键字，首末班没加载出来的会补上
     runSearchFromInput();
   };
+  if ($("malightStop")) {
+    $("malightStop").onclick = function (ev) {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      stopMetroAlight();
+      if (state.metroStationShown) showMetroStation(state.metroStationShown);
+    };
+  }
   $("alightStop").onclick = function (ev) {
     if (ev && ev.stopPropagation) ev.stopPropagation();
     stopAlight();

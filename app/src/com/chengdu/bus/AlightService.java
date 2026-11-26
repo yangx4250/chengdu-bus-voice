@@ -37,6 +37,9 @@ public final class AlightService extends Service implements LocationListener {
     private static final long TICK_MS = 15000;
     /** 离终点站这么近就算「到站」。 */
     private static final float ARRIVE_METERS = 250f;
+    /** 实际用的到站半径。地铁在地下只有基站/WiFi 定位，精度几百米，
+        调用方可以传一个更大的值；另外再按本次定位的精度自适应放大。 */
+    private float arriveMeters = ARRIVE_METERS;
 
     public static final String ACTION_START = "com.chengdu.bus.ALIGHT_START";
     public static final String ACTION_STOP = "com.chengdu.bus.ALIGHT_STOP";
@@ -113,6 +116,8 @@ public final class AlightService extends Service implements LocationListener {
             destOrder = intent.getIntExtra("destOrder", 1);
             destLat = intent.getDoubleExtra("destLat", 0);
             destLng = intent.getDoubleExtra("destLng", 0);
+            arriveMeters = intent.getFloatExtra("arriveMeters", ARRIVE_METERS);
+            if (arriveMeters <= 0) arriveMeters = ARRIVE_METERS;
             stations = parseStations(intent.getStringExtra("stations"));
             saveTarget();
         }
@@ -235,6 +240,11 @@ public final class AlightService extends Service implements LocationListener {
         double toDest = distance(lat, lng, destLat, destLng);
         lastDistance = toDest;
 
+        /* 到站半径按本次定位精度自适应：精度 ±800 米时，200 米和 800 米其实分不清，
+           硬用 250 米会因为永远收不到更准的点而一直不响。取两者较大值。 */
+        float accuracy = location.hasAccuracy() ? location.getAccuracy() : 0f;
+        float need = Math.max(arriveMeters, accuracy);
+
         int nearestOrder = -1;
         double nearest = Double.MAX_VALUE;
         for (int i = 0; i < stations.length(); i++) {
@@ -253,7 +263,7 @@ public final class AlightService extends Service implements LocationListener {
             remaining = destOrder - nearestOrder;
             if (remaining < 0) remaining = 0;
         } else {
-            remaining = (toDest > 0 && toDest <= ARRIVE_METERS) ? 0 : -1;
+            remaining = (toDest > 0 && toDest <= need) ? 0 : -1;
         }
         lastRemaining = remaining;
 
@@ -273,7 +283,7 @@ public final class AlightService extends Service implements LocationListener {
             spokeTwo = true;
             fire(remaining >= 2 ? "还有两站就下车，请提前准备" : "下一站就下车，请提前准备");
         }
-        if (!spokeArrive && (remaining == 0 || (hasDest && toDest <= ARRIVE_METERS))) {
+        if (!spokeArrive && (remaining == 0 || (hasDest && toDest <= need))) {
             if (!spokeTwo) {
                 spokeTwo = true;
             }
@@ -399,6 +409,7 @@ public final class AlightService extends Service implements LocationListener {
                 .putInt("destOrder", destOrder)
                 .putFloat("destLat", (float) destLat)
                 .putFloat("destLng", (float) destLng)
+                .putFloat("arriveMeters", arriveMeters)
                 .putString("stations", stations.toString())
                 .apply();
     }
@@ -411,6 +422,8 @@ public final class AlightService extends Service implements LocationListener {
         destOrder = p.getInt("destOrder", 1);
         destLat = p.getFloat("destLat", 0);
         destLng = p.getFloat("destLng", 0);
+        arriveMeters = p.getFloat("arriveMeters", ARRIVE_METERS);
+        if (arriveMeters <= 0) arriveMeters = ARRIVE_METERS;
         stations = parseStations(p.getString("stations", "[]"));
     }
 

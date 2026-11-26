@@ -4296,6 +4296,122 @@ if (stage29.length) {
 }
 console.log('✓ 地铁首末班通过：19 条线路双向齐备、时间合法、末班晚于首班、界面有渲染');
 
+/* ---------------------- 地铁/有轨 下车提醒：靠手机定位，不靠车辆数据 */
+
+/* 地铁没有实时车辆数据，提醒只能靠定位；这里验证整条链路真的接上了原生服务，
+   并且地铁和有轨电车的参数不一样（地下定位精度差 → 半径放大、不给站序）。 */
+{
+  const startMetro = window.cdBusStartMetroAlight;
+  const stopMetro = window.cdBusStopMetroAlight;
+  const runningFor = window.cdBusMetroAlightRunning;
+  const fail = [];
+  if (typeof startMetro !== 'function') fail.push('没有暴露 cdBusStartMetroAlight');
+  if (typeof runningFor !== 'function') fail.push('没有暴露 cdBusMetroAlightRunning');
+
+  const metroData = JSON.parse(html.match(/id="metroData">([\s\S]*?)<\/script>/)[1]);
+  const line1 = metroData.lines.find((l) => l.id === '1');
+  const tram = metroData.lines.find((l) => l.kind === 'tram' && l.id !== 'M-TR');
+  const st1 = line1.stations[5];
+
+  if (!fail.length) {
+    alightServiceLog.length = 0;
+    startMetro(line1, st1, 5);
+    const call = alightServiceLog.find((x) => x[0] === 'start');
+    if (!call) {
+      fail.push('点了到站提醒但没调用 bridge.startAlightService');
+    } else {
+      const p = JSON.parse(call[1]);
+      if (p.destName !== st1.name) fail.push('传给原生的终点站名不对：' + p.destName);
+      if (Math.abs(p.destLat - st1.lat) > 1e-9 || Math.abs(p.destLng - st1.lng) > 1e-9) {
+        fail.push('传给原生的终点坐标不对');
+      }
+      if (Number(p.arriveMeters) !== 600) fail.push('地铁的到站半径应为 600 米（地下定位误差大），实际 ' + p.arriveMeters);
+      if (p.stations !== '[]') fail.push('地铁不该传站序（隧道里会乱跳），实际 ' + p.stations);
+      if (!runningFor(line1.id, st1.name)) fail.push('开完提醒后 cdBusMetroAlightRunning 仍返回 false');
+    }
+
+    /* 有轨电车在地面跑：要给站序、到站半径用默认 250 */
+    alightServiceLog.length = 0;
+    const tst = tram.stations[6];
+    startMetro(tram, tst, 6);
+    const tcall = alightServiceLog.filter((x) => x[0] === 'start').pop();
+    if (!tcall) {
+      fail.push('有轨电车没能开提醒');
+    } else {
+      const p = JSON.parse(tcall[1]);
+      if (Number(p.arriveMeters) !== 250) fail.push('有轨电车的到站半径应为 250 米，实际 ' + p.arriveMeters);
+      const list = JSON.parse(p.stations);
+      if (!Array.isArray(list) || list.length !== tram.stations.length) {
+        fail.push('有轨电车应把整条线路站序传下去，实际 ' + p.stations.slice(0, 60));
+      }
+    }
+
+    /* 关闭：必须真的调 stopAlightService 并把状态清掉 */
+    alightServiceLog.length = 0;
+    stopMetro();
+    if (!alightServiceLog.some((x) => x[0] === 'stop')) fail.push('取消提醒没有调用 bridge.stopAlightService');
+    if (runningFor(line1.id, st1.name)) fail.push('取消后仍报告提醒进行中');
+  }
+
+  /* 同一时间只能有一条提醒：地铁开之前要把公交那条收掉 */
+  if (!/if \(alightRunning\) stopAlight\(true\)/.test(html)) {
+    fail.push('地铁开提醒前没有先收掉上一条（原生只跑一个服务）');
+  }
+  /* 地铁播报不能加「路」 */
+  if (!/kind === "metro"\) return alight\.lineName \+ "，"/.test(html)) {
+    fail.push('地铁播报前缀没去掉「路」字（会说成「1号线路」）');
+  }
+  /* 界面：状态条 + 面板按钮 */
+  if (!/id="malight"/.test(html)) fail.push('地铁页缺少提醒状态条 #malight');
+  if (!/到 \(\?\).*提醒我下车|提醒我下车/.test(html)) fail.push('站面板里没有「提醒我下车」按钮');
+  if (!/metroAlightBtnHtml/.test(html)) fail.push('站面板按钮没有渲染函数');
+
+  if (fail.length) {
+    console.error('✗ UI 冒烟失败（地铁下车提醒）：');
+    for (const f of fail) console.error('  - ' + f);
+    process.exit(1);
+  }
+  /* 界面链路：选中线路 → 点站 → 面板出现「提醒我下车」→ 点它 → 状态条亮起 */
+  const openLine = window.cdBusSelectMetroLine;
+  const showSt = window.cdBusMetroShowStation;
+  if (typeof openLine !== 'function' || typeof showSt !== 'function') {
+    fail.push('缺少 cdBusSelectMetroLine / cdBusMetroShowStation 钩子');
+  } else if (openLine('1')) {
+    const st = line1.stations[7];
+    await showSt(st);
+    await new Promise((r) => setTimeout(r, 30));
+    const panel = textOf(document.getElementById('mstation'));
+    if (!panel.includes('提醒我下车')) {
+      fail.push('地铁站面板里没有「提醒我下车」按钮，实际：' + panel.slice(0, 120));
+    }
+    const btn = document.getElementById('malightToggle');
+    if (!btn || typeof btn.onclick !== 'function') {
+      fail.push('「提醒我下车」按钮没有绑定点击事件');
+    } else {
+      alightServiceLog.length = 0;
+      btn.onclick();
+      await new Promise((r) => setTimeout(r, 30));
+      if (!alightServiceLog.some((x) => x[0] === 'start')) fail.push('点按钮没触发原生提醒服务');
+      const bar = document.getElementById('malight');
+      if (String(bar.className || '').includes('hidden')) fail.push('开提醒后地铁页顶部状态条没显示');
+      const barText = textOf(bar);
+      if (!barText.includes(st.name)) fail.push('状态条里没有终点站名，实际：' + barText.slice(0, 80));
+      /* 再点一次是取消 */
+      const btn2 = document.getElementById('malightToggle');
+      if (btn2 && typeof btn2.onclick === 'function') {
+        alightServiceLog.length = 0;
+        btn2.onclick();
+        await new Promise((r) => setTimeout(r, 30));
+        if (!alightServiceLog.some((x) => x[0] === 'stop')) fail.push('再点一次没有取消提醒');
+      } else {
+        fail.push('提醒开着时按钮消失了，没法取消');
+      }
+    }
+  }
+
+  console.log('✓ 地铁下车提醒通过：定位触发、地铁 600 米/不传站序、有轨 250 米/传站序、可取消、互斥、界面链路完整');
+}
+
 console.log('✓ 到站表行通过：时间固定右边、站名在自己列内折行、行内无铃铛');
 
 console.log('✓ 自动刷新保持位置通过：keepScroll 被真正写回、优先于最近站滚动、还原后 return');

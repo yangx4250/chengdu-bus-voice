@@ -451,6 +451,8 @@ public final class BusBridge {
             intent.putExtra("destOrder", args.optInt("destOrder", 1));
             intent.putExtra("destLat", args.optDouble("destLat", 0));
             intent.putExtra("destLng", args.optDouble("destLng", 0));
+            /* 到站半径：地铁在地下只有基站/WiFi 定位，精度几百米，页面会传大一点 */
+            intent.putExtra("arriveMeters", (float) args.optDouble("arriveMeters", 250));
             intent.putExtra("stations", args.optString("stations"));
             if (android.os.Build.VERSION.SDK_INT >= 26) activity.startForegroundService(intent);
             else activity.startService(intent);
