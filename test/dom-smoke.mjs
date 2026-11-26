@@ -122,6 +122,52 @@ for (const e of entries) {
   }
 }
 
+/* 主题色：设置 → 主题色，9 个颜色（红橙黄绿青蓝紫 + 黑白），点了立刻生效并记住 */
+{
+  const root = doc.documentElement;
+  const getv = (k) => root.style.getPropertyValue(k);
+  const cellOf = (id) => doc.querySelector('#themeGrid .themecell[data-theme="' + id + '"]');
+
+  const row = doc.getElementById('setTheme');
+  if (!row) {
+    fail.push('设置页没有「主题色」入口 #setTheme');
+  } else if (typeof row.onclick !== 'function') {
+    fail.push('#setTheme 没绑上 onclick');
+  } else {
+    row.onclick();
+    const cells = doc.querySelectorAll('#themeGrid .themecell');
+    if (cells.length !== 9) fail.push('主题色应该有 9 个，实际 ' + cells.length);
+    const names = [...cells].map((c) => c.querySelector('.themename').textContent);
+    const want = ['红', '橙', '黄', '绿', '青', '蓝', '紫', '黑', '白'];
+    if (names.join('') !== want.join('')) fail.push('颜色不对：' + names.join(' '));
+
+    const seen = new Set();
+    for (const id of want.map((_, i) => cells[i].getAttribute('data-theme'))) {
+      const c = cellOf(id);
+      if (!c || typeof c.onclick !== 'function') { fail.push('色块 ' + id + ' 点不了'); continue; }
+      c.onclick();
+      const accent = getv('--accent');
+      if (!/^#[0-9a-f]{6}$/.test(accent)) fail.push('主题 ' + id + ' 没写 --accent：' + accent);
+      if (!getv('--on-accent')) fail.push('主题 ' + id + ' 缺 --on-accent');
+      if (!getv('--accent-line')) fail.push('主题 ' + id + ' 缺 --accent-line');
+      if (!getv('--accent-bg')) fail.push('主题 ' + id + ' 缺 --accent-bg');
+      if (!getv('--accent-soft')) fail.push('主题 ' + id + ' 缺 --accent-soft');
+      seen.add(accent);
+      if (dom.window.localStorage.getItem('cdbus.theme') !== id) {
+        fail.push('主题 ' + id + ' 没写进 localStorage');
+      }
+      if (doc.querySelectorAll('#themeGrid .themecell.on').length !== 1) {
+        fail.push('主题 ' + id + ' 的选中态不是唯一一个');
+      }
+    }
+    if (seen.size !== 9) fail.push('9 个主题只有 ' + seen.size + ' 种颜色');
+    /* 白主题上压字的颜色必须反过来，否则白底白字 */
+    cellOf('white').onclick();
+    if (getv('--on-accent').toLowerCase() !== '#101828') fail.push('白主题的文字颜色没反过来');
+    if (doc.getElementById('setThemeSub').textContent !== '白') fail.push('设置页小字没跟着变');
+  }
+}
+
 if (fail.length) {
   console.error('✗ 真 DOM 冒烟失败：');
   for (const f of fail) console.error('  - ' + f);

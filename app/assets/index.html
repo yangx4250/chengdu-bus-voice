@@ -12,6 +12,17 @@
     --text: #e8eefb;
     --muted: #8b9ab5;
     --accent: #4f8cff;
+    /* 主题色派生：由 JS 的 applyTheme() 按当前主题改写 <html> 内联样式。
+       - --on-accent   : 压在主题色实底上的文字颜色（白底主题要反过来用深色）
+       - --accent-line : 描边色（黑色主题的实底太暗，描边要单独给浅色）
+       - --accent-bg   : 卡片底上的一层淡主题色（选中行、提示条）
+       - --accent-weak : 半透明主题色（小徽标的底）
+       - --accent-soft : 主题色的浅色版（高亮文字） */
+    --on-accent: #fff;
+    --accent-line: #4f8cff;
+    --accent-bg: #1b2747;
+    --accent-weak: rgba(79,140,255,.14);
+    --accent-soft: #9dbeff;
     --hot: #ff6b5e;
     --ok: #38d39f;
   }
@@ -36,7 +47,7 @@
   .searchrow input { flex: 1; min-width: 0; }
   .searchgo { flex: 0 0 auto; width: 46px; padding: 0; font-size: 19px;
     line-height: 1; border-radius: 12px; background: var(--accent);
-    border-color: var(--accent); color: #fff; }
+    border-color: var(--accent); color: var(--on-accent); }
   input {
     flex: 1; min-width: 0; background: #0e1626; border: 1px solid var(--line);
     border-radius: 12px; padding: 13px 14px; color: var(--text); font-size: 16px; outline: none;
@@ -48,7 +59,7 @@
     border-radius: 12px; padding: 13px 16px; font-size: 15px; font-weight: 500;
   }
   button:active { transform: scale(.98); }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; flex: 1; font-weight: 600; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); flex: 1; font-weight: 600; }
   button:disabled { opacity: .5; }
 
   .chips { display: flex; flex-wrap: nowrap; gap: 8px; margin-bottom: 12px;
@@ -73,8 +84,8 @@
   /* 实时车辆位置：🚌 挂在站名芯片「头上」（站名上方、芯片内部）。
      注意 .chips.vertical .chip 有 overflow: hidden，图标放在芯片外会被裁掉看不见。 */
   /* 盯站中的站名：蓝色高亮（v1.0.46 取消盯站通知条，改为站名高亮） */
-  .chips.vertical .chip.watched { border-color: #4f8cff; background: #16233d; }
-  .chips.vertical .chip.watched .cname { color: #6ea8ff; font-weight: 600; }
+  .chips.vertical .chip.watched { border-color: var(--accent-line); background: var(--accent-bg); }
+  .chips.vertical .chip.watched .cname { color: var(--accent-soft); font-weight: 600; }
   .chip.hasbus { position: relative; padding-top: 20px; }
   .chip.hasbus .busmark {
     writing-mode: horizontal-tb; text-orientation: mixed;
@@ -184,10 +195,10 @@
   .plan .segs { display: flex; flex-direction: column; gap: 4px; }
   .segreq { display: flex; align-items: center; gap: 6px; font-size: 13px; }
   .segmode { font-size: 11px; padding: 1px 6px; border-radius: 6px; flex: 0 0 auto; }
-  .segmode.bus { background: #16233d; color: #9dc0ff; }
+  .segmode.bus { background: var(--accent-bg); color: var(--accent-soft); }
   .segmode.metro { background: #12302a; color: #38d39f; }
   .segmode.walk { background: #2a2413; color: #ffce4a; }
-  .segb { color: #9dc0ff; cursor: pointer; }
+  .segb { color: var(--accent-soft); cursor: pointer; }
   .segb::after { content: " ›"; color: var(--muted); }
   .bus .pickhead .line-name { display: block; overflow: visible;
     text-overflow: clip; }
@@ -336,7 +347,7 @@
   .citylist { flex: 1; overflow-y: auto; padding: 6px 14px 20px; }
   .cityrow { padding: 11px 12px; border-radius: 12px; border: 1px solid transparent; }
   .cityrow:active { background: #1c2539; }
-  .cityrow.active { border-color: var(--accent); background: #1a2338; }
+  .cityrow.active { border-color: var(--accent-line); background: var(--accent-bg); }
   .cityrow.dim { opacity: .5; }
   .cityrow .cityname { font-size: 15px; color: var(--text); }
   .cityrow .citynow { font-size: 11px; color: var(--accent); border: 1px solid var(--accent);
@@ -356,9 +367,9 @@
 
   /* 顶部浮动提示：替代原来右下角那行小字 */
   #fabSpeak { position: fixed; left: 18px; bottom: 26px; width: 58px; height: 58px;
-    border-radius: 50%; background: var(--accent); color: #fff; font-size: 24px;
+    border-radius: 50%; background: var(--accent); color: var(--on-accent); font-size: 24px;
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 6px 18px rgba(79,140,255,.45); z-index: 45; }
+    box-shadow: 0 6px 18px var(--accent-weak); z-index: 45; }
   #fabSpeak:active { transform: scale(.94); }
   #fabSpeak.hidden { display: none; }
 
@@ -399,8 +410,8 @@
   .mexitwrap { display: flex; flex-direction: column; gap: 6px; }
   .mexit { display: flex; align-items: baseline; gap: 8px; }
   .mexit .mref { flex: 0 0 auto; min-width: 42px; text-align: center; font-style: normal;
-    font-size: 12px; font-weight: 700; color: #8ab4ff; background: rgba(138,180,255,.12);
-    border: 1px solid rgba(138,180,255,.35); border-radius: 7px; padding: 2px 6px; }
+    font-size: 12px; font-weight: 700; color: var(--accent-soft); background: var(--accent-weak);
+    border: 1px solid var(--accent-line); border-radius: 7px; padding: 2px 6px; }
   .mexit .mloc { flex: 1; min-width: 0; font-size: var(--fs); color: var(--text);
     line-height: 1.3; word-break: break-all; }
   .mexit .mtag { flex: 0 0 auto; font-style: normal; font-size: 11px; color: var(--muted);
@@ -418,7 +429,7 @@
     overflow: hidden; text-overflow: ellipsis; }
   .alightcard .ac-go { font-size: 12px; color: var(--hot); white-space: nowrap; }
 
-  .watchcard { background: #16233a; border: 1px solid var(--accent); border-radius: 14px;
+  .watchcard { background: var(--accent-bg); border: 1px solid var(--accent-line); border-radius: 14px;
     padding: 12px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
   .watchcard:active { background: #1b2b46; }
   .watchcard .wc-main { flex: 1; min-width: 0; }
@@ -501,7 +512,7 @@
   .srow.passed .swhen { color: var(--muted); font-weight: 400; }
   .srow .idx { color: var(--muted); font-size: 12px; text-align: right; }
   .srow { scroll-margin-top: var(--top-h, 210px); }
-  .srow.current { border-color: var(--accent); background: #17233a; }
+  .srow.current { border-color: var(--accent-line); background: var(--accent-bg); }
   .srow.picked { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
   .srow.arrived .swhen { color: #ff5b5b; font-weight: 700; }
   .srow.current .sname { color: #fff; font-weight: 600; }
@@ -519,7 +530,7 @@
     -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
   .navrow .navbtns::-webkit-scrollbar { display: none; }
   .navrow .navbtn { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px;
-    background: #16233a; border: 1px solid var(--accent); color: #d6e2f7;
+    background: var(--accent-bg); border: 1px solid var(--accent-line); color: #d6e2f7;
     border-radius: 999px; padding: 7px 13px; font-size: var(--fs-sm); line-height: 1.2;
     white-space: nowrap; }
   .navrow .navbtn:active { background: #1b2b46; }
@@ -542,7 +553,7 @@
   .guidemodal .gmsub { font-size: var(--fs-sm); color: var(--muted); margin-top: 3px; }
   .guidemodal .gmbtns { display: flex; gap: 10px; margin-top: 16px; }
   .guidemodal .gmbtns button { flex: 1; padding: 12px; font-size: var(--fs); }
-  .guidemodal .gmprimary { background: var(--accent); color: #fff; border-color: var(--accent);
+  .guidemodal .gmprimary { background: var(--accent); color: var(--on-accent); border-color: var(--accent);
     font-weight: 600; }
   .guidemodal .gmghost { background: transparent; color: var(--muted); border-color: var(--line); }
 
@@ -589,11 +600,24 @@
     border-radius: 12px; padding: 12px; margin-bottom: 12px; }
   .setcardtitle { font-size: var(--fs-sm); color: var(--muted); margin-bottom: 8px;
     letter-spacing: .5px; }
+  /* 主题色：3 列色块，选中的打勾 */
+  .themegrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .themecell { position: relative; display: flex; flex-direction: column;
+    align-items: center; gap: 6px; padding: 12px 6px 10px;
+    background: #0e1626; border: 1px solid var(--line); border-radius: 12px; }
+  .themecell.on { border-color: var(--accent-line); background: var(--accent-bg); }
+  .themedot { width: 34px; height: 34px; border-radius: 50%;
+    border: 1px solid rgba(255,255,255,.18); box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+  .themename { font-size: var(--fs-sm); color: var(--text); }
+  .themecheck { position: absolute; top: 6px; right: 8px; font-size: 12px;
+    color: var(--accent-soft); visibility: hidden; }
+  .themecell.on .themecheck { visibility: visible; }
+
   /* 字体大小：选项列表 + 实时预览 */
   .fontlist { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
   .fontopt { display: flex; align-items: center; gap: 12px; padding: 12px 14px;
     background: #0e1626; border: 1px solid var(--line); border-radius: 12px; }
-  .fontopt.on { border-color: var(--accent); background: #16233d; }
+  .fontopt.on { border-color: var(--accent-line); background: var(--accent-bg); }
   .fontopt .fradio { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%;
     border: 2px solid #46536e; display: flex; align-items: center;
     justify-content: center; }
@@ -847,6 +871,12 @@
           <div class="setsub" id="setFontSub">标准（100%）</div></div>
         <div class="setarrow">›</div>
       </div>
+      <div class="setitem" id="setTheme">
+        <div class="seticon">🎨</div>
+        <div class="setinfo"><div class="setname">主题色</div>
+          <div class="setsub" id="setThemeSub">蓝</div></div>
+        <div class="setarrow">›</div>
+      </div>
       <div class="setitem" id="setVoice">
         <div class="seticon">🔊</div>
         <div class="setinfo"><div class="setname">语音与播报</div>
@@ -876,6 +906,21 @@
     </div>
     <div class="setbody" id="guideBody">
       <!-- 由 renderGuide() 填充 -->
+    </div>
+  </div>
+
+  <!-- 二级：主题色 -->
+  <div id="setPageTheme" class="setpage hidden">
+    <div class="sethead">
+      <button id="themeBack" class="setback">‹</button>
+      <div class="settitle">主题色</div>
+    </div>
+    <div class="setbody">
+      <div class="setcard">
+        <div class="setcardtitle">挑一个喜欢的颜色</div>
+        <div class="themegrid" id="themeGrid"></div>
+        <div class="dhead">主题色会用在按钮、选中态和高亮文字上，改完立即生效，下次打开还是这个颜色。</div>
+      </div>
     </div>
   </div>
 
@@ -5979,7 +6024,7 @@
         desc: "手动刷新附近站点和到站信息。每次刷新都会顺手重新定位，位置变了列表就跟着变。平时每 30 秒自动刷一次，从后台回来也会立即刷一次。",
         demo: "公交来了              🔄  ⚙" },
       { icon: "⚙", name: "设置",
-        desc: "进设置页：使用说明、字体大小、语音与播报、后台诊断、关于。",
+        desc: "进设置页：使用说明、字体大小、主题色、语音与播报、后台诊断、关于。",
         demo: "公交来了              🔄  ⚙" },
       { icon: "📍", name: "位置提示",
         desc: "顶栏第二行显示当前定位到的位置和精度。定位失败或不准时，先去系统设置把「位置信息」权限给成「始终允许」并打开精确定位。",
@@ -6228,13 +6273,144 @@
     applyFontScale(cur);
   }
 
+  /* ---------------------------------------------------------- 主题色
+
+     彩虹 7 色 + 黑白 2 色，共 9 个。
+     只换「强调色」一套，不换整张配色 —— 换整套明暗主题要重写 50 多个写死的色值，
+     风险太大，而强调色已经贯穿按钮、选中态、高亮文字，视觉上一眼就能分辨。
+
+     黑 / 白 两个特殊：
+       - 黑：实底接近纯黑，描边单独给浅灰，否则选中态完全看不见；
+       - 白：实底接近纯白，压在它上面的文字必须反过来用深色（--on-accent）。
+     派生色在这里算好写成 CSS 变量，不用 CSS 的 color-mix 函数（老 WebView 不支持）。 */
+  var THEMES = [
+    { id: "red",    name: "红", accent: "#ff5a5f", on: "#ffffff" },
+    { id: "orange", name: "橙", accent: "#ff922b", on: "#1a1206" },
+    { id: "yellow", name: "黄", accent: "#ffd43b", on: "#1a1606" },
+    { id: "green",  name: "绿", accent: "#2fd07a", on: "#04170c" },
+    { id: "cyan",   name: "青", accent: "#22c9d6", on: "#04161a" },
+    { id: "blue",   name: "蓝", accent: "#4f8cff", on: "#ffffff" },
+    { id: "purple", name: "紫", accent: "#b06bff", on: "#ffffff" },
+    { id: "black",  name: "黑", accent: "#1b2130", on: "#ffffff", line: "#8b9ab5",
+      bg: "#232b3d" },
+    { id: "white",  name: "白", accent: "#f2f5f9", on: "#101828", line: "#ffffff", soft: "#ffffff" }
+  ];
+  var THEME_KEY = "cdbus.theme";
+  var DEFAULT_THEME = "blue";
+  var CARD_HEX = "#151d2e";        /* 和 CSS 里的 --card 保持一致 */
+
+  function themeById(id) {
+    for (var i = 0; i < THEMES.length; i++) {
+      if (THEMES[i].id === id) return THEMES[i];
+    }
+    for (var j = 0; j < THEMES.length; j++) {
+      if (THEMES[j].id === DEFAULT_THEME) return THEMES[j];
+    }
+    return THEMES[0];
+  }
+
+  function hex2rgb(h) {
+    var v = String(h || "#000").replace("#", "");
+    if (v.length === 3) v = v[0] + v[0] + v[1] + v[1] + v[2] + v[2];
+    return [parseInt(v.slice(0, 2), 16) || 0,
+            parseInt(v.slice(2, 4), 16) || 0,
+            parseInt(v.slice(4, 6), 16) || 0];
+  }
+  function rgb2hex(r, g, b) {
+    function h2(v) {
+      v = Math.max(0, Math.min(255, Math.round(v)));
+      return (v < 16 ? "0" : "") + v.toString(16);
+    }
+    return "#" + h2(r) + h2(g) + h2(b);
+  }
+  /* 从 a 混到 b，t=0 全 a，t=1 全 b */
+  function mixHex(a, b, t) {
+    var A = hex2rgb(a), B = hex2rgb(b);
+    return rgb2hex(A[0] + (B[0] - A[0]) * t,
+                  A[1] + (B[1] - A[1]) * t,
+                  A[2] + (B[2] - A[2]) * t);
+  }
+  function rgbaHex(a, alpha) {
+    var A = hex2rgb(a);
+    return "rgba(" + A[0] + "," + A[1] + "," + A[2] + "," + alpha + ")";
+  }
+
+  function themeId() {
+    try {
+      var id = localStorage.getItem(THEME_KEY);
+      for (var i = 0; i < THEMES.length; i++) if (THEMES[i].id === id) return id;
+    } catch (e) {}
+    return DEFAULT_THEME;
+  }
+
+  /** 把主题色写进 <html> 内联样式，全站强调色立刻变。 */
+  function applyTheme(id) {
+    var t = themeById(id);
+    var root = document && document.documentElement;
+    if (root && root.style && root.style.setProperty) {
+      root.style.setProperty("--accent", t.accent);
+      root.style.setProperty("--on-accent", t.on || "#ffffff");
+      root.style.setProperty("--accent-line", t.line || t.accent);
+      root.style.setProperty("--accent-soft", t.soft || mixHex(t.accent, "#ffffff", 0.45));
+      /* 淡底：把主题色按 16% 混到卡片色里，深色主题上不会糊，白/黄这种亮色也不刺眼 */
+      root.style.setProperty("--accent-bg", t.bg || mixHex(CARD_HEX, t.accent, 0.16));
+      root.style.setProperty("--accent-weak", rgbaHex(t.accent, 0.14));
+    }
+    var sub = $("setThemeSub");
+    if (sub) sub.textContent = t.name;
+    return t;
+  }
+
+  function setTheme(id, announce) {
+    var t = applyTheme(id);
+    try { localStorage.setItem(THEME_KEY, t.id); } catch (e) {}
+    renderThemePage();
+    if (announce) showToast("主题色已改为「" + t.name + "」");
+    return t;
+  }
+
+  function renderThemePage() {
+    var grid = $("themeGrid");
+    if (!grid) return;
+    var cur = themeId();
+    grid.innerHTML = "";
+    /* 和字号列表一样用 createElement 拼，不写 innerHTML（闭包拿得到选项对象） */
+    for (var i = 0; i < THEMES.length; i++) {
+      (function (t) {
+        var cell = document.createElement("div");
+        cell.className = "themecell" + (t.id === cur ? " on" : "");
+        cell.setAttribute("data-theme", t.id);
+        var dot = document.createElement("span");
+        dot.className = "themedot";
+        dot.style.background = t.accent;
+        if (t.id === "white") dot.style.borderColor = "#7b8797";
+        var nm = document.createElement("span");
+        nm.className = "themename";
+        nm.textContent = t.name;
+        var ck = document.createElement("span");
+        ck.className = "themecheck";
+        ck.textContent = "✓";
+        cell.appendChild(dot);
+        cell.appendChild(nm);
+        cell.appendChild(ck);
+        cell.onclick = function () { setTheme(t.id, true); };
+        grid.appendChild(cell);
+      })(THEMES[i]);
+    }
+    applyTheme(cur);
+  }
+
+  /* 启动即应用已保存的主题（和字号一起，都在首屏渲染前）。 */
+  applyTheme(themeId());
+
   /* 启动即应用已保存的字号（不等设置页打开）。 */
   applyFontScale(fontScale());
 
   /* 设置页导航：主页 ↔ 分类面板。用一个简单栈管理返回。 */
   var setStack = [];
   function showSetPage(id) {
-    var ids = ["setHome", "setPageGuide", "setPageFont", "setPageVoice", "setPageDiag", "setPageAbout"];
+    var ids = ["setHome", "setPageGuide", "setPageFont", "setPageTheme",
+               "setPageVoice", "setPageDiag", "setPageAbout"];
     ids.forEach(function (x) {
       var el = $(x);
       if (el) el.classList.toggle("hidden", x !== id);
@@ -7068,6 +7244,7 @@
     if (id === "setPageAbout") { fillAbout(); updRefreshCurrent(); }
     if (id === "setPageGuide") renderGuide();
     if (id === "setPageFont") renderFontPage();
+    if (id === "setPageTheme") renderThemePage();
     if (id === "setPageVoice") renderDiag();
     if (id === "setPageDiag") { renderHeartbeatInfo(); syncLockNotifySwitch(); }
   }
@@ -7103,6 +7280,8 @@
   $("guideBack").onclick = function () { backFromDiag(); };
   $("setFont").onclick = function () { enterSet("setPageFont"); };
   $("fontBack").onclick = function () { backFromDiag(); };
+  $("setTheme").onclick = function () { enterSet("setPageTheme"); };
+  $("themeBack").onclick = function () { backFromDiag(); };
   $("setVoice").onclick = function () { enterSet("setPageVoice"); };
   $("setDiag").onclick = function () { enterSet("setPageDiag"); };
   $("setAbout").onclick = function () { enterSet("setPageAbout"); };
