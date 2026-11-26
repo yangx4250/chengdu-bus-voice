@@ -4115,6 +4115,54 @@ if (stage26.length) {
 }
 console.log('✓ 不停靠的站通过：站序用 specialOrder 落回真实位置、界面标出「不停靠」');
 
+/* ---------------------- 环线：首末站同一站 + 早段站点要靠绕环找车 */
+const stage27 = [];
+{
+  const mjsSrc = readSafe('lib/chelaile.mjs');
+  const javaSrc = readSafe('app/src/com/chengdu/bus/ChelaileClient.java');
+  /* 环线 = 首站和末站是同一个物理站（stationId 相同）。
+     车来了按 1..N 线性给站序，环线上早段的站前面一辆车都没有，
+     接口全返回「已过站」，不兜底就会显示无车。 */
+  if (!/const loop = loopLen >= 3/.test(mjsSrc)) {
+    stage27.push('lib 层没有判定环线（首末站同 id），绕环兜底无从触发');
+  }
+  if (!/loop,\s*\n\s*loopLen,/.test(mjsSrc)) {
+    stage27.push('lib 层没把 loop/loopLen 带到站点上');
+  }
+  if (!/station\.loop && behind\.length/.test(mjsSrc)) {
+    stage27.push('lib 层缺少环线绕环兜底（早段车站会显示无车）');
+  }
+  if (!/\(\(target - busOrder\) % n \+ n\) % n/.test(mjsSrc)) {
+    stage27.push('绕环距离公式不对（应为 (目标-车+N)%N）');
+  }
+  if (!/wrapped: true/.test(mjsSrc)) {
+    stage27.push('绕环车没有 wrapped 标记，界面无法区分');
+  }
+  /* APK 走的是 Java 侧，两边必须一致 */
+  if (!/boolean loop = false;/.test(javaSrc) || !/item\.put\("loop", loop\)/.test(javaSrc)) {
+    stage27.push('Java 侧没有判定并下发 loop（APK 里绕环兜底不会生效）');
+  }
+  if (!/station\.optBoolean\("loop", false\)/.test(javaSrc)) {
+    stage27.push('Java arrivals 没读 loop，绕环兜底没实现');
+  }
+  if (!javaSrc.includes('(order - busOrder) % loopLen + loopLen) % loopLen')) {
+    stage27.push('Java 侧绕环距离公式不对');
+  }
+  if (!/if \(bus\.optBoolean\("wrapped", false\)\) continue;/.test(javaSrc)) {
+    stage27.push('逐站矩阵没跳过绕环车（会冒出没有时间的幽灵车）');
+  }
+  if (!/\.put\("loopLen", station\.optInt\("loopLen", 0\)\)/.test(javaSrc)) {
+    stage27.push('矩阵返回的站点丢了 loopLen，点站后算不了绕环');
+  }
+}
+
+if (stage27.length) {
+  console.error('✗ UI 冒烟失败（环线）：');
+  for (const f of stage27) console.error('  - ' + f);
+  process.exit(1);
+}
+console.log('✓ 环线通过：首末站同 id 判定、早段车站靠绕环找车、矩阵不混入幽灵车');
+
 console.log('✓ 到站表行通过：时间固定右边、站名在自己列内折行、行内无铃铛');
 
 console.log('✓ 自动刷新保持位置通过：keepScroll 被真正写回、优先于最近站滚动、还原后 return');

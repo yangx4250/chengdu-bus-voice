@@ -461,15 +461,44 @@ public final class ChelaileClient {
         JSONObject line = data.optJSONObject("line") == null ? new JSONObject() : data.getJSONObject("line");
         JSONArray stations = data.optJSONArray("stations");
         JSONArray outStations = new JSONArray();
+        /* 环线判定：首站和末站是同一个物理站（stationId 相同）。
+           环线是一圈跑回起点，接口按 1..N 线性给站序，末站就是首站。
+           这条信息要带到 arrivals 里做「绕环」计算：环线上早段的站，
+           所有车都「已过站」，接口返回空，其实司机还会绕一圈回来。 */
+        boolean loop = false;
+        int loopLen = stations == null ? 0 : stations.length();
+        if (stations != null && loopLen >= 3) {
+            String firstId = stations.optJSONObject(0) == null ? "" : stations.getJSONObject(0).optString("sId");
+            String lastId = stations.optJSONObject(loopLen - 1) == null
+                    ? "" : stations.getJSONObject(loopLen - 1).optString("sId");
+            loop = firstId != null && firstId.length() > 0 && firstId.equals(lastId);
+        }
         if (stations != null) {
             for (int i = 0; i < stations.length(); i++) {
                 JSONObject st = stations.getJSONObject(i);
                 JSONObject item = new JSONObject();
+                int specialType = st.optInt("specialType", 0);
+                int rawOrder = st.optInt("order", 0);
+                /* 「临时不停靠」的站：车来了给 order=999、坐标 (0,0)，
+                   真实站序放在 specialOrder 里。直接用 order 会让它排到终点之后
+                   （P02 的「子云村」、P10 的「石羊村」都是这样）。
+                   整条线统一用 specialOrder，它始终是连续的 1..N。 */
+                boolean suspended = specialType == 2 || rawOrder >= 999;
+                int realOrder = st.has("specialOrder") && !st.isNull("specialOrder")
+                        ? st.optInt("specialOrder", rawOrder)
+                        : rawOrder;
                 item.put("stationId", st.optString("sId"));
-                item.put("order", st.optInt("order"));
+                item.put("order", realOrder);
+                item.put("rawOrder", rawOrder);
                 item.put("name", st.optString("sn"));
                 item.put("lat", st.optDouble("wgsLat"));
                 item.put("lng", st.optDouble("wgsLng"));
+                item.put("suspended", suspended);
+                item.put("specialLabel", suspended
+                        ? st.optString("specialLabel", "该站不停靠") : "");
+                item.put("specialNote", suspended ? st.optString("fakeDesc", "") : "");
+                item.put("loop", loop);
+                item.put("loopLen", loopLen);
                 outStations.put(item);
             }
         }
@@ -521,10 +550,17 @@ public final class ChelaileClient {
         if (buses == null) return out;
 
         List<JSONObject> list = new ArrayList<>();
+        /* 环线上「已过站」的车不算真的过去了：绕一圈还会回来。
+           先把它们的站序记下来，所有车都"已过站"时用绕环距离兜底。 */
+        List<Integer> behind = new ArrayList<>();
         for (int i = 0; i < buses.length(); i++) {
             JSONObject bus = buses.getJSONObject(i);
             double distance = bus.optDouble("distanceToWaitStn", -1);
-            if (distance < 0) continue; // 已过站
+            if (distance < 0) {           // 已过站
+                int passedOrder = bus.optInt("order", 0);
+                if (passedOrder > 0) behind.add(passedOrder);
+                continue;
+            }
             int busOrder = bus.optInt("order", 0);
             JSONObject travel = new JSONObject();
             JSONArray travels = bus.optJSONArray("travels");
@@ -548,6 +584,36 @@ public final class ChelaileClient {
             }
         });
         for (JSONObject item : list) out.put(item);
+
+        /* 环线兜底：这一站前面一辆车都没有（环线上早段的站常态），
+           按「绕一圈还要几站」找最近的一辆车。
+           例：K1 线 30 站，车在第 28 站，你在第 2 站 → (2-28+30)%30 = 4 站。
+           没有 ETA（接口不给），stationsAway 照给，wrapped=true 供界面区分。 */
+        if (out.length() == 0 && station.optBoolean("loop", false) && !behind.isEmpty()) {
+            int loopLen = station.optInt("loopLen", 0);
+            if (loopLen > 1 && order > 0) {
+                int bestOrder = 0;
+                int bestAway = Integer.MAX_VALUE;
+                for (int i = 0; i < behind.size(); i++) {
+                    int busOrder = behind.get(i);
+                    int away = ((order - busOrder) % loopLen + loopLen) % loopLen;
+                    if (away == 0) away = loopLen;      // 同一站 = 一整圈
+                    if (away < bestAway) { bestAway = away; bestOrder = busOrder; }
+                }
+                if (bestOrder > 0) {
+                    JSONObject item = new JSONObject();
+                    item.put("busId", "");
+                    item.put("plate", "");
+                    item.put("order", bestOrder);
+                    item.put("stationsAway", bestAway);
+                    item.put("distanceMeters", -1);
+                    item.put("etaSeconds", JSONObject.NULL);
+                    item.put("arrivalAt", JSONObject.NULL);
+                    item.put("wrapped", true);
+                    out.put(item);
+                }
+            }
+        }
         return out;
     }
 
@@ -693,6 +759,8 @@ public final class ChelaileClient {
             }
             for (int k = 0; k < busesAtStation.length(); k++) {
                 JSONObject bus = busesAtStation.getJSONObject(k);
+                /* 环线兜底造出来的「绕环车」没有真实 busId 和时间，不能进逐站矩阵 */
+                if (bus.optBoolean("wrapped", false)) continue;
                 String key = bus.optString("busId", "");
                 if (key.isEmpty()) key = "order-" + bus.optInt("order");
                 if (!buses.containsKey(key)) {
@@ -721,7 +789,10 @@ public final class ChelaileClient {
                     .put("name", station.getString("name"))
                     .put("stationId", station.optString("stationId"))
                     .put("lat", station.optDouble("lat", 0))
-                    .put("lng", station.optDouble("lng", 0)));
+                    .put("lng", station.optDouble("lng", 0))
+                    .put("suspended", station.optBoolean("suspended", false))
+                    .put("loop", station.optBoolean("loop", false))
+                    .put("loopLen", station.optInt("loopLen", 0)));
         }
         int terminusOrder = allStations.getJSONObject(allStations.length() - 1).getInt("order");
         int queriedFrom = targets.get(0).getInt("order");
