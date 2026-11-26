@@ -6,11 +6,34 @@
 <title>公交来了</title>
 <style>
   :root {
-    --bg: #0b1220;
-    --card: #151d2e;
-    --line: #26324a;
-    --text: #e8eefb;
-    --muted: #8b9ab5;
+    --bg: var(--bg);
+    --card: var(--card);
+    --line: var(--line);
+    --text: var(--text);
+    --muted: var(--muted);
+    /* 整套界面配色：底色、卡片、边框、文字全部跟着主题色走。
+       默认值 = 蓝色主题；具体数值由 JS 的 applyTheme() 算好写到 <html> 上。 */
+    --bg2: #0e1626;
+    --card2: #1b2436;
+    --line2: #34415e;
+    --press: #22304a;
+    --text2: #b9c6dd;
+    --muted2: #56637d;
+    --ok: #38d39f;
+    --ok-bg: #12302a;
+    --ok-strong: #06130e;
+    --ok-soft: #d8fff1;
+    --warn: #ffce4a;
+    --warn-bg: #2a2413;
+    --warn-soft: #ff8a65;
+    --err: #ff8a8a;
+    --err-bg: #2a1a1e;
+    --err-2: #3a1f22;
+    --err-3: #352025;
+    --err-soft: #ffd9d4;
+    --err-mid: #e6b3ad;
+    --err-strong: #ff5b5b;
+
     --accent: #4f8cff;
     /* 主题色派生：由 JS 的 applyTheme() 按当前主题改写 <html> 内联样式。
        - --on-accent   : 压在主题色实底上的文字颜色（白底主题要反过来用深色）
@@ -24,7 +47,7 @@
     --accent-weak: rgba(79,140,255,.14);
     --accent-soft: #9dbeff;
     --hot: #ff6b5e;
-    --ok: #38d39f;
+    --ok: var(--ok);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
@@ -49,13 +72,13 @@
     line-height: 1; border-radius: 12px; background: var(--accent);
     border-color: var(--accent); color: var(--on-accent); }
   input {
-    flex: 1; min-width: 0; background: #0e1626; border: 1px solid var(--line);
+    flex: 1; min-width: 0; background: var(--bg2); border: 1px solid var(--line);
     border-radius: 12px; padding: 13px 14px; color: var(--text); font-size: 16px; outline: none;
   }
-  input::placeholder { color: #56637d; }
+  input::placeholder { color: var(--muted2); }
   input:focus { border-color: var(--accent); }
   button {
-    border: 1px solid var(--line); background: #1b2436; color: var(--text);
+    border: 1px solid var(--line); background: var(--card2); color: var(--text);
     border-radius: 12px; padding: 13px 16px; font-size: 15px; font-weight: 500;
   }
   button:active { transform: scale(.98); }
@@ -68,19 +91,19 @@
   .chips::-webkit-scrollbar { display: none; }
   /* 站名条末尾的空白节点：宽度由脚本按半屏设置，用来让靠后的站能居中 */
   .chipspacer { flex: 0 0 auto; pointer-events: none; }
-  .chip { flex: 0 0 auto; display: flex; align-items: center; background: #1b2436;
+  .chip { flex: 0 0 auto; display: flex; align-items: center; background: var(--card2);
     border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px;
-    font-size: 13px; color: #b9c6dd; white-space: nowrap; line-height: 1.25;
+    font-size: 13px; color: var(--text2); white-space: nowrap; line-height: 1.25;
     min-height: 34px; }
-  .chip.on { border-color: var(--accent); color: #fff; }
+  .chip.on { border-color: var(--accent); color: var(--text); }
   /* 线路页的方向 chip：第一行方向，第二行该方向的首末班 */
   .chip.dirchip { flex-direction: column; align-items: flex-start; gap: 1px;
     border-radius: 12px; padding: 7px 12px; }
   .chip.dirchip .dirname { font-size: 13px; line-height: 1.25; }
   .chip.dirchip .dirtime { font-size: 11px; line-height: 1.3; color: var(--muted); }
-  .chip.dirchip.on .dirtime { color: #b9c6dd; }
+  .chip.dirchip.on .dirtime { color: var(--text2); }
   /* 站名条里「离我最近」的那一站 */
-  .chip.nearest { border-color: var(--ok); background: #12302a; }
+  .chip.nearest { border-color: var(--ok); background: var(--ok-bg); }
   /* 实时车辆位置：🚌 挂在站名芯片「头上」（站名上方、芯片内部）。
      注意 .chips.vertical .chip 有 overflow: hidden，图标放在芯片外会被裁掉看不见。 */
   /* 盯站中的站名：蓝色高亮（v1.0.46 取消盯站通知条，改为站名高亮） */
@@ -107,13 +130,13 @@
   }
   .lvbuses { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
     font-size: 12px; color: var(--muted); padding: 2px 4px 6px; }
-  .lvbuses .lvb-num { color: #ffce4a; font-weight: 600; }
+  .lvbuses .lvb-num { color: var(--warn); font-weight: 600; }
   /* 「末班在途」：比「N 辆在途」更醒目一点，提示这是当天最后一班 */
-  .lvbuses .lvb-last { color: #ff8a65; font-weight: 600; }
+  .lvbuses .lvb-last { color: var(--warn-soft); font-weight: 600; }
   .lvbuses .lvb-upd { margin-left: auto; opacity: .7; }
 
   .chip.nearest .nbadge { font-style: normal; font-size: 10px; line-height: 1.5;
-    background: var(--ok); color: #06130e; border-radius: 999px; padding: 0 5px;
+    background: var(--ok); color: var(--ok-strong); border-radius: 999px; padding: 0 5px;
     margin-left: 5px; }
 
   /* 车辆芯片：上排车牌、下排距离，两排显示更好读 */
@@ -121,11 +144,11 @@
     padding: 8px 12px; line-height: 1.3; }
   .vchip .v1 { font-size: var(--fs); font-weight: 600; white-space: nowrap;
     display: inline-flex; align-items: center; gap: 6px; }
-  .vchip .v2 { font-size: var(--fs-sm); color: #9fb0cc; white-space: nowrap; }
-  .vchip.on .v2 { color: #d6e2f7; }
+  .vchip .v2 { font-size: var(--fs-sm); color: var(--text2); white-space: nowrap; }
+  .vchip.on .v2 { color: var(--text2); }
   #history { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   #history .chip { font-size: var(--fs-sm); padding: 6px 10px; }
-  #history .hclear { color: #6b7c99; border-style: dashed; }
+  #history .hclear { color: var(--muted); border-style: dashed; }
 
   #dnavpickList { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
     margin: 4px 0 14px; }
@@ -141,8 +164,8 @@
     margin-right: 2px; white-space: nowrap; }
   .others-toggle { font-size: var(--fs-sm); color: var(--accent); cursor: pointer;
     white-space: nowrap; user-select: none; }
-  .otherline { border-color: #2c3b57; }
-  .otherline:active { background: #22304a; }
+  .otherline { border-color: var(--press); }
+  .otherline:active { background: var(--press); }
 
   .vbadge { font-style: normal; font-size: 10px; color: var(--accent);
     border: 1px solid var(--accent); border-radius: 999px; padding: 0 6px; line-height: 1.6; }
@@ -162,7 +185,7 @@
 
   .bus { background: var(--card); border: 1px solid var(--line); border-radius: 16px;
     padding: 14px; margin-bottom: 10px; }
-  .bus.tap:active { background: #1a2336; }
+  .bus.tap:active { background: var(--card2); }
   .bus .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .bus .line-name { font-size: 19px; font-weight: 700; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; min-width: 0; }
@@ -182,7 +205,7 @@
     border: 1px solid var(--line); border-radius: 12px; margin: 8px 2px;
     background: var(--card); cursor: pointer;
   }
-  .poiitem:active, .seg.tappable:active { background: #1a2336; }
+  .poiitem:active, .seg.tappable:active { background: var(--card2); }
   .poiitem .pname { font-weight: 600; flex: 0 0 auto; max-width: 60%; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap; }
   .poiitem .paddr { color: var(--muted); font-size: 12px; flex: 1; min-width: 0;
@@ -196,8 +219,8 @@
   .segreq { display: flex; align-items: center; gap: 6px; font-size: 13px; }
   .segmode { font-size: 11px; padding: 1px 6px; border-radius: 6px; flex: 0 0 auto; }
   .segmode.bus { background: var(--accent-bg); color: var(--accent-soft); }
-  .segmode.metro { background: #12302a; color: #38d39f; }
-  .segmode.walk { background: #2a2413; color: #ffce4a; }
+  .segmode.metro { background: var(--ok-bg); color: var(--ok); }
+  .segmode.walk { background: var(--warn-bg); color: var(--warn); }
   .segb { color: var(--accent-soft); cursor: pointer; }
   .segb::after { content: " ›"; color: var(--muted); }
   .bus .pickhead .line-name { display: block; overflow: visible;
@@ -221,7 +244,7 @@
     min-width: 0;
     cursor: pointer;
   }
-  .gcell:active { background: #22304a; }
+  .gcell:active { background: var(--press); }
   .gcell.ended { opacity: .5; }
   .gcell .gname { font-size: var(--fs); font-weight: 600; color: var(--text);
     word-break: break-all; line-height: 1.25; }
@@ -298,7 +321,7 @@
 
   /* 倒计时数字：按钮正下方，11px 灰字，不挡点击 */
   .homehead .refreshnote { flex: 0 0 auto; margin: 1px 0 0;
-    font-size: 10px; line-height: 1; color: #5f6f8c;
+    font-size: 10px; line-height: 1; color: var(--muted);
     white-space: nowrap; pointer-events: none; }
 
   /* 状态行也要跟顶栏一样抵消 body 的内边距，否则它比顶栏窄、
@@ -319,11 +342,11 @@
     align-items: center; gap: 6px; }
   .locbar.err { color: var(--hot); }
   .locbar .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: 0 0 auto; }
-  .refreshnote { margin-left: auto; font-size: 11px; color: #5f6f8c; white-space: nowrap; }
+  .refreshnote { margin-left: auto; font-size: 11px; color: var(--muted); white-space: nowrap; }
   .locbar.err .dot { background: var(--hot); }
 
   /* 在线更新进度条 */
-  .updbar { height: 6px; background: #1d2740; border-radius: 999px;
+  .updbar { height: 6px; background: var(--card2); border-radius: 999px;
     margin-top: 10px; overflow: hidden; }
   .updbar-fill { height: 100%; width: 0%; border-radius: 999px;
     background: var(--accent); transition: width .2s linear; }
@@ -332,8 +355,8 @@
   /* 顶栏城市名：纯文字，不做胶囊/边框（原来那个圆角方块太抢眼）。
      仍然是按钮，点了能切换城市。 */
   .citytext { flex: 0 0 auto; background: none; border: 0; padding: 2px 0 2px 2px;
-    color: #9fb4d4; font-size: var(--fs-sm); line-height: 1.2; }
-  .citytext:active { color: #cfe0ff; }
+    color: var(--text2); font-size: var(--fs-sm); line-height: 1.2; }
+  .citytext:active { color: var(--text2); }
   .citytext span { max-width: 4.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* 城市选择面板 */
@@ -342,24 +365,24 @@
   #cityPicker.hidden { display: none; }
   .cityhead { display: flex; align-items: center; gap: 8px; padding: 12px 14px;
     border-bottom: 1px solid var(--line); }
-  .cityhead input { flex: 1; min-width: 0; background: #1a2338; border: 1px solid var(--line);
+  .cityhead input { flex: 1; min-width: 0; background: var(--bg2); border: 1px solid var(--line);
     border-radius: 10px; color: var(--text); font-size: 15px; padding: 9px 12px; }
   .citylist { flex: 1; overflow-y: auto; padding: 6px 14px 20px; }
   .cityrow { padding: 11px 12px; border-radius: 12px; border: 1px solid transparent; }
-  .cityrow:active { background: #1c2539; }
+  .cityrow:active { background: var(--press); }
   .cityrow.active { border-color: var(--accent-line); background: var(--accent-bg); }
   .cityrow.dim { opacity: .5; }
   .cityrow .cityname { font-size: 15px; color: var(--text); }
   .cityrow .citynow { font-size: 11px; color: var(--accent); border: 1px solid var(--accent);
     border-radius: 999px; padding: 1px 6px; margin-left: 6px; }
   .cityrow .citysub { font-size: 12px; color: var(--muted); margin-top: 3px; }
-  .cityfoot { padding: 10px 16px 16px; font-size: 11px; color: #5f6f8c; text-align: center; }
+  .cityfoot { padding: 10px 16px 16px; font-size: 11px; color: var(--muted); text-align: center; }
 
-  .switch { display: flex; align-items: center; gap: 6px; color: #b9c6dd; }
+  .switch { display: flex; align-items: center; gap: 6px; color: var(--text2); }
   .switch input { width: 0; height: 0; opacity: 0; position: absolute; }
-  .knob { width: 42px; height: 24px; border-radius: 999px; background: #2a3550; position: relative; transition: .18s; }
+  .knob { width: 42px; height: 24px; border-radius: 999px; background: var(--line2); position: relative; transition: .18s; }
   .knob::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
-    border-radius: 50%; background: #8b9ab5; transition: .18s; }
+    border-radius: 50%; background: var(--muted); transition: .18s; }
   .switch input:checked + .knob { background: var(--accent); }
   .switch input:checked + .knob::after { left: 21px; background: #fff; }
 
@@ -385,23 +408,23 @@
   .selbar { display: flex; align-items: center; gap: 10px; background: var(--card);
     border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; margin-bottom: 10px; }
   .selbar.hidden { display: none; }
-  .selbar .seltext { flex: 1; min-width: 0; font-size: var(--fs-sm); color: #b9c6dd;
+  .selbar .seltext { flex: 1; min-width: 0; font-size: var(--fs-sm); color: var(--text2);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .selbar button { padding: 8px 12px; font-size: 13px; white-space: nowrap; }
   /* 盯站状态条（v1.0.46）：不再用通知样式的横条，改为顶部一条蓝色高亮文字 */
-  .dwatchstop { font-size: 12px; color: #6b7c99; padding: 4px 8px; border-radius: 8px;
+  .dwatchstop { font-size: 12px; color: var(--muted); padding: 4px 8px; border-radius: 8px;
     border: 1px solid var(--line); white-space: nowrap; }
-  .dwatchstop:active { background: #22304a; color: #fff; }
+  .dwatchstop:active { background: var(--press); color: var(--text); }
   /* 下车提醒：详情页状态条、首页卡片、顶部按钮排里的 🔔 */
   /* 按钮排里的下车提醒：开启时红色高亮，和盯站的蓝色区分开 */
-  .navrow .navbtn.alightbtn.on { border-color: var(--hot); color: #ffd9d4; background: #3a1f22; }
+  .navrow .navbtn.alightbtn.on { border-color: var(--hot); color: var(--err-soft); background: var(--err-2); }
   #alightbar { border-color: var(--hot); }
   #malight { border-color: var(--hot); }
   /* 地铁站面板里的「到站提醒」按钮 */
   .mabtns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   .mabtn { flex: 0 0 auto; padding: 8px 12px; border-radius: 10px; font-size: var(--fs);
     background: rgba(255,255,255,.07); color: var(--text); border: 1px solid var(--line); }
-  .mabtn.on { background: #2a1a1e; border-color: var(--hot); color: #ff8a8a; }
+  .mabtn.on { background: var(--err-bg); border-color: var(--hot); color: var(--err); }
   .mabtn:active { opacity: .75; }
   /* 地铁站出入口 */
   .mexits { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
@@ -420,21 +443,21 @@
   .mexit.closed .mref { color: var(--muted); background: rgba(255,255,255,.05);
     border-color: var(--line); }
   #alightbar .dot3 { width: 7px; height: 7px; border-radius: 50%; background: var(--hot); flex: 0 0 auto; }
-  .alightcard { background: #2a1a1e; border: 1px solid var(--hot); border-radius: 14px;
+  .alightcard { background: var(--err-bg); border: 1px solid var(--hot); border-radius: 14px;
     padding: 12px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
-  .alightcard:active { background: #352025; }
+  .alightcard:active { background: var(--err-3); }
   .alightcard .ac-main { flex: 1; min-width: 0; }
-  .alightcard .ac-title { font-size: 14px; font-weight: 600; color: #fff; }
-  .alightcard .ac-sub { font-size: 12px; color: #e6b3ad; margin-top: 4px; white-space: nowrap;
+  .alightcard .ac-title { font-size: 14px; font-weight: 600; color: var(--text); }
+  .alightcard .ac-sub { font-size: 12px; color: var(--err-mid); margin-top: 4px; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; }
   .alightcard .ac-go { font-size: 12px; color: var(--hot); white-space: nowrap; }
 
   .watchcard { background: var(--accent-bg); border: 1px solid var(--accent-line); border-radius: 14px;
     padding: 12px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
-  .watchcard:active { background: #1b2b46; }
+  .watchcard:active { background: var(--press); }
   .watchcard .wc-main { flex: 1; min-width: 0; }
-  .watchcard .wc-title { font-size: 14px; font-weight: 600; color: #fff; }
-  .watchcard .wc-sub { font-size: 12px; color: #9fb0cc; margin-top: 4px; white-space: nowrap;
+  .watchcard .wc-title { font-size: 14px; font-weight: 600; color: var(--text); }
+  .watchcard .wc-sub { font-size: 12px; color: var(--text2); margin-top: 4px; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; }
   .watchcard .wc-go { font-size: 12px; color: var(--accent); white-space: nowrap; }
 
@@ -443,7 +466,7 @@
   .fav { flex: 0 0 auto; min-width: 168px; max-width: 82vw; background: var(--card);
     border: 1px solid var(--line); border-radius: 14px; padding: 12px 44px 12px 12px;
     position: relative; }
-  .fav:active { background: #1a2336; }
+  .fav:active { background: var(--card2); }
   .fav .fl { font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden;
     text-overflow: ellipsis; }
   .fav .fl small { display: block; font-weight: 400; font-size: 11px; color: var(--muted);
@@ -452,10 +475,10 @@
   .fav .fe { font-size: 13px; font-weight: 600; color: var(--accent); margin-top: 6px; }
   .fav .fe.hot { color: var(--hot); }
   .fav .fe.off { color: var(--muted); font-weight: 400; }
-  .fav .del { position: absolute; top: 6px; right: 6px; font-size: 12px; color: #56637d;
+  .fav .del { position: absolute; top: 6px; right: 6px; font-size: 12px; color: var(--muted2);
     padding: 4px; line-height: 1; }
   .fav.pinned { border-color: var(--accent); }
-  .pin2 { display: inline-block; margin-right: 6px; font-size: 12px; color: #6b7c99;
+  .pin2 { display: inline-block; margin-right: 6px; font-size: 12px; color: var(--muted);
     padding: 0 4px; }
   .pin2.on { color: var(--accent); font-weight: 700; }
   .fav .pin { position: absolute; top: 6px; right: 26px; font-size: 12px; padding: 4px;
@@ -478,7 +501,7 @@
     margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* 更新弹窗里的进度条与按钮排 */
-  .updmodalbar { height: 6px; background: #1d2740; border-radius: 999px;
+  .updmodalbar { height: 6px; background: var(--card2); border-radius: 999px;
     margin-top: 12px; overflow: hidden; }
   .gmbtns { display: flex; gap: 10px; margin-top: 16px; }
   .gmbtns button { flex: 1 1 0; }
@@ -514,12 +537,12 @@
   .srow { scroll-margin-top: var(--top-h, 210px); }
   .srow.current { border-color: var(--accent-line); background: var(--accent-bg); }
   .srow.picked { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-  .srow.arrived .swhen { color: #ff5b5b; font-weight: 700; }
+  .srow.arrived .swhen { color: var(--err-strong); font-weight: 700; }
   .srow.current .sname { color: #fff; font-weight: 600; }
   /* 详情页里离我最近的站：绿色描边高亮 + 「离我最近」徽标 */
-  .srow.nearest { border-color: var(--ok); background: #12302a; }
-  .srow.nearest .sname { color: #d8fff1; font-weight: 600; }
-  .srow .spk.nb { font-style: normal; font-size: 10px; color: #06130e; background: var(--ok);
+  .srow.nearest { border-color: var(--ok); background: var(--ok-bg); }
+  .srow.nearest .sname { color: var(--ok-soft); font-weight: 600; }
+  .srow .spk.nb { font-style: normal; font-size: 10px; color: var(--ok-strong); background: var(--ok);
     border-radius: 999px; padding: 2px 7px; line-height: 1.5; white-space: nowrap; }
 
   /* 导航按钮条：调起手机里已装的地图 App 导航到选中站点 */
@@ -530,13 +553,13 @@
     -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
   .navrow .navbtns::-webkit-scrollbar { display: none; }
   .navrow .navbtn { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px;
-    background: var(--accent-bg); border: 1px solid var(--accent-line); color: #d6e2f7;
+    background: var(--accent-bg); border: 1px solid var(--accent-line); color: var(--text2);
     border-radius: 999px; padding: 7px 13px; font-size: var(--fs-sm); line-height: 1.2;
     white-space: nowrap; }
-  .navrow .navbtn:active { background: #1b2b46; }
+  .navrow .navbtn:active { background: var(--press); }
   /* 已收藏的站点按钮：高亮 */
-  .navrow .navbtn.stationfav.on { border-color: #ffce4a; color: #ffce4a; background: #2a2413; }
-  .navrow .navbtn.stationwatch.on { border-color: var(--ok); color: var(--ok); background: #12302a; }
+  .navrow .navbtn.stationfav.on { border-color: var(--warn); color: var(--warn); background: var(--warn-bg); }
+  .navrow .navbtn.stationwatch.on { border-color: var(--ok); color: var(--ok); background: var(--ok-bg); }
 
   /* ------------------------------------------------------------ 使用说明 */
   /* 首次打开弹窗 */
@@ -559,18 +582,18 @@
 
   /* 说明条目：图标 + 标题 + 说明文字 */
   .gitem { display: flex; align-items: flex-start; gap: 12px; padding: 11px 0;
-    border-bottom: 1px solid #1d273b; }
+    border-bottom: 1px solid var(--line); }
   .gitem:last-child { border-bottom: none; }
   .gitem .gico { flex: 0 0 auto; width: 34px; height: 34px; display: flex;
     align-items: center; justify-content: center; font-size: 18px;
-    background: #1a2436; border: 1px solid var(--line); border-radius: 10px; }
+    background: var(--card2); border: 1px solid var(--line); border-radius: 10px; }
   .gitem .ginfo { flex: 1; min-width: 0; }
   .gitem .gname { font-size: var(--fs); font-weight: 600; line-height: 1.35; }
   .gitem .gdesc { font-size: var(--fs-sm); color: var(--muted); margin-top: 3px;
     line-height: 1.45; word-break: break-all; }
   /* 图解：模拟界面的小示意 */
-  .gdemo { margin-top: 8px; background: #0d1524; border: 1px dashed #2c3a55;
-    border-radius: 10px; padding: 9px 11px; font-size: var(--fs-sm); color: #9fb0cc;
+  .gdemo { margin-top: 8px; background: var(--bg2); border: 1px dashed var(--line2);
+    border-radius: 10px; padding: 9px 11px; font-size: var(--fs-sm); color: var(--text2);
     line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
   .navrow .navbtn .navico { font-size: 13px; }
 
@@ -588,13 +611,13 @@
   .setlist { padding: 10px var(--pad); }
   .setitem { display: flex; align-items: center; gap: 12px; padding: 15px 6px;
     border-bottom: 1px solid var(--line); }
-  .setitem:active { background: #141c2c; }
+  .setitem:active { background: var(--press); }
   .seticon { flex: 0 0 auto; font-size: 22px; width: 30px; text-align: center; }
   .setinfo { flex: 1; min-width: 0; }
   .setname { font-size: var(--fs); }
   .setsub { font-size: var(--fs-sm); color: var(--muted); margin-top: 2px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .setarrow { flex: 0 0 auto; color: #56637d; font-size: 20px; }
+  .setarrow { flex: 0 0 auto; color: var(--muted2); font-size: 20px; }
   .setpage .setbody { padding: 10px var(--pad) 24px; }
   .setcard { background: var(--card); border: 1px solid var(--line);
     border-radius: 12px; padding: 12px; margin-bottom: 12px; }
@@ -604,10 +627,12 @@
   .themegrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
   .themecell { position: relative; display: flex; flex-direction: column;
     align-items: center; gap: 6px; padding: 12px 6px 10px;
-    background: #0e1626; border: 1px solid var(--line); border-radius: 12px; }
+    background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; }
   .themecell.on { border-color: var(--accent-line); background: var(--accent-bg); }
-  .themedot { width: 34px; height: 34px; border-radius: 50%;
-    border: 1px solid rgba(255,255,255,.18); box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+  .themedot { width: 46px; height: 34px; border-radius: 9px;
+    border: 1px solid var(--line2); box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    display: flex; align-items: center; justify-content: center; }
+  .themedot .themebar { width: 26px; height: 8px; border-radius: 999px; }
   .themename { font-size: var(--fs-sm); color: var(--text); }
   .themecheck { position: absolute; top: 6px; right: 8px; font-size: 12px;
     color: var(--accent-soft); visibility: hidden; }
@@ -616,28 +641,28 @@
   /* 字体大小：选项列表 + 实时预览 */
   .fontlist { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
   .fontopt { display: flex; align-items: center; gap: 12px; padding: 12px 14px;
-    background: #0e1626; border: 1px solid var(--line); border-radius: 12px; }
+    background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; }
   .fontopt.on { border-color: var(--accent-line); background: var(--accent-bg); }
   .fontopt .fradio { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%;
-    border: 2px solid #46536e; display: flex; align-items: center;
+    border: 2px solid var(--line2); display: flex; align-items: center;
     justify-content: center; }
   .fontopt.on .fradio { border-color: var(--accent); }
   .fontopt.on .fradio::after { content: ""; width: 10px; height: 10px;
     border-radius: 50%; background: var(--accent); }
   .fontopt .fname { flex: 1; font-size: var(--fs); }
   .fontopt .fscale { flex: 0 0 auto; font-size: var(--fs-sm); color: var(--muted); }
-  .fontprev { background: #0d1524; border: 1px dashed #2c3a55; border-radius: 12px;
+  .fontprev { background: var(--bg2); border: 1px dashed var(--line2); border-radius: 12px;
     padding: 12px 14px; margin-bottom: 10px; }
   .fontprev .fp-title { font-size: var(--fs-lg); font-weight: 700; }
   .fontprev .fp-sub { font-size: var(--fs-sm); color: var(--muted); margin-top: 5px; }
   #diag .kv { display: flex; gap: 8px; font-size: var(--fs-sm); padding: 7px 0;
-    border-bottom: 1px solid #1d273b; }
+    border-bottom: 1px solid var(--line); }
   #diag .kv span:first-child { color: var(--muted); flex: 0 0 auto; width: 6em; }
   #diag .kv span:last-child { word-break: break-all; text-align: right; flex: 1; }
   #diag .btns { display: flex; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
   #diag .btns button { flex: 1 1 140px; min-width: 120px; padding: 10px 12px;
     font-size: var(--fs-sm); }
-  .srow:active { background: #1a2336; }
+  .srow:active { background: var(--card2); }
 
   /* ------------------------------------------------------------ 自适应排版
 
@@ -684,11 +709,11 @@
   .chip { font-size: var(--fs-sm); padding: 8px 12px; }
   /* 临时不停靠的站：变淡 + 角标 */
   .chip.suspended { opacity: .5; }
-  .chip .sustag { font-style: normal; font-size: 9px; color: #8b9ab5;
-    border: 1px solid #34415e; border-radius: 4px; padding: 0 3px;
+  .chip .sustag { font-style: normal; font-size: 9px; color: var(--muted);
+    border: 1px solid var(--line2); border-radius: 4px; padding: 0 3px;
     margin-left: 2px; white-space: nowrap; }
-  .srow .sustag { font-style: normal; font-size: 10px; color: #8b9ab5;
-    border: 1px solid #34415e; border-radius: 4px; padding: 1px 4px;
+  .srow .sustag { font-style: normal; font-size: 10px; color: var(--muted);
+    border: 1px solid var(--line2); border-radius: 4px; padding: 1px 4px;
     margin-left: 6px; white-space: nowrap; }
   .srow { padding: 10px var(--pad); gap: 8px; }
   .srow .sname, .srow .swhen { font-size: var(--fs); }
@@ -6275,29 +6300,63 @@
 
   /* ---------------------------------------------------------- 主题色
 
-     彩虹 7 色 + 黑白 2 色，共 9 个。
-     只换「强调色」一套，不换整张配色 —— 换整套明暗主题要重写 50 多个写死的色值，
-     风险太大，而强调色已经贯穿按钮、选中态、高亮文字，视觉上一眼就能分辨。
+     彩虹 7 色 + 黑白 2 色，共 9 个 —— 换的是**整站配色**，不是只换按钮。
 
-     黑 / 白 两个特殊：
-       - 黑：实底接近纯黑，描边单独给浅灰，否则选中态完全看不见；
-       - 白：实底接近纯白，压在它上面的文字必须反过来用深色（--on-accent）。
+     每种主题算出一整套：底色 / 内嵌面 / 卡片 / 凸起面 / 边框 / 按压态 / 三级文字，
+     再加上强调色那 6 个派生值，全部写进 <html> 内联样式。
+     样式表里已经没有任何写死的深蓝灰了，所以换主题是整页一起变。
+
+     三档模式：
+       - dark（红橙黄绿青蓝紫）：以主题色为色相，压到接近黑做底色，
+         文字反过来用带一点主题色的近白色；
+       - black（黑）：纯黑底 + 白按钮，经典黑白配；
+       - light（白）：浅底 + 深字 + 近黑按钮，白天在太阳下看着舒服。
      派生色在这里算好写成 CSS 变量，不用 CSS 的 color-mix 函数（老 WebView 不支持）。 */
   var THEMES = [
-    { id: "red",    name: "红", accent: "#ff5a5f", on: "#ffffff" },
-    { id: "orange", name: "橙", accent: "#ff922b", on: "#1a1206" },
-    { id: "yellow", name: "黄", accent: "#ffd43b", on: "#1a1606" },
-    { id: "green",  name: "绿", accent: "#2fd07a", on: "#04170c" },
-    { id: "cyan",   name: "青", accent: "#22c9d6", on: "#04161a" },
-    { id: "blue",   name: "蓝", accent: "#4f8cff", on: "#ffffff" },
-    { id: "purple", name: "紫", accent: "#b06bff", on: "#ffffff" },
-    { id: "black",  name: "黑", accent: "#1b2130", on: "#ffffff", line: "#8b9ab5",
-      bg: "#232b3d" },
-    { id: "white",  name: "白", accent: "#f2f5f9", on: "#101828", line: "#ffffff", soft: "#ffffff" }
+    { id: "red",    name: "红", mode: "dark",  accent: "#ff5a5f", on: "#ffffff" },
+    { id: "orange", name: "橙", mode: "dark",  accent: "#ff922b", on: "#1a1206" },
+    { id: "yellow", name: "黄", mode: "dark",  accent: "#ffd43b", on: "#1a1606" },
+    { id: "green",  name: "绿", mode: "dark",  accent: "#2fd07a", on: "#04170c" },
+    { id: "cyan",   name: "青", mode: "dark",  accent: "#22c9d6", on: "#04161a" },
+    { id: "blue",   name: "蓝", mode: "dark",  accent: "#4f8cff", on: "#ffffff" },
+    { id: "purple", name: "紫", mode: "dark",  accent: "#b06bff", on: "#ffffff" },
+    { id: "black",  name: "黑", mode: "black", accent: "#ffffff", on: "#0a0a0a" },
+    { id: "white",  name: "白", mode: "light", accent: "#111827", on: "#ffffff" }
   ];
   var THEME_KEY = "cdbus.theme";
   var DEFAULT_THEME = "blue";
-  var CARD_HEX = "#151d2e";        /* 和 CSS 里的 --card 保持一致 */
+
+  /* 黑白两档的底色没法从强调色推，直接给定值 */
+  var FIXED_PALETTES = {
+    black: {
+      bg: "#000000", bg2: "#08080a", card: "#0c0c0e", card2: "#161619",
+      line: "#26262b", line2: "#3a3a41", press: "#1d1d21",
+      text: "#f4f5f7", text2: "#c9ccd3", muted: "#8a8f99", muted2: "#5d626b",
+      soft: "#ffffff", accentBg: "#1a1a1d"
+    },
+    light: {
+      bg: "#f4f6f9", bg2: "#ffffff", card: "#ffffff", card2: "#eef1f6",
+      line: "#dfe4ec", line2: "#c3ccda", press: "#e6ebf3",
+      text: "#0f172a", text2: "#334155", muted: "#64748b", muted2: "#94a3b8",
+      soft: "#0d1320", accentBg: "#e7ecf5"
+    }
+  };
+  /* 语义色（绿=到站/最近、黄=收藏、红=提醒）本身不跟主题走，
+     但浅色主题下那几块深色底会显得很脏，所以按模式给两套 */
+  var SEMANTIC = {
+    dark: {
+      ok: "#38d39f", okBg: "#12302a", okStrong: "#06130e", okSoft: "#d8fff1",
+      warn: "#ffce4a", warnBg: "#2a2413", warnSoft: "#ff8a65",
+      err: "#ff8a8a", errBg: "#2a1a1e", err2: "#3a1f22", err3: "#352025",
+      errSoft: "#ffd9d4", errMid: "#e6b3ad", errStrong: "#ff5b5b"
+    },
+    light: {
+      ok: "#0f7a4a", okBg: "#e3f6ec", okStrong: "#ffffff", okSoft: "#0b5d38",
+      warn: "#8a6100", warnBg: "#fdf1d6", warnSoft: "#a85a12",
+      err: "#b3261e", errBg: "#fdeceb", err2: "#fadfdc", err3: "#f5d2ce",
+      errSoft: "#7f1d1d", errMid: "#9a3b32", errStrong: "#c62828"
+    }
+  };
 
   function themeById(id) {
     for (var i = 0; i < THEMES.length; i++) {
@@ -6335,6 +6394,40 @@
     return "rgba(" + A[0] + "," + A[1] + "," + A[2] + "," + alpha + ")";
   }
 
+  /** 主题 → 整套颜色（纯函数，测试直接喂它验算对比度） */
+  function themePalette(t) {
+    if (FIXED_PALETTES[t.mode]) {
+      var f = FIXED_PALETTES[t.mode];
+      return {
+        bg: f.bg, bg2: f.bg2, card: f.card, card2: f.card2,
+        line: f.line, line2: f.line2, press: f.press,
+        text: f.text, text2: f.text2, muted: f.muted, muted2: f.muted2,
+        accent: t.accent, on: t.on, lineA: t.accent,
+        soft: f.soft, accentBg: f.accentBg,
+        weak: rgbaHex(t.accent, t.mode === "light" ? 0.10 : 0.16)
+      };
+    }
+    /* 暗色：把主题色按不同比例压到黑里，得到同色相的一整套表面 */
+    var acc = t.accent;
+    return {
+      bg: mixHex("#000000", acc, 0.10),
+      bg2: mixHex("#000000", acc, 0.14),
+      card: mixHex("#000000", acc, 0.17),
+      card2: mixHex("#000000", acc, 0.24),
+      line: mixHex("#000000", acc, 0.40),
+      line2: mixHex("#000000", acc, 0.52),
+      press: mixHex("#000000", acc, 0.30),
+      text: mixHex("#ffffff", acc, 0.10),
+      text2: mixHex("#ffffff", acc, 0.24),
+      muted: mixHex("#ffffff", acc, 0.44),
+      muted2: mixHex("#ffffff", acc, 0.32),
+      accent: acc, on: t.on, lineA: acc,
+      soft: mixHex(acc, "#ffffff", 0.45),
+      accentBg: mixHex(mixHex("#000000", acc, 0.17), acc, 0.16),
+      weak: rgbaHex(acc, 0.16)
+    };
+  }
+
   function themeId() {
     try {
       var id = localStorage.getItem(THEME_KEY);
@@ -6343,18 +6436,31 @@
     return DEFAULT_THEME;
   }
 
-  /** 把主题色写进 <html> 内联样式，全站强调色立刻变。 */
+  /** 把整套配色写进 <html> 内联样式，整站立刻换色。 */
   function applyTheme(id) {
     var t = themeById(id);
+    var p = themePalette(t);
+    var sem = SEMANTIC[t.mode === "light" ? "light" : "dark"];
     var root = document && document.documentElement;
     if (root && root.style && root.style.setProperty) {
-      root.style.setProperty("--accent", t.accent);
-      root.style.setProperty("--on-accent", t.on || "#ffffff");
-      root.style.setProperty("--accent-line", t.line || t.accent);
-      root.style.setProperty("--accent-soft", t.soft || mixHex(t.accent, "#ffffff", 0.45));
-      /* 淡底：把主题色按 16% 混到卡片色里，深色主题上不会糊，白/黄这种亮色也不刺眼 */
-      root.style.setProperty("--accent-bg", t.bg || mixHex(CARD_HEX, t.accent, 0.16));
-      root.style.setProperty("--accent-weak", rgbaHex(t.accent, 0.14));
+      var vars = {
+        "--bg": p.bg, "--bg2": p.bg2, "--card": p.card, "--card2": p.card2,
+        "--line": p.line, "--line2": p.line2, "--press": p.press,
+        "--text": p.text, "--text2": p.text2, "--muted": p.muted, "--muted2": p.muted2,
+        "--accent": p.accent, "--on-accent": p.on, "--accent-line": p.lineA,
+        "--accent-soft": p.soft, "--accent-bg": p.accentBg, "--accent-weak": p.weak,
+        "--ok": sem.ok, "--ok-bg": sem.okBg, "--ok-strong": sem.okStrong, "--ok-soft": sem.okSoft,
+        "--warn": sem.warn, "--warn-bg": sem.warnBg, "--warn-soft": sem.warnSoft,
+        "--err": sem.err, "--err-bg": sem.errBg, "--err-2": sem.err2, "--err-3": sem.err3,
+        "--err-soft": sem.errSoft, "--err-mid": sem.errMid, "--err-strong": sem.errStrong
+      };
+      for (var k in vars) {
+        if (Object.prototype.hasOwnProperty.call(vars, k)) root.style.setProperty(k, vars[k]);
+      }
+      /* 浅色主题要让浏览器知道这是浅底，原生状态栏/滚动条才会跟着变 */
+      if (root.style.setProperty) {
+        root.style.setProperty("color-scheme", t.mode === "light" ? "light" : "dark");
+      }
     }
     var sub = $("setThemeSub");
     if (sub) sub.textContent = t.name;
@@ -6380,10 +6486,16 @@
         var cell = document.createElement("div");
         cell.className = "themecell" + (t.id === cur ? " on" : "");
         cell.setAttribute("data-theme", t.id);
+        /* 预览块直接用这一套的实际底色 + 强调色，一眼看出整站会变成什么样 */
+        var pal = themePalette(t);
         var dot = document.createElement("span");
         dot.className = "themedot";
-        dot.style.background = t.accent;
-        if (t.id === "white") dot.style.borderColor = "#7b8797";
+        dot.style.background = pal.bg;
+        dot.style.borderColor = pal.line;
+        var bar = document.createElement("i");
+        bar.className = "themebar";
+        bar.style.background = pal.accent;
+        dot.appendChild(bar);
         var nm = document.createElement("span");
         nm.className = "themename";
         nm.textContent = t.name;

@@ -161,9 +161,48 @@ for (const e of entries) {
       }
     }
     if (seen.size !== 9) fail.push('9 个主题只有 ' + seen.size + ' 种颜色');
-    /* 白主题上压字的颜色必须反过来，否则白底白字 */
+
+    /* 关键：换主题要换整站配色，不能只换按钮。
+       底色、卡片、边框、文字都必须是主题算出来的，而且互不相同。 */
+    const bgs = new Set(), cards = new Set(), lines = new Set(), texts = new Set();
+    const lum = (hex) => {
+      const v = hex.replace('#', '');
+      const c = [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16) / 255)
+        .map((x) => (x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4)));
+      return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    };
+    const cr = (a, b) => {
+      const l1 = lum(a), l2 = lum(b);
+      return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    };
+    for (const id of want.map((_, i) => cells[i].getAttribute('data-theme'))) {
+      cellOf(id).onclick();
+      const bg = getv('--bg'), card = getv('--card'), line = getv('--line'), text = getv('--text');
+      for (const [k, v] of [['--bg', bg], ['--card', card], ['--line', line], ['--text', text]]) {
+        if (!/^#[0-9a-f]{6}$/i.test(v)) fail.push(id + ' 的 ' + k + ' 不是颜色：' + v);
+      }
+      bgs.add(bg); cards.add(card); lines.add(line); texts.add(text);
+      if (bg === card) fail.push(id + ' 的底色和卡片色一样，看不出层次');
+      /* 正文对比度至少 7:1，浅色主题（白）也不会糊 */
+      const ratio = cr(text, bg);
+      if (ratio < 7) fail.push(id + ' 正文对比度只有 ' + ratio.toFixed(1) + ':1');
+    }
+    if (bgs.size !== 9) fail.push('9 个主题只有 ' + bgs.size + ' 种底色（应该整站换色）');
+    if (cards.size !== 9) fail.push('9 个主题只有 ' + cards.size + ' 种卡片色');
+    if (lines.size !== 9) fail.push('9 个主题只有 ' + lines.size + ' 种边框色');
+
+    /* 白主题必须是浅底深字，黑主题必须是纯黑底 */
     cellOf('white').onclick();
-    if (getv('--on-accent').toLowerCase() !== '#101828') fail.push('白主题的文字颜色没反过来');
+    if (lum(getv('--bg')) < 0.5) fail.push('白主题的底色不够浅');
+    cellOf('black').onclick();
+    if (getv('--bg').toLowerCase() === '#ffffff') fail.push('黑主题的底色不对');
+    /* 每个主题：压在主题色实底上的字都要看得清（最低 3:1，按钮是粗体大字） */
+    for (const id of want.map((_, i) => cells[i].getAttribute('data-theme'))) {
+      cellOf(id).onclick();
+      const c = cr(getv('--on-accent'), getv('--accent'));
+      if (c < 3) fail.push(id + ' 主题按钮上的字对比度只有 ' + c.toFixed(1) + ':1');
+    }
+    cellOf('white').onclick();
     if (doc.getElementById('setThemeSub').textContent !== '白') fail.push('设置页小字没跟着变');
   }
 }
