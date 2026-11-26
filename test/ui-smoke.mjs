@@ -4079,6 +4079,42 @@ console.log('✓ 更新弹窗通过：发现新版即弹、立即更新触发下
 
 console.log('✓ 下车提醒按钮通过：行内铃铛已移除、按钮排在盯站后、可开关且有高亮');
 
+/* ---------- 「临时不停靠」的站：站序要用 specialOrder，不能用 order */
+const stage26 = [];
+{
+  const mjsSrc = readSafe('lib/chelaile.mjs');
+  /* 车来了对不停靠站给 order=999、specialOrder=真实序、坐标 0,0。
+     实测 P02 的 order 序列是 1..14,999,999,15,16,...（跳过特殊站后重编号），
+     而 specialOrder 是连续的 1..22。所以整条线必须统一用 specialOrder。 */
+  if (!/specialOrder/.test(mjsSrc)) {
+    stage26.push('lib 层没有读 specialOrder，特殊站会排到终点之后');
+  }
+  const stationMap = (mjsSrc.match(/const stations = \(data\.stations[\s\S]*?\n    \}\);/ ) || [])[0] || '';
+  if (!/hasSp \? Number\(st\.specialOrder\) : Number\(st\.order\)/.test(mjsSrc)) {
+    stage26.push('站序没有统一用 specialOrder（会造成撞号）');
+  }
+  if (!/suspended/.test(mjsSrc)) {
+    stage26.push('lib 层没有标记 suspended（界面无法区分不停靠的站）');
+  }
+  /* 前端要显示「不停靠」标记 */
+  if (!/station\.suspended/.test(html)) {
+    stage26.push('前端没有使用 suspended 标记');
+  }
+  if (!/不停靠/.test(html)) {
+    stage26.push('界面上看不到「不停靠」文字');
+  }
+  if (!/\.chip\.suspended/.test(html) || !/\.sustag/.test(html)) {
+    stage26.push('缺少不停靠站的样式（变淡 + 角标）');
+  }
+}
+
+if (stage26.length) {
+  console.error('✗ UI 冒烟失败（不停靠的站）：');
+  for (const f of stage26) console.error('  - ' + f);
+  process.exit(1);
+}
+console.log('✓ 不停靠的站通过：站序用 specialOrder 落回真实位置、界面标出「不停靠」');
+
 console.log('✓ 到站表行通过：时间固定右边、站名在自己列内折行、行内无铃铛');
 
 console.log('✓ 自动刷新保持位置通过：keepScroll 被真正写回、优先于最近站滚动、还原后 return');

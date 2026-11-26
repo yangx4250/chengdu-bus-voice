@@ -619,6 +619,14 @@
   .bus .line-name, .stop-title { font-size: var(--fs-lg); }
   .bus .eta { font-size: var(--fs-xl); }
   .chip { font-size: var(--fs-sm); padding: 8px 12px; }
+  /* 临时不停靠的站：变淡 + 角标 */
+  .chip.suspended { opacity: .5; }
+  .chip .sustag { font-style: normal; font-size: 9px; color: #8b9ab5;
+    border: 1px solid #34415e; border-radius: 4px; padding: 0 3px;
+    margin-left: 2px; white-space: nowrap; }
+  .srow .sustag { font-style: normal; font-size: 10px; color: #8b9ab5;
+    border: 1px solid #34415e; border-radius: 4px; padding: 1px 4px;
+    margin-left: 6px; white-space: nowrap; }
   .srow { padding: 10px var(--pad); gap: 8px; }
   .srow .sname, .srow .swhen { font-size: var(--fs); }
   /* 系统字体放大时的防挤压：时间不换行、站名可换行、行内元素不重叠 */
@@ -3074,6 +3082,9 @@
       var classes = "chip";
       if (sameStation(state.station, station)) classes += " on";
       if (isNearest) classes += " nearest";
+      /* 临时不停靠的站：整条变淡，并在站名后加「不停靠」小字。
+         （车来了给这种站的坐标是 0,0、order 是 999，已由 lib 层纠正） */
+      if (station.suspended) classes += " suspended";
       /* 盯站中的那一站：站名蓝色高亮（v1.0.46，替代原来的盯站通知条） */
       if (watch.on && watch.target &&
           String(watch.target.lineId) === String(lv.lineId) &&
@@ -3092,6 +3103,12 @@
       nameEl.className = "cname";
       nameEl.textContent = station.name;
       chip.appendChild(nameEl);
+      if (station.suspended) {
+        var sus = document.createElement("i");
+        sus.className = "sustag";
+        sus.textContent = "不停靠";
+        chip.appendChild(sus);
+      }
       if (isNearest) {
         var nb = document.createElement("i");
         nb.className = "nbadge";
@@ -4111,6 +4128,7 @@
         '" data-order="' + station.order + '" data-name="' + station.name + '">' +
         '<span class="idx">' + station.order + "</span>" +
         '<span class="sname">' + station.name +
+          (station.suspended ? '<em class="sustag">不停靠</em>' : "") +
           (isNearest ? '<em class="spk nb">离我最近</em>' : "") + "</span>" +
         '<span class="swhen">' + when + clock + "</span></div>";
     });
