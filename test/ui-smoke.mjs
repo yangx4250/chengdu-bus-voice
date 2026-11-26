@@ -4584,43 +4584,43 @@ console.log('✓ 站名条滚动通过：自动刷新保持原位、手动刷新
   console.log('✓ 进详情页对准最近站通过：任何入口都滚到最近站、自动刷新不滚、没定位才退回选中站');
 }
 
-/* ---------------------- 站名条居中：末尾半屏空白 + 重试 */
+/* ---------------------- 站名条居中：不留末尾空白，够不着就贴边 */
 {
   const fail = [];
-  /* 靠后的站（离我最近常常是倒数第几站）要能居中，scrollLeft 就不能被
-     scrollWidth - clientWidth 顶住，所以列表末尾必须补一段空白 */
-  if (!/\.chipspacer/.test(html)) fail.push('没有 .chipspacer 样式（末尾半屏空白）');
-  if (!/sp\.className = "chipspacer"/.test(html)) fail.push('渲染站名条时没有插入 chipspacer 节点');
-  if (!/function chipSpacer/.test(html)) fail.push('没有 chipSpacer()');
+  /* 用户明确说过：站名条末尾那块空白不要。所以：
+     1) 不再插 chipspacer 节点；2) 没有 .chipspacer 样式；3) 靠后的站滚不到中间就贴边。 */
+  if (/chipspacer|chipSpacer/.test(html)) fail.push('还留着 chipspacer（末尾那块空白）');
+  if (/cdBusChipSpacer/.test(html)) fail.push('还在导出 cdBusChipSpacer');
   if (!/function centerChipNow/.test(html)) fail.push('没有 centerChipNow()');
   if (!/function pinChipCenter/.test(html)) fail.push('没有 pinChipCenter()');
+
+  const centerFn = (html.match(/function centerChipNow[\s\S]*?\n  \}/) || [''])[0];
+  /* 必须夹在 [0, scrollWidth - clientWidth] 里，否则浏览器会把它顶回去，
+     表现就是「点了没反应」或者滚到一个奇怪的位置 */
+  if (!/scrollWidth[\s\S]{0,80}?-\s*bw/.test(centerFn)) {
+    fail.push('centerChipNow 没有按 scrollWidth - clientWidth 夹住目标位置');
+  }
+  if (!/target > max/.test(centerFn)) fail.push('centerChipNow 没有处理「滚过头」的情况');
+  if (!/box\.scrollLeft = target/.test(centerFn)) fail.push('centerChipNow 没有直接赋值 scrollLeft');
+  /* smooth 会被紧随其后的重画打断 */
+  if (/behavior:\s*["']smooth["']/.test(centerFn)) {
+    fail.push('centerChipNow 里用了 smooth 滚动，会被重画打断');
+  }
+
   /* 进详情页那一屏必须用 pinChipCenter 钉住最近站 */
   const block = (html.match(/if \(opts && opts\.scroll\) \{[\s\S]{0,700}?\n    \}/) || [''])[0];
   if (!/pinChipCenter\(box, target\)/.test(block)) {
     fail.push('opts.scroll 分支没有用 pinChipCenter 对准最近站');
   }
-  /* smooth 会被重画打断，所以居中这里不能再走 scrollTo({behavior:'smooth'}) */
-  const centerFn = (html.match(/function centerChipNow[\s\S]*?\n  \}/) || [''])[0];
-  if (/behavior:\s*["']smooth["']/.test(centerFn)) {
-    fail.push('centerChipNow 里用了 smooth 滚动，会被重画打断');
-  }
-  if (!/box\.scrollLeft = target/.test(centerFn)) {
-    fail.push('centerChipNow 没有直接赋值 scrollLeft');
-  }
-  /* 页面刚显示、布局还没算好时要能重试 */
-  if (!/delays = \[0, 50, 150, 350, 700\]/.test(html)) {
-    fail.push('pinChipCenter 没有重试时间表');
-  }
-  if (!/touchstart/.test(html) || !/touched/.test(html)) {
-    fail.push('用户自己滑动时没有停手');
-  }
+  if (!/delays = \[0, 50, 150, 350, 700\]/.test(html)) fail.push('pinChipCenter 没有重试时间表');
+  if (!/touchstart/.test(html) || !/touched/.test(html)) fail.push('用户自己滑动时没有停手');
 
   if (fail.length) {
     console.error('✗ UI 冒烟失败（站名条居中）：');
     for (const f of fail) console.error('  - ' + f);
     process.exit(1);
   }
-  console.log('✓ 站名条居中通过：末尾有半屏空白可居中、直接赋值不被重画打断、布局没好会重试、用户滑动就停手');
+  console.log('✓ 站名条居中通过：末尾不留空白、能居中就居中、够不着就贴边、布局没好会重试、用户滑动就停手');
 }
 
 /* ---------------------- 深色 / 浅色模式 */

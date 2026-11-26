@@ -119,8 +119,6 @@
     overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
     padding-bottom: 2px; scrollbar-width: none; }
   .chips::-webkit-scrollbar { display: none; }
-  /* 站名条末尾的空白节点：宽度由脚本按半屏设置，用来让靠后的站能居中 */
-  .chipspacer { flex: 0 0 auto; pointer-events: none; }
   .chip { flex: 0 0 auto; display: flex; align-items: center; background: var(--card2);
     border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px;
     font-size: 13px; color: var(--text2); white-space: nowrap; line-height: 1.25;
@@ -1824,27 +1822,19 @@
   }
 
   /* 横向 chips 把选中项滚到中间 */
-  /* 站名条末尾要补一段半屏空白。
-     原因：离我最近的那一站常常靠后（比如 24 站里的第 22 站），
-     没有这段空白时 scrollLeft 会被 scrollWidth - clientWidth 顶住，
-     最多只能把那一站贴到右边，永远居不了中 —— 看起来就像「没滚到最近的站」。 */
-  function chipSpacer(box) {
-    var sp = box && box.querySelector ? box.querySelector(".chipspacer") : null;
-    if (sp) sp.style.width = Math.max(0, Math.round((box.clientWidth || 0) / 2)) + "px";
-    return sp;
-  }
-
-  /* 立刻把某个芯片滚到正中间。返回 true 表示已经居中。 */
+  /* 把某个芯片滚到可视区中间。够不着中间时（靠近末尾）就贴到最右，
+     绝不靠在后面补空白把位置撑出来 —— 那样列表末尾会留一大块空的。 */
   function centerChipNow(box, chip) {
     if (!box || !chip || !chip.getBoundingClientRect) return false;
     var bw = box.clientWidth || 0;
     if (!bw) return false;                 // 页面还隐藏着，布局没算，等下一轮
-    chipSpacer(box);
     var cr = chip.getBoundingClientRect();
     var br = box.getBoundingClientRect();
     if (!cr || !br || !cr.width) return false;
     var target = box.scrollLeft + (cr.left - br.left) - ((br.width || bw) - cr.width) / 2;
     if (target < 0) target = 0;
+    var max = Math.max(0, (box.scrollWidth || 0) - bw);
+    if (target > max) target = max;
     if (Math.abs(box.scrollLeft - target) <= 2) return true;
     /* 不用 smooth：它会被紧随其后的重画（innerHTML="" 会把滚动位置打回 0）打断，
        结果停在一个谁也不在中间的位置。直接赋值是同步的，最稳。 */
@@ -1882,7 +1872,6 @@
 
   /* 给测试用：jsdom 里没有布局，只能直接喂这几个函数验证滚动算法 */
   window.cdBusCenterChipNow = centerChipNow;
-  window.cdBusChipSpacer = chipSpacer;
 
   function centerActiveChip(box, opts) {
     if (!box || typeof box.querySelector !== "function") return;
@@ -1893,7 +1882,6 @@
     if (rect && boxRect) {
       /* 已经在可视范围内就别滚 */
       if (rect.left >= boxRect.left && rect.right <= boxRect.right) return;
-      chipSpacer(box);
       var target = box.scrollLeft + (rect.left - boxRect.left) - (boxRect.width - rect.width) / 2;
       if (target < 0) target = 0;
       try {
@@ -3382,15 +3370,6 @@
       };
       box.appendChild(chip);
     });
-    /* 末尾补半屏空白，让靠后的站也能滚到正中（见 chipSpacer 注释） */
-    if (!box.querySelector || !box.querySelector(".chipspacer")) {
-      var sp = document.createElement("div");
-      sp.className = "chipspacer";
-      sp.style.width = Math.max(0, Math.round((box.clientWidth || 0) / 2)) + "px";
-      box.appendChild(sp);
-    } else {
-      chipSpacer(box);
-    }
     /* 刷新后对准「离我最近」那一站。
        规则分两种，避免打架：
          - 用户自己选过站（.chip.on 存在）→ 以他选的为准，只保证它在可视区

@@ -97,22 +97,27 @@ for (const e of entries) {
     box.appendChild(c);
     chips.push(c);
   }
-  const sp = doc.createElement('div');
-  sp.className = 'chipspacer';
-  box.appendChild(sp);
+  /* 真实页面里已经不补末尾空白了（用户要求去掉那块空位），
+     所以这里只给滚动范围，验证「能居中就居中、够不着就贴边」。 */
+  Object.defineProperty(box, 'scrollWidth', { value: 24 * 100, configurable: true });
 
   const center = win.cdBusCenterChipNow;
   if (typeof center !== 'function') {
     fail.push('没有导出 cdBusCenterChipNow，滚动算法没法验证');
   } else {
+    const maxScroll = 24 * 100 - 400;                 // scrollWidth - clientWidth
     for (const idx of [0, 11, 21, 23]) {
       box.scrollLeft = 0;
       center(box, chips[idx]);
-      const want = Math.max(0, idx * 100 - 155);      // 芯片中心对准 400/2
+      const want = Math.max(0, Math.min(idx * 100 - 155, maxScroll));   // 芯片中心对准 400/2，滚不动就贴边
       if (Math.abs(box.scrollLeft - want) > 2) {
         fail.push(`第 ${idx + 1} 站居中失败：scrollLeft=${Math.round(box.scrollLeft)}，应该是 ${want}`);
       }
     }
+    /* 最后一站靠右：只要不超出滚动范围，不许为了居中在末尾留空白 */
+    box.scrollLeft = 0;
+    center(box, chips[23]);
+    if (box.scrollLeft > maxScroll + 2) fail.push('centerChipNow 把位置滚过了最大可滚距离（说明还在靠补空白撑位置）');
     // 页面还隐藏（clientWidth 为 0）时要老实返回 false，交给重试
     const hiddenBox = doc.createElement('div');
     Object.defineProperty(hiddenBox, 'clientWidth', { value: 0, configurable: true });
