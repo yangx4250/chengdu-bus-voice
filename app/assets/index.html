@@ -354,7 +354,7 @@
   .dwatchstop:active { background: #22304a; color: #fff; }
   /* 下车提醒：站点行 🔔、详情页状态条、首页卡片 */
   /* 🔔 只让图标本身可点，字号放大到易点（原来 13px 偏小） */
-  .srow .bell { flex: 0 0 auto; padding: 4px 6px; border: 1px solid var(--line);
+  .srow .bell { flex: 0 0 auto; padding: 2px 4px; border: 1px solid var(--line);
     border-radius: 8px; font-size: 19px; line-height: 1; color: #b9c6dd;
     cursor: pointer; }
   .srow .bell:active { background: #22304a; }
@@ -418,22 +418,25 @@
   .detail-head .titles div:last-child { font-size: var(--fs-sm); color: var(--muted);
     margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  /* 站点行双排布局：第一排 站名+时间；第二排 🔔 靠右。
-     图标放大后单排放不下（站名会被挤成省略号），改成两排。 */
-  .srow { flex-wrap: wrap; }
-  .srow .sname { flex: 1; }
-  .srow .actions { flex: 0 0 100%; display: flex; justify-content: flex-end;
-    gap: 12px; padding: 6px 2px 0; }
+  /* 站点行单排：序号 + 站名 + 时间 + 🔔(跟在时间后面)。
+     卡片比两排版矮一截，一屏能多看几站。
+     站名过长时由 flex 压缩、自动折到第二行（不截断成省略号）。 */
+  .srow { flex-wrap: wrap; row-gap: 2px; }
+  .srow .sname { flex: 1 1 auto; }
+  .srow .actions { flex: 0 0 auto; display: flex; align-items: center;
+    padding: 0; }
   .srow .actions:empty { display: none; }
 
   .dhead { color: var(--muted); font-size: 13px; margin: 6px 2px 10px; }
-  .srow { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--card);
-    border: 1px solid var(--line); border-radius: 12px; margin-bottom: 8px; }
+  .srow { display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; margin-bottom: 6px; }
   /* 站名允许换行：长站名（如「西门车站（地铁花牌坊站D口）」）不截断 */
-  .srow .sname { flex: 1; min-width: 0; font-size: 15px;
-    line-height: 1.4; word-break: break-all; }
-  .srow .swhen { flex: 0 0 auto; font-size: 15px; font-weight: 600; color: var(--accent);
-    white-space: nowrap; }
+  /* 站名允许折行：太长时后半截自动落到第二行，不截断、不省略 */
+  .srow .sname { flex: 1 1 auto; min-width: 0; font-size: 15px;
+    line-height: 1.35; word-break: break-all; }
+  .srow .swhen { flex: 0 0 auto; font-size: 14px; font-weight: 600;
+    color: var(--accent); white-space: nowrap; }
   .srow.hot .swhen { color: var(--hot); }
   .srow.passed { opacity: .45; }
   .srow.passed .swhen { color: var(--muted); font-weight: 400; }

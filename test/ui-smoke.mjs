@@ -3932,6 +3932,49 @@ if (stage22.length) {
   for (const f of stage22) console.error('  - ' + f);
   process.exit(1);
 }
+/* ------------------ 到站表行：单排紧凑、🔔 跟在时间后、长站名折行 */
+const stage23 = [];
+{
+  /* 1) 必须是单排：.actions 不能再是 100% 宽度（那是两排版的做法） */
+  const actionsRule = (html.match(/\.srow \.actions \{([^}]*)\}/) || [])[1] || '';
+  if (/flex:\s*0 0 100%/.test(actionsRule)) {
+    stage23.push('🔔 仍独占一整行（两排布局），卡片还是很高');
+  }
+  if (!/flex:\s*0 0 auto/.test(actionsRule)) {
+    stage23.push('.actions 没有改成行内自适应宽度：' + actionsRule.trim().slice(0, 60));
+  }
+  /* 2) 🔔 必须排在时间之后（DOM 顺序） */
+  const tpl = html.slice(html.indexOf('<span class="sname">'));
+  const seg = tpl.slice(0, tpl.indexOf('</div>'));
+  const iWhen = seg.indexOf('class="swhen"');
+  const iBell = seg.indexOf('data-bell');
+  if (iWhen < 0) stage23.push('找不到时间元素');
+  if (iBell < 0) stage23.push('找不到铃铛元素');
+  if (iWhen >= 0 && iBell >= 0 && iBell < iWhen) {
+    stage23.push('铃铛排在时间之前，要求是放在时间后面');
+  }
+  /* 3) 站名必须允许折行（不能 nowrap、不能省略号截断） */
+  const nameRule = (html.match(/\.srow \.sname \{([^}]*)\}/) || [])[1] || '';
+  if (/nowrap/.test(nameRule)) stage23.push('站名设了 nowrap，长站名会被挤掉');
+  if (/text-overflow:\s*ellipsis/.test(nameRule)) stage23.push('站名用了省略号截断，要求是折到第二行');
+  /* 4) 时间不能换行（短，挤不走） */
+  const whenRule = (html.match(/\.srow \.swhen \{([^}]*)\}/) || [])[1] || '';
+  if (!/white-space:\s*nowrap/.test(whenRule)) stage23.push('时间没有 nowrap，会被断行');
+  /* 5) 行内边距要比原来小（卡片变窄） */
+  const rowRule = (html.match(/\.srow \{ display: flex;([^}]*)\}/) || [])[1] || '';
+  const pad = (rowRule.match(/padding:\s*(\d+)px/) || [])[1];
+  if (!pad || Number(pad) > 10) {
+    stage23.push('行内边距没减小（仍 ' + (pad || '?') + 'px），卡片没有变窄');
+  }
+}
+
+if (stage23.length) {
+  console.error('✗ UI 冒烟失败（到站表行布局）：');
+  for (const f of stage23) console.error('  - ' + f);
+  process.exit(1);
+}
+console.log('✓ 到站表行通过：单排紧凑、🔔 在时间后、长站名折行不截断');
+
 console.log('✓ 自动刷新保持位置通过：keepScroll 被真正写回、优先于最近站滚动、还原后 return');
 
 console.log('✓ 站名条滚动通过：自动刷新保持原位、手动刷新才回最近站、点站名不滚、切方向回最近');
