@@ -2984,9 +2984,14 @@
   function renderLineStations(opts) {
     var box = $("lchips");
     if (!box) return;
-    /* 30 秒刷一次车辆位置会重画这一排，先记下横向滚动位置，画完还原，
-       否则用户正看着的站会被弹回开头 */
-    var keepScroll = !(opts && opts.scroll) && typeof box.scrollLeft === "number" ? box.scrollLeft : null;
+    /* 30 秒自动刷新会重画这一排。必须先把横向滚动位置记下来、画完还原，
+       否则每次刷新都弹回开头（或滚到最近站），用户正在看的站就跑了。
+
+       以前这里只算了 keepScroll 却**从没使用**，等于没生效 ——
+       这就是「自动刷新会回到最近站」的真正原因。 */
+    var keepScroll = !(opts && opts.scroll) && typeof box.scrollLeft === "number"
+      ? box.scrollLeft
+      : null;
     box.innerHTML = "";
     var lv = state.lineView;
     if (!lv) return;
@@ -3061,6 +3066,13 @@
          - 没选过站 → 滚到「最近」那站居中
        以前这里只调 centerActiveChip，没有 .on 就什么都不滚，
        所以自动刷新后站名条停在开头、找不到自己那一站。 */
+    /* 自动刷新（opts.scroll 为假）：把滚动位置原样还原，什么都不动。
+       这是「自动刷新不回滚」的关键 —— 放最前面，优先于其它滚动逻辑。 */
+    if (keepScroll !== null) {
+      if (keepScroll > 0) box.scrollLeft = keepScroll;
+      return;
+    }
+
     var hasActive = box.querySelector && box.querySelector(".chip.on");
     if (opts && opts.scroll && !hasActive && nearestId) {
       var target = box.querySelector ? box.querySelector(".chip.nearest") : null;

@@ -3897,6 +3897,43 @@ if (stage20.length) {
   for (const f of stage20) console.error('  - ' + f);
   process.exit(1);
 }
+/* ----------- keepScroll 必须真的被使用（曾经算出来却从没用，等于没生效） */
+const stage22 = [];
+{
+  const fn = (html.match(/function renderLineStations\(opts\) \{([\s\S]*?)\n  \}/) || [])[1] || '';
+  if (!fn) {
+    stage22.push('找不到 renderLineStations');
+  } else {
+    /* 1) 必须声明 keepScroll */
+    if (!/var keepScroll = /.test(fn)) {
+      stage22.push('没有记录 keepScroll');
+    }
+    /* 2) 必须有「把 keepScroll 写回 box.scrollLeft」的语句 —— 关键 */
+    if (!/box\.scrollLeft = keepScroll/.test(fn)) {
+      stage22.push('keepScroll 只算不用（自动刷新仍会弹回最近站/开头）');
+    }
+    /* 3) 还原必须发生在 nearest 滚动与 centerActiveChip 之前 */
+    const iRestore = fn.indexOf('box.scrollLeft = keepScroll');
+    const iNearest = fn.indexOf('.chip.nearest');
+    const iCenter = fn.indexOf('centerActiveChip(box)', iRestore >= 0 ? iRestore : 0);
+    if (iRestore >= 0 && iNearest >= 0 && iRestore > iNearest) {
+      stage22.push('还原滚动位置被放在「滚到最近站」之后，仍会被覆盖');
+    }
+    /* 4) 还原后要 return，不能继续走到别的滚动逻辑 */
+    const afterRestore = fn.slice(iRestore >= 0 ? iRestore : 0, (iRestore >= 0 ? iRestore : 0) + 300);
+    if (!/return;/.test(afterRestore)) {
+      stage22.push('还原滚动位置后没有 return，后续滚动逻辑会覆盖它');
+    }
+  }
+}
+
+if (stage22.length) {
+  console.error('✗ UI 冒烟失败（自动刷新保持滚动位置）：');
+  for (const f of stage22) console.error('  - ' + f);
+  process.exit(1);
+}
+console.log('✓ 自动刷新保持位置通过：keepScroll 被真正写回、优先于最近站滚动、还原后 return');
+
 console.log('✓ 站名条滚动通过：自动刷新保持原位、手动刷新才回最近站、点站名不滚、切方向回最近');
 
 /* ---------------------- 更新源顺序：Gitee 必须是首次检测与下载的第一顺位 */
