@@ -56,7 +56,7 @@ $ cd-bus near --city 绵阳
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.7.5）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 742 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v2.0.0）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 742 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -491,6 +491,30 @@ WebView 加固：关掉 `AllowFileAccessFromFileURLs`/`AllowUniversalAccessFromF
 
 **装法**：把 APK 传到手机点开安装（首次会要求允许「安装未知应用」，给文件管理器/浏览器授权一次即可）。
 包名 `com.chengdu.bus`，用的本地自签名证书（debug keystore 在 `build/` 下，别用于正式分发）。
+
+### v2.0.0：界面适配 Miuix 设计语言
+
+[Miuix](https://github.com/compose-miuix-ui/miuix) 是 Compose Multiplatform 的 Kotlin UI 库，
+和本项目的 WebView 单页 HTML/CSS 不是一套技术栈，没法直接引依赖。所以这里移植的是它的
+**设计语言**，不是库本身：
+
+| Miuix 特征 | 本项目的落地 |
+|---|---|
+| 强调色 `#3482FF` | `--accent` 全套替换（深色用 `#5B9CFF`） |
+| 中性冷灰底 + 纯白卡片分层 | 底 `#f5f6f8`、卡片纯白，靠色差分块而非描边 |
+| 无描边大圆角卡片 | 卡片描边置 `transparent`，圆角 16 → 22px |
+| 分组标题用强调色 | 设置/说明的分组标题改蓝色半粗小字 |
+| 粗胶囊开关 | 开关 42×24 → 50×30，滑块加投影 |
+| 胶囊输入框与按钮 | 圆角统一 999px，输入框底改 `--card2` |
+| 列表行不顶边分隔线、图标圆角块 | 设置行图标加 34px 圆角底，末行去掉分隔线 |
+| 大标题加粗 | 首页标题 600 → 700、19px、加字距 |
+
+**布局零改动**：顶栏三元素对称居中、站名条竖排、吸顶区、三列线路格子全部保持原样；
+业务逻辑没碰，只换视觉层。
+
+顺带修了测试的时区问题：西昌换乘/车辆这四条真实接口断言原来默认「一定有车」，
+深夜末班后上游如实返回空，会误报成失败。现在按「当前时段无车」跳过，
+白天跑仍验全部字段。
 
 ### v1.7.5：设置精简 + 使用说明重写 + 播报念数字
 

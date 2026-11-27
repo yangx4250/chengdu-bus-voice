@@ -10,24 +10,27 @@
      <html data-mode="dark"> 切换到深色。
      具体值写在 CSS 里而不是 JS 里：head 里那段小脚本在首次绘制前就能把
      data-mode 定下来，不会先画成浅色再跳成深色。 */
+  /* Miuix 风格配色（移植自 compose-miuix-ui/miuix 的视觉语言）：
+     中性冷灰底 + 纯白卡片靠背景分层，Miuix 蓝 #3482FF 作强调色。
+     变量名一个不改——所有组件、明暗切换、对比度测试都靠它们。 */
   :root {
     /* 浅色（默认） */
-    --bg: #f4f6f9;
-    --bg2: #ffffff;
+    --bg: #f5f6f8;
+    --bg2: #fbfbfd;
     --card: #ffffff;
-    --card2: #eef1f6;
-    --line: #dfe4ec;
-    --line2: #c3ccda;
-    --press: #e6ebf3;
-    --text: #0f172a;
-    --text2: #334155;
-    --muted: #64748b;
-    --muted2: #94a3b8;
-    --accent: #2563eb;
+    --card2: #eef0f4;
+    --line: #e6e9ef;
+    --line2: #ccd2dd;
+    --press: #e7eaf0;
+    --text: #10141c;
+    --text2: #333c4e;
+    --muted: #626d80;
+    --muted2: #98a2b3;
+    --accent: #3482ff;
     --on-accent: #ffffff;
-    --accent-line: #2563eb;
-    --accent-bg: #e7edf9;
-    --accent-soft: #1d4ed8;
+    --accent-line: #3482ff;
+    --accent-bg: #e9f0ff;
+    --accent-soft: #1a5fd0;
     --ok: #0f7a4a;
     --ok-bg: #e3f6ec;
     --ok-strong: #ffffff;
@@ -46,22 +49,22 @@
     color-scheme: light;
   }
   html[data-mode="dark"] {
-    --bg: #0b1220;
-    --bg2: #0e1626;
-    --card: #151d2e;
-    --card2: #1b2436;
-    --line: #26324a;
-    --line2: #34415e;
-    --press: #22304a;
-    --text: #e8eefb;
-    --text2: #b9c6dd;
-    --muted: #8b9ab5;
-    --muted2: #56637d;
-    --accent: #4f8cff;
+    --bg: #0b0d12;
+    --bg2: #10131a;
+    --card: #171b24;
+    --card2: #20252f;
+    --line: #282e3a;
+    --line2: #3a4252;
+    --press: #262c38;
+    --text: #eef1f7;
+    --text2: #c2cbdb;
+    --muted: #94a0b4;
+    --muted2: #5b6678;
+    --accent: #5b9cff;
     --on-accent: #ffffff;
-    --accent-line: #4f8cff;
+    --accent-line: #5b9cff;
     --accent-bg: #16233d;
-    --accent-soft: #9dc0ff;
+    --accent-soft: #a8cbff;
     --ok: #38d39f;
     --ok-bg: #12302a;
     --ok-strong: #06130e;
@@ -91,8 +94,10 @@
   header .iconbtn { padding: 6px 10px; font-size: 17px; line-height: 1; border-radius: 10px; }
   header h1 { font-size: 21px; margin: 0; letter-spacing: .5px; }
 
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px;
-    padding: 14px; margin-bottom: 12px; }
+  /* Miuix 的卡片是「无描边 + 大圆角」，靠底色差分层而不是画框；
+     下面这些 .card / .bus / .setcard 都按这个改。 */
+  .card { background: var(--card); border: 1px solid transparent; border-radius: 22px;
+    padding: 16px; margin-bottom: 12px; }
   .row { display: flex; gap: 10px; }
   .row + .row { margin-top: 10px; }
   /* 搜索行：输入框 + 右侧放大镜按钮 */
@@ -106,14 +111,14 @@
   .btn-icon { width: 24px; height: 24px; display: block; fill: currentColor; }
   .searchgo .btn-icon { width: 26px; height: 26px; margin: auto; }
   input {
-    flex: 1; min-width: 0; background: var(--bg2); border: 1px solid var(--line);
-    border-radius: 12px; padding: 13px 14px; color: var(--text); font-size: 16px; outline: none;
+    flex: 1; min-width: 0; background: var(--card2); border: 1px solid transparent;
+    border-radius: 999px; padding: 13px 18px; color: var(--text); font-size: 16px; outline: none;
   }
   input::placeholder { color: var(--muted2); }
-  input:focus { border-color: var(--accent); }
+  input:focus { border-color: var(--accent); background: var(--card); }
   button {
-    border: 1px solid var(--line); background: var(--card2); color: var(--text);
-    border-radius: 12px; padding: 13px 16px; font-size: 15px; font-weight: 500;
+    border: 1px solid transparent; background: var(--card2); color: var(--text);
+    border-radius: 999px; padding: 13px 20px; font-size: 15px; font-weight: 500;
   }
   button:active { transform: scale(.98); }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; flex: 1; font-weight: 600; }
@@ -124,9 +129,9 @@
     padding-bottom: 2px; scrollbar-width: none; }
   .chips::-webkit-scrollbar { display: none; }
   .chip { flex: 0 0 auto; display: flex; align-items: center; background: var(--card2);
-    border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px;
+    border: 1px solid transparent; border-radius: 999px; padding: 8px 14px;
     font-size: 13px; color: var(--text2); white-space: nowrap; line-height: 1.25;
-    min-height: 34px; }
+    min-height: 36px; }
   .chip.on { border-color: var(--accent); color: var(--text); }
   /* 线路页的方向 chip：第一行方向，第二行该方向的首末班 */
   .chip.dirchip { flex-direction: column; align-items: flex-start; gap: 1px;
@@ -215,8 +220,8 @@
     top: 4px; left: 50%; transform: translateX(-50%); margin: 0;
     font-size: 9px; line-height: 1.6; padding: 0 4px; letter-spacing: 0; }
 
-  .bus { background: var(--card); border: 1px solid var(--line); border-radius: 16px;
-    padding: 14px; margin-bottom: 10px; }
+  .bus { background: var(--card); border: 1px solid transparent; border-radius: 22px;
+    padding: 16px; margin-bottom: 10px; }
   .bus.tap:active { background: var(--card2); }
   .bus .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .bus .line-name { font-size: 19px; font-weight: 700; white-space: nowrap;
@@ -270,9 +275,9 @@
   }
   .gcell {
     display: flex; flex-direction: column; gap: 2px;
-    padding: 7px 8px; border-radius: 10px;
-    background: rgba(255, 255, 255, .04);
-    border: 1px solid var(--line);
+    padding: 9px 10px; border-radius: 14px;
+    background: var(--card2);
+    border: 1px solid transparent;
     min-width: 0;
     cursor: pointer;
   }
@@ -341,7 +346,8 @@
 
   /* 标题：占满中间，文字居中 */
   .homehead .topline h1 { order: 2; flex: 1 1 auto; min-width: 0;
-    margin: 0; font-weight: 600; text-align: center; white-space: nowrap; }
+    margin: 0; font-weight: 700; font-size: 19px; letter-spacing: .2px;
+    text-align: center; white-space: nowrap; }
 
   /* 右侧：刷新按钮 + 倒计时上下排。
      宽度锁定 44px（只跟按钮等宽），倒计时竖着放在按钮下面，
@@ -408,15 +414,18 @@
   .cityrow .citynow { font-size: 11px; color: var(--accent); border: 1px solid var(--accent);
     border-radius: 999px; padding: 1px 6px; margin-left: 6px; }
   .cityrow .citysub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  /* Miuix 风格的圆角列表：整块底 + 行之间细线 */
+  #cityList { border-radius: 22px; }
   .cityfoot { padding: 10px 16px 16px; font-size: 11px; color: var(--muted); text-align: center; }
 
   .switch { display: flex; align-items: center; gap: 6px; color: var(--text2); }
   .switch input { width: 0; height: 0; opacity: 0; position: absolute; }
-  .knob { width: 42px; height: 24px; border-radius: 999px; background: var(--line2); position: relative; transition: .18s; }
-  .knob::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
-    border-radius: 50%; background: var(--muted); transition: .18s; }
+  .knob { width: 50px; height: 30px; border-radius: 999px; background: var(--line2);
+    position: relative; transition: .18s; }
+  .knob::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px;
+    border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.22); transition: .18s; }
   .switch input:checked + .knob { background: var(--accent); }
-  .switch input:checked + .knob::after { left: 21px; background: #fff; }
+  .switch input:checked + .knob::after { left: 23px; background: #fff; }
 
   #status { display: none; }
 
@@ -617,7 +626,7 @@
   .guidemodal .gmghost { background: transparent; color: var(--muted); border-color: var(--line); }
 
   /* 说明条目：图标 + 标题 + 说明文字 */
-  .gitem { display: flex; align-items: flex-start; gap: 12px; padding: 11px 0;
+  .gitem { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0;
     border-bottom: 1px solid var(--line); }
   .gitem:last-child { border-bottom: none; }
   .gitem .gico { flex: 0 0 auto; width: 34px; height: 34px; display: flex;
@@ -645,20 +654,28 @@
     border: none; color: var(--text); }
   .settitle { font-size: var(--fs-lg); font-weight: 700; }
   .setlist { padding: 10px var(--pad); }
-  .setitem { display: flex; align-items: center; gap: 12px; padding: 15px 6px;
+  /* Miuix 的分组行：行高更松、分隔线只从文字处开始（不顶到左边） */
+  .setitem { display: flex; align-items: center; gap: 12px; padding: 15px 2px;
     border-bottom: 1px solid var(--line); }
+  .setitem:last-child { border-bottom: none; }
   .setitem:active { background: var(--press); }
-  .seticon { flex: 0 0 auto; font-size: 22px; width: 30px; text-align: center; }
+  .seticon { flex: 0 0 auto; font-size: 20px; width: 34px; height: 34px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--card2); border-radius: 10px; }
   .setinfo { flex: 1; min-width: 0; }
   .setname { font-size: var(--fs); }
   .setsub { font-size: var(--fs-sm); color: var(--muted); margin-top: 2px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .setarrow { flex: 0 0 auto; color: var(--muted2); font-size: 20px; }
   .setpage .setbody { padding: 10px var(--pad) 24px; }
-  .setcard { background: var(--card); border: 1px solid var(--line);
-    border-radius: 12px; padding: 12px; margin-bottom: 12px; }
-  .setcardtitle { font-size: var(--fs-sm); color: var(--muted); margin-bottom: 8px;
-    letter-spacing: .5px; }
+  .setcard { background: var(--card); border: 1px solid transparent;
+    border-radius: 20px; padding: 4px 12px; margin-bottom: 12px; }
+  /* 设置主页整块：Miuix 是一个大圆角里放所有行 */
+  #setHome .setlist { background: var(--card); border-radius: 22px; overflow: hidden; }
+  #setHome .setlist .setitem { padding-left: 14px; padding-right: 14px; }
+  /* 分组标题：Miuix 用强调色小字，跟在组上方，不再塞进卡片里 */
+  .setcardtitle { font-size: var(--fs-sm); color: var(--accent); margin: 4px 2px 8px;
+    letter-spacing: .3px; font-weight: 600; }
   /* 字体大小：选项列表 + 实时预览 */
   .fontlist { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
   .fontopt { display: flex; align-items: center; gap: 12px; padding: 12px 14px;
@@ -6085,7 +6102,7 @@
   var diagTimer = null;
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.7.5";
+  var APP_FALLBACK_VERSION = "2.0.0";
 
   /* 设置主页「关于 ›」下面的版本号：直接显示 App 真实版本，别留「v—」 */
   function paintVersionSub() {
@@ -6219,7 +6236,7 @@
         demo: "后台诊断  ›" },
       { icon: "ℹ️", name: "关于",
         desc: "版本号、运行环境，以及在线更新。",
-        demo: "关于 · 版本 v1.7.4  ›" }
+        demo: "关于 · 版本 v2.0.0  ›" }
     ]}
   ];
 
