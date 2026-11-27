@@ -4663,6 +4663,21 @@ console.log('✓ 站名条滚动通过：自动刷新保持原位、手动刷新
   if (luma(pick(lightBlock, '--bg')) < 0.5) fail.push(':root 的底色不是浅色');
   if (luma(pick(darkBlock, '--bg')) > 0.1) fail.push('深色的底色不够深');
   if (!/color-scheme:\s*light/.test(lightBlock)) fail.push('浅色没设 color-scheme');
+  /* 浅色高亮底（--accent-bg / --ok-bg / 卡片底）上不能写死白字：
+     浅色模式下白字贴浅底等于看不见（当前站那一行就踩过这个坑）。 */
+  const rules = cssAll.split(/\n  (?=[.#a-zA-Z])/);
+  for (const rule of rules) {
+    const head = rule.split('{')[0] || '';
+    const body = rule.split('{')[1] || '';
+    const lightBg = /background:\s*var\(--(accent|ok|warn|err)-bg\)/.test(body)
+      || /background:\s*var\(--card\)/.test(body);
+    if (lightBg && /color:\s*(#fff|#ffffff|rgba\(255,\s*255,\s*255)/.test(body)) {
+      fail.push('高亮底上写了白字，浅色模式下看不见：' + head.trim().slice(0, 40));
+    }
+  }
+  if (!/\.srow\.current \.sname \{[^}]*var\(--accent-soft\)/.test(cssAll)) {
+    fail.push('当前站那一行的站名不是主题色（可能又是白字）');
+  }
   if (!/color-scheme:\s*dark/.test(darkBlock)) fail.push('深色没设 color-scheme');
 
   /* 首屏前定明暗（head 里那段脚本），否则会先闪一下浅色再变深 */
