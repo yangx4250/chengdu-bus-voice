@@ -1285,6 +1285,13 @@
     return geoDistanceMeters(mLat, mLng, lat, lng) <= 30000;
   }
 
+  /** 当前城市是否只支持换乘（西昌）。 */
+  function cityTransitOnly() {
+    if (!city) return false;
+    if (city.transitOnly) return true;
+    return String(city.cityId || "").indexOf("xc-") === 0;
+  }
+
   /** 当前 cityId（未确定时用默认城市）。 */
   function cityId() { return city && city.cityId ? city.cityId : DEFAULT_CITY_ID; }
   function cityName() { return city && city.name ? city.name : DEFAULT_CITY_NAME; }
@@ -2764,6 +2771,9 @@
   function backHandler() {
     /* 地图选择弹层开着时先关掉它 */
     if (navPickOpen) { closeNavPick(); return true; }
+    /* 城市选择页是独立覆盖层，不在 viewStack 里：它开着时返回应该是关掉它、
+       回到打开它的那一页，而不是退出 App。 */
+    if (cityPickerOpen) { closeCityPicker(); return true; }
     /* 设置页有内部层级：先退回设置主页，再退回上一级视图 */
     if (view.name === "diag" && backFromDiag()) return true;
     if (goBack()) return true;
@@ -4907,6 +4917,17 @@
       }
     }
 
+    /* 西昌只有一个换乘接口，没有附近站点和实时到站。
+       这里不要发 nearby（会报错），直接告诉用户能用什么。 */
+    if (cityTransitOnly()) {
+      $("list").innerHTML = '<div class="empty">' +
+        (cityName() || "西昌") + ' 目前只支持<strong>换乘规划</strong>。<br>' +
+        '在下面「去哪儿」里填目的地，可以查公交方案；<br>' +
+        '附近站点和实时到站暂时没有数据。</div>';
+      setStatus(cityName() + " · 只支持换乘规划");
+      return;
+    }
+
     var lat = state.fix ? state.fix.lat : DEFAULT_LAT;
     var lng = state.fix ? state.fix.lng : DEFAULT_LNG;
 
@@ -5080,12 +5101,19 @@
   /* 由网关数据源登记的城市名 → 车来了节点，用于城市选择页的提示 */
   function nodeNoteOf(item) {
     if (item.covered === false) return item.note || "暂无实时数据";
+    if (item.transitOnly) return "仅换乘规划 · 无实时到站";
     return item.level === "county" ? "区县节点" : "市本级";
   }
+
+  /* 城市选择页是独立覆盖层（z-index 70），不在 viewStack 里。
+     用一个显式状态记录它开没开：返回键据此决定「关弹层」还是「退上一页」，
+     比查 className 可靠（测试环境和某些 WebView 下 className 初始值不一样）。 */
+  var cityPickerOpen = false;
 
   function openCityPicker() {
     var box = $("cityPicker");
     if (!box) return;
+    cityPickerOpen = true;
     box.classList.remove("hidden");
     renderCityPicker("");
     $("citySearch").value = "";
@@ -5093,9 +5121,28 @@
   }
 
   function closeCityPicker() {
+    cityPickerOpen = false;
     var box = $("cityPicker");
     if (box) box.classList.add("hidden");
     paintCityChrome();
+  }
+
+  /* 城市名首字母：本 App 只覆盖四川，手写映射比依赖 WebView 的中文排序稳。
+     取不到首字母的（以后加的新城市）用「#」排在最后。 */
+  var CITY_INITIAL = {
+    成都:'C', 自贡:'Z', 攀枝花:'P', 泸州:'L', 绵阳:'M', 遂宁:'S', 内江:'N', 乐山:'L',
+    南充:'N', 宜宾:'Y', 达州:'D', 雅安:'Y', 巴中:'B', 资阳:'Z',
+    都江堰:'D', 崇州:'C', 彭州:'P', 简阳:'J', 温江:'W', 双流:'S', 广汉:'G', 江油:'J',
+    隆昌:'L', 荣县:'R', 仁寿:'R', 荥经:'Y', 岳池:'Y', 道孚:'D', 甘孜县:'G',
+    德阳:'D', 广元:'G', 广安:'G', 阿坝:'A', 甘孜:'G', 凉山:'L',
+    阿坝藏族羌族自治州:'A'
+  };
+  function cityInitial(name) {
+    var n = String(name || "");
+    if (CITY_INITIAL[n]) return CITY_INITIAL[n];
+    /* 去掉「市/自治州」等后缀再试，兼容接口返回带后缀的名字 */
+    var bare = n.replace(/(市|自治州|藏族|彝族)$/g, "");
+    return CITY_INITIAL[bare] || "#";
   }
 
   function renderCityPicker(keyword) {
@@ -5110,8 +5157,25 @@
       list.innerHTML = '<div class="empty">没有匹配的城市</div>';
       return;
     }
+    /* 按拼音首字母排序：A → Z，取不到首字母的（#）排最后 */
+    items = items.slice().sort(function (a, b) {
+      var ia = cityInitial(a.name), ib = cityInitial(b.name);
+      if (ia !== ib) {
+        if (ia === "#") return 1;
+        if (ib === "#") return -1;
+        return ia < ib ? -1 : 1;
+      }
+      /* 同一字母内再按原顺序（接口顺序） */
+      return 0;
+    });
     var html = "";
+    var lastInitial = "";
     items.forEach(function (item) {
+      var initial = cityInitial(item.name);
+      if (initial !== lastInitial) {
+        html += '<div class="pickgroup">' + (initial === "#" ? "其它" : initial) + "</div>";
+        lastInitial = initial;
+      }
       var disabled = item.covered === false && !item.fallbackName;
       var active = item.cityId && String(item.cityId) === cityId();
       html += '<div class="cityrow' + (active ? " active" : "") + (disabled ? " dim" : "") + '"' +
@@ -6902,6 +6966,12 @@
 
   function runSearchFromInput() {
     var key = $("line") ? String($("line").value || "").trim() : "";
+    /* 西昌没有线路/站名搜索接口（只有起终点换乘），
+       这里不能走 queryLine —— 一定搜不到，还会让人以为 App 坏了。 */
+    if (cityTransitOnly()) {
+      showToast((cityName() || "西昌") + " 只有换乘规划，请用「去哪儿」查目的地", true);
+      return;
+    }
     if (key) recordHistory(key);
     run(function () { return queryLine(true); });
   }
@@ -6953,6 +7023,13 @@
     if (btn) btn.textContent = cityName();
     var sub = $("setCitySub");
     if (sub) sub.textContent = cityName() + (city && city.manual ? "（手动选择）" : "");
+    /* 西昌只有换乘：搜索框的提示换成目的地，别让人以为能搜线路号 */
+    var inp = $("line");
+    if (inp) {
+      inp.placeholder = cityTransitOnly()
+        ? "西昌只支持换乘，请用「去哪儿」"
+        : "线路号，如 16 或 2";
+    }
   }
   paintCityChrome();
 

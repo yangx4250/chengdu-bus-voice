@@ -14,6 +14,7 @@ import {
 } from '../lib/announce.mjs';
 import { splitForSpeech } from '../lib/speech.mjs';
 import { MyGolbsClient, isMine, cityNameOfId, cityIdOfName, MG_CITIES } from '../lib/mygolbs.mjs';
+import { XichangClient, isMine as xcIsMine, XICHANG } from '../lib/xichang.mjs';
 
 let passed = 0;
 const check = async (name, fn) => {
@@ -268,6 +269,33 @@ await check('掌上公交：三城线路目录都非空（德阳/广元/广安�
     const lines = await c.searchLines('');
     assert.ok(lines.length > 20, id + ' 应有多条线路，实际 ' + lines.length);
   }
+});
+
+await check('西昌：城市识别与 xc- 前缀隔离', async () => {
+  assert.equal(xcIsMine('xc-xichang'), true);
+  assert.equal(xcIsMine('mg-deyang'), false);
+  assert.equal(xcIsMine('007'), false);
+  assert.equal(XICHANG.transitOnly, true, '西昌必须标记为仅换乘');
+});
+
+await check('西昌：换乘规划能拿到真实线路（含起终点/首末班/票价）', async () => {
+  const c = new XichangClient();
+  let res;
+  try {
+    res = await c.transit(27.8944, 102.2644, '州一医院', 27.9050, 102.2750, '武警州支队');
+  } catch (e) {
+    if (e.waf) { console.log('   （WAF 限流，跳过）'); return; }
+    throw e;
+  }
+  assert.ok(res.transits.length > 0, '应返回换乘方案');
+  const busSegs = res.transits.flatMap((t) => t.segments).filter((s) => s.mode === 'bus');
+  assert.ok(busSegs.length > 0, '至少要有一个公交段');
+  const b = busSegs[0];
+  assert.ok(b.name, '线路名不能为空');
+  assert.ok(!b.name.includes('上行') && !b.name.includes('下行'), '线路名要去掉方向后缀：' + b.name);
+  assert.ok(!b.name.includes('('), '线路名要去掉括号：' + b.name);
+  assert.ok(b.from && b.to, '起终点站都要有');
+  assert.ok(b.firstTime && b.lastTime, '首末班时间要有');
 });
 
 console.log(`\n全部通过：${passed} 项`);

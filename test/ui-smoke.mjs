@@ -4842,6 +4842,42 @@ console.log('✓ 更新源顺序通过：首次检测与下载都以 Gitee 为�
     process.exit(1);
   }
   console.log('✓ 掌上公交通过：mg- 前缀分流、Origin 命门、四大数据方法都分流、城市表合并、定位转换');
+}
+
+/* ---------------------- 西昌：只接换乘，不冒充有实时数据 */
+{
+  const fail = [];
+  const br = readSafe('app/src/com/chengdu/bus/BusBridge.java');
+  const xc = readSafe('app/src/com/chengdu/bus/XichangClient.java');
+
+  if (!/class XichangClient/.test(xc)) fail.push('缺少 XichangClient.java');
+  if (!/www\.xcycgj\.cn:7777/.test(xc)) fail.push('西昌接口地址不对');
+  if (!/xc-/.test(xc)) fail.push('西昌城市没有用 xc- 前缀');
+  /* 只做换乘：不能有 nearby/arrivals 这类假装有实时数据的方法 */
+  if (/public .* nearby\(/.test(xc)) fail.push('西昌不该有 nearby（拿不到附近站点）');
+  if (/public .* arrivals\(/.test(xc)) fail.push('西昌不该有 arrivals（拿不到实时到站）');
+  if (!/transit/.test(xc)) fail.push('西昌缺少 transit()');
+
+  if (!/XichangClient\.isMine/.test(br)) fail.push('BusBridge 没有分流西昌');
+  if (!/xcClientFor/.test(br)) fail.push('BusBridge 没有西昌客户端缓存');
+  if (!/只支持换乘规划/.test(br)) fail.push('西昌的其他方法没有明确提示，可能冒充成「没有数据」');
+
+  if (!/function cityTransitOnly/.test(html)) fail.push('前端缺少 cityTransitOnly()');
+  if (!/只支持<strong>换乘规划<\/strong>/.test(html)) fail.push('前端没有西昌的引导文案');
+  /* 西昌不能走线路搜索（没有 lines/stations 接口），搜索按钮要直接拦下来 */
+  const searchFn = (html.match(/function runSearchFromInput\(\)[\s\S]*?\n  \}/) || [''])[0];
+  if (!/cityTransitOnly\(\)/.test(searchFn)) fail.push('西昌模式没有拦截线路搜索（会一直搜不到）');
+  if (!/只有换乘规划/.test(searchFn)) fail.push('西昌搜索拦截没有给出明确提示');
+  /* 搜索框提示要跟着城市变 */
+  if (!/只有换乘/.test(html) || !/线路号，如 16 或 2/.test(html)) fail.push('搜索框没有按城市切换提示');
+  if (!/仅换乘规划 · 无实时到站/.test(html)) fail.push('城市选择器没有标注西昌仅换乘');
+
+  if (fail.length) {
+    console.error('✗ UI 冒烟失败（西昌）：');
+    for (const f of fail) console.error('  - ' + f);
+    process.exit(1);
+  }
+  console.log('✓ 西昌通过：xc- 分流、只做换乘不冒充实时、前端引导与标注齐全');
 
 /* ---------------------- 搜索缓存必须按城市隔离
    曾经的 bug：cacheKey 只有 key（如 "2路"），在成都搜过再切到德阳搜 "2路"，
@@ -4868,6 +4904,42 @@ console.log('✓ 更新源顺序通过：首次检测与下载都以 Gitee 为�
     process.exit(1);
   }
   console.log('✓ 搜索缓存隔离通过：线路/站名/详情/地点四类缓存 key 都带 cityId，切城市另清缓存');
+}
+
+/* ---------------------- 城市列表按首字母排序 + 返回关弹层 */
+{
+  const fail = [];
+  /* 首字母映射表必须存在，且覆盖所有会出现的城市 */
+  if (!/var CITY_INITIAL = \{/.test(html)) fail.push('缺少 CITY_INITIAL 首字母映射表');
+  if (!/function cityInitial\(/.test(html)) fail.push('缺少 cityInitial()');
+  const mustHave = ['成都', '德阳', '广元', '广安', '阿坝', '甘孜', '凉山', '自贡', '攀枝花', '泸州'];
+  for (const c of mustHave) {
+    if (!new RegExp(c + ":'[A-Z]'").test(html)) fail.push('首字母映射缺 ' + c);
+  }
+  /* 渲染时按首字母排序并插入字母分组头 */
+  if (!/cityInitial\(a\.name\)/.test(html) || !/cityInitial\(b\.name\)/.test(html)) {
+    fail.push('城市列表没有按首字母排序');
+  }
+  if (!/pickgroup.*initial/.test(html) && !/class="pickgroup">' \+ \(initial/.test(html)) {
+    fail.push('城市列表没有字母分组头');
+  }
+  /* 返回键：城市选择层开着时要先关它，而不是退出 */
+  const backFn = (html.match(/function backHandler\(\)[\s\S]*?\n  \}/) || [''])[0];
+  if (!/cityPickerOpen/.test(backFn)) fail.push('返回键没有处理城市选择页');
+  if (!/closeCityPicker\(\)/.test(backFn)) fail.push('返回键没有关闭城市选择页');
+  if (!/var cityPickerOpen = false/.test(html)) fail.push('缺少 cityPickerOpen 状态');
+  /* 打开/关闭都要维护状态 */
+  const openFn = (html.match(/function openCityPicker\(\)[\s\S]*?\n  \}/) || [''])[0];
+  if (!/cityPickerOpen = true/.test(openFn)) fail.push('openCityPicker 没有置状态');
+  const closeFn = (html.match(/function closeCityPicker\(\)[\s\S]*?\n  \}/) || [''])[0];
+  if (!/cityPickerOpen = false/.test(closeFn)) fail.push('closeCityPicker 没有清状态');
+
+  if (fail.length) {
+    console.error('✗ UI 冒烟失败（城市列表排序/返回）：');
+    for (const f of fail) console.error('  - ' + f);
+    process.exit(1);
+  }
+  console.log('✓ 城市列表通过：按拼音首字母 A-Z 排序并分组、返回键先关城市选择页');
 }
 }
 

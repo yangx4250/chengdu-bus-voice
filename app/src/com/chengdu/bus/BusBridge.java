@@ -33,6 +33,8 @@ public final class BusBridge {
     private final ConcurrentHashMap<String, ChelaileClient> clients = new ConcurrentHashMap<>();
     /** 掌上公交客户端缓存（车来了没覆盖的城市）。 */
     private final ConcurrentHashMap<String, MyGolbsClient> mgClients = new ConcurrentHashMap<>();
+    /** 西昌客户端缓存（只有换乘规划，没有实时到站）。 */
+    private final ConcurrentHashMap<String, XichangClient> xcClients = new ConcurrentHashMap<>();
 
     /** 从参数里解析出 cityId（mygolbs 城市返回 mg- 前缀，其余是车来了数字 id）。 */
     private String cityIdOf(JSONObject args) {
@@ -40,6 +42,7 @@ public final class BusBridge {
         if (id != null && !id.isEmpty()) return id;
         String name = args.optString("city", "");
         if (name != null && !name.isEmpty()) {
+            if (name.contains("西昌") || name.contains("凉山")) return XichangClient.CITY_ID;
             String mg = MyGolbsClient.cityIdOfName(name);
             if (!mg.isEmpty()) return mg;
             String cl = ChelaileClient.cityIdOf(name);
@@ -70,6 +73,18 @@ public final class BusBridge {
         }
         return cached;
     }
+    /** 西昌客户端（仅 xc- 城市调用）。 */
+    private XichangClient xcClientFor(JSONObject args) {
+        String want = cityIdOf(args);
+        XichangClient cached = xcClients.get(want);
+        if (cached == null) {
+            cached = new XichangClient(want);
+            XichangClient prev = xcClients.putIfAbsent(want, cached);
+            if (prev != null) cached = prev;
+        }
+        return cached;
+    }
+
     private final Navigator navigator;
     private final ExecutorService pool = Executors.newFixedThreadPool(4);
     private final ConcurrentHashMap<String, Task> tasks = new ConcurrentHashMap<>();
@@ -638,6 +653,16 @@ public final class BusBridge {
         /* 按城市分流：掌上公交城市（mg-）走 MyGolbsClient，其余走车来了。
            两家输出 JSON 结构一致，页面无需感知数据源。 */
         final boolean mg = MyGolbsClient.isMine(cityIdOf(args));
+        /* 西昌只有换乘规划（/search 实测可用），实时到站/线路目录都拿不到。
+           其余方法一律如实报「不支持」，不能返回空数组冒充「这条线没车」。 */
+        final boolean xc = XichangClient.isMine(cityIdOf(args));
+        if (xc && !"transit".equals(method) && !"city".equals(method)
+                && !"citytable".equals(method) && !"location".equals(method)
+                && !"permissions".equals(method) && !"synth".equals(method)
+                && !"synthwav".equals(method) && !"appInfo".equals(method)
+                && !"backend".equals(method) && !"navApps".equals(method)) {
+            throw new IllegalArgumentException("西昌目前只支持换乘规划，暂无实时到站数据");
+        }
         switch (method) {
             case "lines":
                 return mg ? mgClientFor(args).searchLines(args.optString("key"))
@@ -649,10 +674,16 @@ public final class BusBridge {
                 if (mg) return new JSONArray();   // 掌上公交没有 POI 搜索
                 return clientFor(args).searchPois(args.optString("key"));
             case "transit": {
-                if (mg) throw new IllegalArgumentException("该城市暂不支持跨城换乘规划");
                 JSONObject from = args.optJSONObject("from");
                 JSONObject dest = args.optJSONObject("dest");
                 if (from == null || dest == null) throw new IllegalArgumentException("缺少起点或终点");
+                if (xc) {
+                    return xcClientFor(args).transit(
+                            from.optDouble("lat"), from.optDouble("lng"), from.optString("name"),
+                            dest.optDouble("lat"), dest.optDouble("lng"), dest.optString("name"),
+                            args.optString("strategy", "0"));
+                }
+                if (mg) throw new IllegalArgumentException("该城市暂不支持跨城换乘规划");
                 return clientFor(args).transit(
                         from.optDouble("lat"), from.optDouble("lng"), from.optString("name"),
                         dest.optDouble("lat"), dest.optDouble("lng"), dest.optString("name"),
@@ -689,13 +720,23 @@ public final class BusBridge {
                 return new JSONObject().put("location", Locator.hasPermission(activity));
             case "city": {
                 JSONObject info = clientFor(args).assertCity(args.optDouble("lat"), args.optDouble("lng"));
-                /* 车来了没覆盖的市州（德阳/广元/广安/甘孜/阿坝），若掌上公交有数据，
-                   就转成 mg- 城市，让定位到这些地方的人也能查车。凉山维持无数据。 */
+                /* 车来了没覆盖的市州：德阳/广元/广安/甘孜/阿坝转掌上公交（mg-），
+                   凉山转西昌（xc-，只有换乘）。 */
                 boolean covered;
                 try { covered = info.optBoolean("covered", true); }
                 catch (Exception e) { covered = true; }
                 if (!covered) {
                     String cityName = info.optString("city", "");
+                    /* 凉山/西昌 → 西昌数据源（换乘规划可用，实时到站暂无） */
+                    if (cityName.contains("凉山") || cityName.contains("西昌")) {
+                        JSONObject out = new JSONObject();
+                        out.put("cityId", XichangClient.CITY_ID);
+                        out.put("city", "西昌");
+                        out.put("covered", true);
+                        out.put("source", "xichang");
+                        out.put("transitOnly", true);
+                        return out;
+                    }
                     String mgId = MyGolbsClient.cityIdOfName(cityName);
                     /* 甘孜州车来了返回的名字可能是「甘孜藏族自治州」或「甘孜」 */
                     if (mgId.isEmpty() && cityName.contains("甘孜")) mgId = "mg-ganzi";
@@ -734,6 +775,8 @@ public final class BusBridge {
                 }
                 JSONArray extra = MyGolbsClient.cityTable();
                 for (int i = 0; i < extra.length(); i++) kept.put(extra.opt(i));
+                JSONArray xcTable = XichangClient.cityTable();
+                for (int i = 0; i < xcTable.length(); i++) kept.put(xcTable.opt(i));
                 return kept;
             }
             default:
