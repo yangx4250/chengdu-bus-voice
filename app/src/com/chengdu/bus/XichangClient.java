@@ -234,6 +234,84 @@ public final class XichangClient {
             new java.util.concurrent.ConcurrentHashMap<String, double[][]>();
 
     /**
+     * 「线路名|开往」→ routeDirId。
+     *
+     * <p>界面沿用车来了/掌上公交的习惯，lineId 是 {@code 1|观鸟岛湿地公园} 这种合成串；
+     * 西昌协议只认数字方向 ID（{@code 2}）。拿合成串去查 seq=7 / 95，服务器会<b>直接
+     * 关闭连接</b>（不回包、不报错），客户端等满 15 秒后只能报「服务器没响应」。</p>
+     *
+     * <p>所以 nearby() 里每条记录都登记一次，详情页拿到合成串时先换回数字 ID。</p>
+     */
+    /** 线路名 → 该线路在附近数据里出现过的方向 ID（上下行）。换向按钮用它配对。 */
+    private static final java.util.concurrent.ConcurrentHashMap<String, java.util.LinkedHashSet<String>>
+            dirsByName = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** 站表缓存：routeDirId → [时间戳, 站表 JSON]。换向要连查两个方向，缓存省一半请求。 */
+    private static final java.util.concurrent.ConcurrentHashMap<String, Object[]> detailCache =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /* static：盯站服务和界面在不同实例上查同一条线路，映射要共享，
+       否则后台盯站在冷启动（App 刚起、还没刷过附近）时必然失败。 */
+    private static final java.util.concurrent.ConcurrentHashMap<String, String> routeDirByLineId =
+            new java.util.concurrent.ConcurrentHashMap<String, String>();
+
+    /** 上次用附近接口兜底反查的时间，1 分钟内不重复扫（避免每条未知线路都发一次 TCP）。 */
+    private static volatile long lastNearbyLookup = 0L;
+
+    /** 兜底反查用的西昌市中心坐标（胜利路/顺城街一带，站最密）。 */
+    private static final double FALLBACK_LAT = 27.8861;
+    private static final double FALLBACK_LNG = 102.2820;
+
+    /** 纯数字 → 原样返回；合成串 → 查 nearby 时登记过的映射，查不到再就近反查一次。 */
+    private String routeDirIdOf(String lineId) {
+        String t = lineId == null ? "" : lineId.trim();
+        if (t.isEmpty()) throw new IllegalArgumentException("缺少线路 ID");
+        boolean digits = true;
+        for (int i = 0; i < t.length(); i++) {
+            if (!Character.isDigit(t.charAt(i))) { digits = false; break; }
+        }
+        if (digits) return t;
+        String hit = lookup(t);
+        if (hit == null) {
+            /* 收藏 / 盯站 / 下车提醒是跨启动的：新进程里还没刷过附近，
+               映射是空的。用市中心坐标扫一次 seq=2 现捞（结果会登记进映射）。 */
+            if (System.currentTimeMillis() - lastNearbyLookup > 60000L) {
+                lastNearbyLookup = System.currentTimeMillis();
+                try { nearby(FALLBACK_LAT, FALLBACK_LNG, 8); } catch (Exception ignored) {}
+                hit = lookup(t);
+            }
+        }
+        if (hit == null) {
+            throw new IllegalArgumentException(
+                    "这条线路暂时没有实时方向，先回首页刷新一次附近站点再进来");
+        }
+        return hit;
+    }
+
+    private static String lookup(String lineId) {
+        String hit = routeDirByLineId.get(lineId);
+        if (hit != null) return hit;
+        /* 「路」字、空格、全半角括号在不同来源里写法不一致，宽松比一遍 */
+        String key = looseLineId(lineId);
+        for (java.util.Map.Entry<String, String> e : routeDirByLineId.entrySet()) {
+            if (looseLineId(e.getKey()).equals(key)) return e.getValue();
+        }
+        /* 只给了线路名（没有「|开往」）时按名字取第一个方向 */
+        String bare = key.contains("|") ? key.substring(0, key.indexOf('|')) : key;
+        for (java.util.Map.Entry<String, String> e : routeDirByLineId.entrySet()) {
+            String k = looseLineId(e.getKey());
+            String kb = k.contains("|") ? k.substring(0, k.indexOf('|')) : k;
+            if (kb.equals(bare)) return e.getValue();
+        }
+        return null;
+    }
+
+    private static String looseLineId(String s) {
+        if (s == null) return "";
+        return s.replace("路", "").replace(" ", "").trim();
+    }
+
+    /**
      * 附近站点的实时车辆。
      *
      * <p>协议：握手帧 {@code magic+长度0+序号0}；请求载荷
@@ -274,8 +352,20 @@ public final class XichangClient {
             arr.put("lineName", lineName);
             arr.put("toward", f[b + 10].trim());
             arr.put("lineId", lineName + "|" + f[b + 10].trim());
-            /* 线路方向 ID 和「目标站站序」——补站数/ETA 要用 */
-            arr.put("routeDirId", f[b + 1].trim());
+            /* 线路方向 ID 和「目标站站序」——补站数/ETA 要用；
+               同时登记合成 lineId → 数字方向 ID，详情页按 lineId 进来时才认得出 */
+            String routeDir = f[b + 1].trim();
+            arr.put("routeDirId", routeDir);
+            if (!routeDir.isEmpty()) {
+                routeDirByLineId.put(lineName + "|" + f[b + 10].trim(), routeDir);
+                routeDirByLineId.put(f[b + 2].trim(), routeDir);
+                java.util.LinkedHashSet<String> ids = dirsByName.get(lineName);
+                if (ids == null) {
+                    ids = new java.util.LinkedHashSet<>();
+                    dirsByName.put(lineName, ids);
+                }
+                ids.add(routeDir);
+            }
             arr.put("targetOrder", (int) parseDouble(f[b + 5]));
             arr.put("plate", f[b + 0].trim());
             arr.put("firstTime", hhmm(f[b + 13]));
@@ -330,9 +420,14 @@ public final class XichangClient {
             Set<String> seen = new HashSet<String>();
             for (int j = 0; j < bucket.size(); j++) {
                 JSONObject a = bucket.get(j);
-                arrs.put(a);
                 String ln = a.optString("lineName", "");
-                if (!ln.isEmpty() && seen.add(ln)) lineNames.put(ln);
+                /* 西昌是按「物理站点」返回的：同一条线的上下行会各来一条记录。
+                   首页格子只写线路名（不区分方向），两条一起画就成了「26路 26路」。
+                   同一线路只留第一条；另一方向在详情页换向看得到。
+                   allArrivals 保留全部，搜索按线路名筛照样能用。 */
+                if (!ln.isEmpty() && !seen.add(ln)) continue;
+                arrs.put(a);
+                if (!ln.isEmpty()) lineNames.put(ln);
             }
             stop.put("arrivals", arrs);
             stop.put("lineNameList", lineNames);
@@ -601,6 +696,7 @@ public final class XichangClient {
      * <p>输出对齐 {@link MyGolbsClient#lineDetail}。</p>
      */
     public JSONObject lineDetail(String routeDirId) throws Exception {
+        routeDirId = routeDirIdOf(routeDirId);
         String text = rtQuery(7, "1;" + System.currentTimeMillis() + ";xc;;;" + routeDirId);
         String[] parts = text.split(";", -1);
         JSONObject out = new JSONObject();
@@ -671,6 +767,7 @@ public final class XichangClient {
      */
     public JSONArray vehicles(String routeDirId, int dist, int order, double lat, double lng)
             throws Exception {
+        routeDirId = routeDirIdOf(routeDirId);
         String body = "1;" + System.currentTimeMillis() + ";xc;;;" + routeDirId
                 + ";" + dist + ";" + order + ";" + fmt(lat) + ";" + fmt(lng);
         String text = rtQuery(95, body);
@@ -712,6 +809,7 @@ public final class XichangClient {
      * 两个都是假的。</p>
      */
     public JSONArray arrivals(String routeDirId, JSONObject station) throws Exception {
+        routeDirId = routeDirIdOf(routeDirId);
         int targetOrder = station == null ? 0 : station.optInt("order", 0);
         JSONArray veh = vehicles(routeDirId, 0, targetOrder,
                 station == null ? 0 : station.optDouble("lat", 0),
@@ -750,7 +848,77 @@ public final class XichangClient {
      *
      * <p>输出对齐 {@link MyGolbsClient#stationMatrix}。</p>
      */
+    /** 站表带缓存（10 分钟），换向时两个方向各查一次就够。 */
+    private JSONObject lineDetailCached(String routeDirId) throws Exception {
+        Object[] hit = detailCache.get(routeDirId);
+        if (hit != null && System.currentTimeMillis() - ((Long) hit[0]) < 600000L) {
+            return (JSONObject) hit[1];
+        }
+        JSONObject d = lineDetail(routeDirId);
+        detailCache.put(routeDirId, new Object[]{System.currentTimeMillis(), d});
+        return d;
+    }
+
+    /**
+     * 同一条线路的两个方向（详情页的换向芯片 + 每方向首末班）。
+     *
+     * <p>协议没有「按名字查线路」的接口，方向 ID 只能从两处来：</p>
+     * <ol>
+     *   <li>附近接口（seq=2）里同名线路出现过的方向——上下行都在跑时最可靠；</li>
+     *   <li>兜底：探测 {@code routeDirId ± 1}，站表线路名对得上才算。
+     *       实测 39路=412/413、107路=184/185、11路=64/65 都相邻；
+     *       环线（如 1路=2）没有反向，探测会空手而归，正好不画换向。</li>
+     * </ol>
+     *
+     * <p>只有单方向时也返回 1 条：前端据此显示「首班/末班」，而不是什么都不显示。</p>
+     */
+    public JSONArray directions(String routeDirId) throws Exception {
+        String cur = routeDirIdOf(routeDirId);
+        JSONObject curDetail;
+        try { curDetail = lineDetailCached(cur); } catch (Exception e) { return new JSONArray(); }
+        String name = curDetail.optString("name", "");
+        java.util.LinkedHashSet<String> ids = new java.util.LinkedHashSet<>();
+        ids.add(cur);
+        java.util.LinkedHashSet<String> known = dirsByName.get(name);
+        if (known != null) ids.addAll(known);
+        if (ids.size() < 2) {
+            try {
+                int base = Integer.parseInt(cur);
+                for (int cand : new int[]{base + 1, base - 1}) {
+                    if (cand <= 0) continue;
+                    String cs = String.valueOf(cand);
+                    try {
+                        JSONObject d = lineDetailCached(cs);
+                        JSONArray st = d.optJSONArray("stations");
+                        if (name.equals(d.optString("name", "")) && st != null && st.length() > 0) {
+                            ids.add(cs);
+                            break;
+                        }
+                    } catch (Exception ignored) {}
+                }
+            } catch (NumberFormatException ignored) {}
+        }
+        JSONArray out = new JSONArray();
+        for (String id : ids) {
+            JSONObject d;
+            try { d = id.equals(cur) ? curDetail : lineDetailCached(id); }
+            catch (Exception e) { continue; }
+            if (d == null || d.optJSONArray("stations") == null
+                    || d.optJSONArray("stations").length() == 0) continue;
+            out.put(new JSONObject()
+                    .put("lineId", id)
+                    .put("name", d.optString("name", ""))
+                    .put("fullName", d.optString("fullName", ""))
+                    .put("firstTime", d.optString("firstTime", ""))
+                    .put("lastTime", d.optString("lastTime", ""))
+                    .put("startSn", d.optString("startSn", ""))
+                    .put("endSn", d.optString("endSn", "")));
+        }
+        return out;
+    }
+
     public JSONObject stationMatrix(String routeDirId, int fromOrder, int window) throws Exception {
+        routeDirId = routeDirIdOf(routeDirId);
         JSONObject detail = lineDetail(routeDirId);
         JSONArray all = detail.optJSONArray("stations");
         if (all == null || all.length() == 0) {
@@ -853,6 +1021,8 @@ public final class XichangClient {
         out.put("buses", busesOut);
         out.put("queriedFrom", queriedFrom);
         out.put("queriedTo", queriedTo);
+        /* 换向芯片 + 每方向首末班（西昌没有 lines 接口，只能自己配方向） */
+        try { out.put("directions", directions(routeDirId)); } catch (Exception ignored) {}
         return out;
     }
 

@@ -4905,6 +4905,35 @@ console.log('✓ 更新源顺序通过：首次检测与下载都以 Gitee 为�
   if (!/distanceMeters/.test(desc)) fail.push('describe() 没有距离兜底分支（西昌会显示成「正在接近本站」）');
   if (!/距本站约/.test(desc)) fail.push('describe() 没有「距本站约 N 米」文案');
 
+  /* 合成 lineId（1|开往）不能直接当协议参数用：
+     服务器对非数字方向 ID 会立刻断连，界面只能报「服务器没响应」 */
+  if (!/routeDirOf\(|routeDirIdOf\(/.test(xc)) fail.push('XichangClient 缺少 lineId → routeDirId 的转换');
+  for (const fn of ['lineDetail', 'vehicles', 'arrivals', 'stationMatrix']) {
+    const body = (xc.match(new RegExp('public [^{]*\\b' + fn + '\\([^)]*\\)[^{]*\\{[\\s\\S]{0,400}', 'm')) || [''])[0];
+    if (!/routeDirIdOf\(/.test(body)) fail.push(fn + ' 没有先把 lineId 换成 routeDirId（合成串会让服务器断连）');
+  }
+  if (!/routeDirByLineId\.put/.test(xc)) fail.push('nearby 没有登记 lineId → routeDirId 映射');
+  /* 前端：详情页要优先用接口给的 routeDirId */
+  if (!/routeDirId: ""/.test(html)) fail.push('前端 view 状态缺少 routeDirId');
+  if (!/var data = await rpc\("matrix", \{\s*lineId: view\.routeDirId \|\| view\.lineId/.test(html)) {
+    fail.push('matrix 请求没有优先用 routeDirId（西昌会拿合成串去查 → 没响应）');
+  }
+  if (!/view\.routeDirId = opts\.routeDirId/.test(html)) fail.push('openDetail 没有记录 opts.routeDirId');
+  if (!/routeDirId: a\.routeDirId \|\| ""/.test(html)) fail.push('到站记录点进详情时没带 routeDirId');
+
+  /* 换向 + 首末班：西昌没有 lines 接口，方向必须由 matrix 带回来 */
+  if (!/public JSONArray directions\(/.test(xc)) fail.push('XichangClient 缺少 directions（换向芯片会没有）');
+  if (!/out\.put\("directions"/.test(xc) && !/"directions", directions\(/.test(xc)) {
+    fail.push('stationMatrix 没有回传 directions');
+  }
+  if (!/data\.directions && data\.directions\.length/.test(html)) fail.push('前端没有采用 matrix 回传的 directions');
+  /* 单方向也要画：首末班全靠这颗芯片显示 */
+  const rdd = (html.match(/function renderDetailDirections\(\)[\s\S]*?\n  \}/) || [''])[0];
+  if (/length < 2\) return/.test(rdd)) fail.push('renderDetailDirections 仍然「少于 2 个方向就不画」（首末班会消失）');
+  if (!/dirtime/.test(rdd)) fail.push('详情页方向芯片没有首末班那一行');
+  /* 换向时不能把 matrix 给的方向清空 */
+  if (!/var keep = view\.directions/.test(html)) fail.push('loadDetailDirections 会把 matrix 给的方向清空');
+
   if (fail.length) {
     console.error('✗ UI 冒烟失败（西昌）：');
     for (const f of fail) console.error('  - ' + f);
@@ -4945,7 +4974,7 @@ console.log('✓ 更新源顺序通过：首次检测与下载都以 Gitee 为�
   /* 首字母映射表必须存在，且覆盖所有会出现的城市 */
   if (!/var CITY_INITIAL = \{/.test(html)) fail.push('缺少 CITY_INITIAL 首字母映射表');
   if (!/function cityInitial\(/.test(html)) fail.push('缺少 cityInitial()');
-  const mustHave = ['成都', '德阳', '广元', '广安', '阿坝', '甘孜', '凉山', '自贡', '攀枝花', '泸州'];
+  const mustHave = ['成都', '德阳', '广元', '广安', '阿坝', '甘孜', '凉山', '西昌', '自贡', '攀枝花', '泸州'];
   for (const c of mustHave) {
     if (!new RegExp(c + ":'[A-Z]'").test(html)) fail.push('首字母映射缺 ' + c);
   }
@@ -4967,6 +4996,15 @@ console.log('✓ 更新源顺序通过：首次检测与下载都以 Gitee 为�
   const closeFn = (html.match(/function closeCityPicker\(\)[\s\S]*?\n  \}/) || [''])[0];
   if (!/cityPickerOpen = false/.test(closeFn)) fail.push('closeCityPicker 没有清状态');
 
+  /* 凉山不能还是灰的：州府西昌已经有实时车辆，城市表里要指向 xc- 数据源 */
+  if (!/n\.contains\("凉山"\)/.test(br)) fail.push('城市表没有把凉山接到西昌数据源（凉山会一直是灰的）');
+  if (!/transitOnly\)/.test(br) && !/put\("transitOnly", true\)/.test(br)) {
+    fail.push('凉山条目没标 transitOnly（会显示成普通市本级）');
+  }
+  /* 同一数据源两个名字（凉山/西昌），只给名字对得上的那行标「当前」 */
+  if (!/String\(item\.name\) === String\(city\.name\)/.test(html)) {
+    fail.push('凉山/西昌会同时显示「当前」');
+  }
   if (fail.length) {
     console.error('✗ UI 冒烟失败（城市列表排序/返回）：');
     for (const f of fail) console.error('  - ' + f);

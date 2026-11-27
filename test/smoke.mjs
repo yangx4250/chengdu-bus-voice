@@ -14,7 +14,7 @@ import {
 } from '../lib/announce.mjs';
 import { splitForSpeech } from '../lib/speech.mjs';
 import { MyGolbsClient, isMine, cityNameOfId, cityIdOfName, MG_CITIES } from '../lib/mygolbs.mjs';
-import { XichangClient, isMine as xcIsMine, XICHANG, nearby as xcNearby, lineDetail as xcLineDetail, vehicles as xcVehicles, arrivals as xcArrivals, progress as xcProgress, distanceMeters as xcDist, normalizeLineName as xcNorm } from '../lib/xichang.mjs';
+import { XichangClient, isMine as xcIsMine, XICHANG, nearby as xcNearby, lineDetail as xcLineDetail, vehicles as xcVehicles, arrivals as xcArrivals, progress as xcProgress, distanceMeters as xcDist, normalizeLineName as xcNorm, routeDirIdOf as xcRouteDirIdOf, directions as xcDirections } from '../lib/xichang.mjs';
 
 let passed = 0;
 const check = async (name, fn) => {
@@ -448,6 +448,65 @@ await check('西昌：附近返回的 lineName 已规范化，前端拼「路」
     assert.ok(!/[（(]/.test(a.lineName), 'lineName 不该带括号：' + a.lineName);
     assert.ok(a.lineName, 'lineName 不能为空');
   }
+});
+
+await check('西昌：界面拿到的合成 lineId（1|开往）能换成协议要的数字方向 ID', async () => {
+  /* 界面沿用车来了的习惯，lineId 是「1|观鸟岛湿地公园」；协议只认数字方向 ID。
+     直接拿合成串查 seq=7，服务器会立刻断开连接，界面只能报「服务器没响应」
+     （这就是详情页那次故障）。必须先把 lineId 换回 routeDirId。 */
+  let nb;
+  try { nb = await xcNearby(27.886099, 102.282078, 3); }
+  catch (e) { console.log('   （服务器不可达，跳过）', e.message); return; }
+  const a = nb.allArrivals.find((x) => x.routeDirId && x.lineId);
+  assert.ok(a, '附近接口要带 routeDirId 和 lineId');
+  assert.match(String(a.lineId), /\|/, 'lineId 应是「线路名|开往」的合成串');
+  const rid = await xcRouteDirIdOf(a.lineId);
+  assert.match(rid, /^\d+$/, '换出来的方向 ID 必须是纯数字，实际：' + rid);
+  assert.equal(rid, a.routeDirId, '换出来的方向 ID 要和附近接口给的一致');
+  /* 用合成串直接查站表也必须成功（内部会先换 ID） */
+  const d = await xcLineDetail(a.lineId);
+  assert.ok(d.stations.length > 0, '合成 lineId 也要能拉到站表');
+  /* 不认识的串要给明确提示，而不是等 15 秒超时 */
+  assert.equal(await xcRouteDirIdOf(a.routeDirId), a.routeDirId, '数字 ID 应原样返回');
+});
+
+await check('西昌：详情页能拿到换向方向与各自首末班（环线只有单方向）', async () => {
+  try { await xcNearby(27.8861, 102.2820, 8); }
+  catch (e) { console.log('   （服务器不可达，跳过）', e.message); return; }
+  const dirs = await xcDirections('412');
+  assert.ok(dirs.length >= 2, '39路应能配到两个方向，实际：' + dirs.length);
+  assert.match(String(dirs[0].lineId), /^\d+$/, '方向 ID 必须是数字');
+  for (const d of dirs) {
+    assert.equal(d.name, '39', '同一线路名的两个方向');
+    assert.match(d.firstTime, /^\d{2}:\d{2}$/, '首班要格式化：' + d.firstTime);
+    assert.match(d.lastTime, /^\d{2}:\d{2}$/, '末班要格式化：' + d.lastTime);
+    assert.ok(d.startSn && d.endSn, '方向要有起终点');
+  }
+  assert.notEqual(dirs[0].startSn, dirs[1].startSn, '两个方向的起点应互为终点');
+  /* 环线（1路）没有反向：只给 1 条，前端照样显示首末班 */
+  const ring = await xcDirections('2');
+  assert.equal(ring.length, 1, '环线不该凭空编出反向，实际：' + ring.length);
+  assert.match(ring[0].firstTime, /^\d{2}:\d{2}$/, '环线也要有首班');
+});
+
+await check('西昌：同一站点的同一线路只画一格（上下行不重复）', async () => {
+  let nb;
+  try { nb = await xcNearby(27.8861, 102.2820, 8); }
+  catch (e) { console.log('   （服务器不可达，跳过）', e.message); return; }
+  let dupFound = 0;
+  for (const stop of nb.stops) {
+    const names = stop.arrivals.map((a) => a.lineName);
+    const uniq = [...new Set(names)];
+    assert.equal(uniq.length, names.length,
+      stop.name + ' 出现重复线路：' + names.join(' / '));
+    assert.deepEqual(stop.lineNameList, uniq,
+      stop.name + ' 的 lineNameList 要和去重后的 arrivals 一致');
+    if (names.length < stop.arrivals.length + 1) dupFound += 0;
+  }
+  /* 每个方向的原始记录都要留在 allArrivals 里：搜索筛线路还靠它 */
+  const totalInStops = nb.stops.reduce((n, s2) => n + s2.arrivals.length, 0);
+  assert.ok(nb.allArrivals.length >= totalInStops,
+    'allArrivals 不该被去重削掉（还有用）');
 });
 
 console.log(`\n全部通过：${passed} 项`);

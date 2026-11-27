@@ -784,6 +784,20 @@ public final class BusBridge {
                         if (mgId.isEmpty() && n.contains("甘孜")) mgId = "mg-ganzi";
                         if (mgId.isEmpty() && n.contains("阿坝")) mgId = "mg-aba";
                         if (!mgId.isEmpty()) continue;      // 已被掌上公交覆盖，丢掉旧占位
+                        /* 凉山：州府西昌已经有实时车辆（xc- 数据源），
+                           别再显示「全域暂无数据」的灰条，直接指到西昌 */
+                        if (n.contains("凉山")) {
+                            JSONObject xcItem = new JSONObject();
+                            xcItem.put("cityId", XichangClient.CITY_ID);
+                            xcItem.put("name", "凉山");
+                            xcItem.put("covered", true);
+                            xcItem.put("source", "xichang");
+                            xcItem.put("level", "city");
+                            xcItem.put("transitOnly", true);
+                            xcItem.put("note", "州府西昌 · 有实时车辆 · 无线路搜索");
+                            kept.put(xcItem);
+                            continue;
+                        }
                     }
                     kept.put(all.opt(i));
                 }

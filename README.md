@@ -56,7 +56,7 @@ $ cd-bus near --city 绵阳
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.3.1）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 742 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.7.4）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 742 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -491,6 +491,63 @@ WebView 加固：关掉 `AllowFileAccessFromFileURLs`/`AllowUniversalAccessFromF
 
 **装法**：把 APK 传到手机点开安装（首次会要求允许「安装未知应用」，给文件管理器/浏览器授权一次即可）。
 包名 `com.chengdu.bus`，用的本地自签名证书（debug keystore 在 `build/` 下，别用于正式分发）。
+
+### 西昌详情页「实时服务器没响应」（v1.7.4 修）
+
+现象：西昌点进任意线路详情，整页空着，只报「西昌实时服务器没响应，稍后再试」。
+
+根因不在服务器。界面沿用车来了的习惯，**lineId 是 `1|观鸟岛湿地公园` 这种合成串**，
+而西昌 TCP 协议只认数字方向 ID（`2`）。拿合成串去查 `seq=7 / 95`，服务器**不回包、
+直接关连接**——客户端只能等满超时，然后把「连接被关掉」误报成「服务器没响应」。
+实测：
+
+```
+payload routeDirId=2  → 4788 字节，28 站
+payload routeDirId=1|观鸟岛湿地公园 → 服务器 130ms 就断开（stream closed by peer）
+```
+
+修法（三层，任何一层单独都能挡住）：
+
+1. `nearby()` 每条记录登记 `lineId → routeDirId` 映射（static，盯站服务与界面共享）；
+2. `lineDetail / vehicles / arrivals / stationMatrix` 入口统一先 `routeDirIdOf(lineId)`
+   换回数字 ID；映射空时（收藏、盯站跨启动）用市中心坐标扫一次 `seq=2` 现捞，
+   1 分钟内不重复扫；真查不到才报「先回首页刷新一次附近站点」；
+3. 前端 `view.routeDirId` 一路带下去（附近卡片、收藏、盯站卡、下车提醒、搜索结果），
+   `matrix/detail` 请求优先用 `routeDirId`，合成串只作兜底。
+
+顺带修正：`lib/xichang.mjs` 同步同一套解析，CLI 拿合成 lineId 也能查。
+
+### 西昌换向、首末班、城市表（v1.7.4）
+
+**换向芯片 + 首末班**：西昌没有「按名字查线路」的接口（`lines` 被白名单拦掉），
+方向芯片原来靠它配对，于是芯片不画 —— 而每个方向的首末班就画在芯片第二行，一起没了。
+现在 `XichangClient.directions()` 自己配方向：先用附近数据里同名线路出现过的方向，
+再兜底探测 `routeDirId ± 1`（实测 39路=412/413、16路=88/89、107路=184/185 都相邻；
+环线如 1路=2 没有反向，就只给一条，前端照样显示首末班）；站表加 10 分钟缓存，
+换向只多一次请求。`stationMatrix` 回传 `directions`，前端两颗芯片各自带「首班/末班」。
+
+**点另一方向会弹回原方向**：方向芯片有两条渲染路径（`renderLineDirections` /
+`renderDetailDirections`），都往 `#ddirs` 画。最后生效的那条点击走
+`switchLineDirection(lineId)`，只设了 `view.lineId`、**没设 `view.routeDirId`**，
+下一次 matrix 又按旧方向查（日志：`matrix lineId=88` 紧跟在 `detail lineId=89` 后面），
+界面就被拉回去。现在两条路径都把数字方向 ID 传下去。顺手修了
+`loadDetailDirections` 的竞态：它的「保留值」在函数开头就取好，matrix 后到时
+会被 `lines` 的空结果覆盖，芯片会整个消失。
+
+新增 `test/dir-smoke.mjs`（真 DOM + 假 bridge）：打开 16路 → 点另一方向 →
+断言 matrix 请求的 lineId 换成 89、高亮跟着换、1.2 秒内不回弹。
+
+**凉山为什么一直是灰的**：车来了的节点表里凉山 `covered=false`，城市表合并时只丢掉
+「已被掌上公交覆盖」的几个（德阳/广元/广安/甘孜/阿坝），凉山没人接手就留成灰条 ——
+可州府西昌早就有实时车辆了。现在凉山直接指到 `xc-xichang`，副标题「州府西昌 ·
+有实时车辆 · 无线路搜索」；凉山与西昌指向同一数据源，只给名字对得上的那行标「当前」。
+
+**西昌为什么在「其它」**：分组用的手写首字母表 `CITY_INITIAL` 里没有「西昌」，
+取不到首字母就落到 `#`（其它）。补 `西昌:'X'`，归到 X 组。
+
+**同一条线画两格（26路 26路）**：西昌 `seq=2` 按**物理站点**返回，同一条线的上下行
+各来一条记录；首页格子只写线路名、不显示方向，两条就画成两格。现在组装站点卡片时
+按线路名去重（留第一条），`allArrivals` 保留全部方向 —— 搜索筛线路和详情页换向照旧。
 
 ### 站名条排版重做 + 最近站徽标（v9.8）
 

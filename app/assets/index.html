@@ -888,7 +888,7 @@
     <button id="cityClose" class="iconbtn">✕</button>
   </div>
   <div id="cityList" class="citylist"></div>
-  <div class="cityfoot">数据来自车来了 + 掌上公交；标灰的城市暂无实时公交</div>
+  <div class="cityfoot">数据来自车来了 + 掌上公交 + 西昌（月城公交实时）；标灰的城市暂无实时公交</div>
 </div>
 
 <!-- 发现新版本时的弹窗：比 toast 显眼，且能直接点「立即更新」 -->
@@ -1323,6 +1323,9 @@
     name: "home",        /* 初始就在首页；showView() 会继续维护 */
     open: false,
     lineId: null,
+    /* 数据源给的方向 ID（西昌是数字 routeDirId）。有就优先用它查详情/矩阵：
+     * 合成 lineId「1|观鸟岛湿地公园」不是协议参数，服务器会直接断连。 */
+    routeDirId: "",
     lineName: null,
     stationId: null,
     stationName: null,
@@ -2395,6 +2398,7 @@
       if (!opts.lineId) return;
       openDetail({
         lineId: opts.lineId,
+        routeDirId: opts.routeDirId || "",
         lineName: name,
         stationId: opts.stationId || group.stationId,
         stationName: group.name,
@@ -2418,6 +2422,7 @@
     var preStart = a.preStartTime || a.preArrivalTime || "";
     return appendGridCell(box, group, {
       lineId: a.lineId,
+      routeDirId: a.routeDirId || "",
       lineName: a.lineName,
       stationId: a.stationId,
       stationOrder: a.stationOrder,
@@ -3291,7 +3296,7 @@
       chip.appendChild(timeEl);
       chip.onclick = function () {
         if (dir.lineId === lv.lineId) return;
-        run(function () { return switchLineDirection(dir.lineId); });
+        run(function () { return switchLineDirection(dir.lineId, dir.routeDirId || dir.lineId); });
       };
       box.appendChild(chip);
     });
@@ -3449,11 +3454,15 @@
   }
 
   /* 线路页切方向：同一条线的另一头，尽量保住当前选中的站 */
-  async function switchLineDirection(lineId) {
+  async function switchLineDirection(lineId, routeDirId) {
     var keep = state.station ? state.station.stationId : null;
-    var detail = await rpc("detail", { lineId: lineId });
+    /* 详情页的方向芯片有两条渲染路径（线路页 / 详情页），两边都会进到这里。
+       西昌这类数据源的方向 ID 是数字 routeDirId，必须原样带下去，
+       否则下一次 matrix 又按旧的合成 lineId 查，界面会「弹回」原方向。 */
+    var detail = await rpc("detail", { lineId: routeDirId || lineId });
     var lv = state.lineView || {};
     lv.lineId = detail.lineId || lineId;
+    lv.routeDirId = routeDirId || lv.routeDirId || "";
     lv.name = detail.name || lv.name;
     lv.startSn = detail.startSn || "";
     lv.endSn = detail.endSn || "";
@@ -3473,6 +3482,7 @@
     lv.buses = [];
     lv.busesAt = 0;
     view.lineId = lv.lineId;
+    view.routeDirId = routeDirId || lv.routeDirId || "";
     view.lineName = lv.name;
     if (station) {
       view.stationId = station.stationId;
@@ -3530,6 +3540,7 @@
       card.onclick = function () {
         openDetail({
           lineId: a.lineId,
+          routeDirId: a.routeDirId || "",
           lineName: a.lineName,
           stationId: a.stationId || stop.stationId,
           stationName: a.stationName || stop.name,
@@ -3547,6 +3558,10 @@
      opts.scroll —— 进来后自动滚到离我最近的那一站并标注 */
   async function openDetail(opts) {
     view.lineId = opts.lineId;
+    view.routeDirId = opts.routeDirId || "";
+    /* 方向是不是数据源（matrix）自己给的。西昌没有 lines 接口，
+       必须靠 matrix；这个标记用来挡住 loadDetailDirections 的空结果把方向清掉。 */
+    view.directionsFromSource = false;
     view.lineName = opts.lineName;
     view.stationId = opts.stationId;
     view.stationName = opts.stationName;
@@ -3586,11 +3601,20 @@
   }
 
   async function loadDetailDirections() {
+    /* 有些数据源（西昌）没有「按名字查线路」的接口，方向只能由 matrix 带回来。
+       这里有两个坑，都要挡：
+         ① 请求还在路上时 matrix 已经回来了 —— 回来后再覆盖会把方向清掉；
+         ② 查空了就保留已有的，不要覆盖成空数组。 */
+    if (view.directionsFromSource) return;
+    var keep = view.directions || [];
+    var dirs = [];
     try {
-      view.directions = view.lineName ? await loadDirections(view.lineName) : [];
+      dirs = view.lineName ? await loadDirections(view.lineName) : [];
     } catch (e) {
-      view.directions = [];
+      dirs = [];
     }
+    if (view.directionsFromSource) return;   // 等待期间 matrix 已经给了方向，别拿空结果覆盖
+    view.directions = dirs.length ? dirs : keep;
     /* 方向芯片在合并页里是「方向 + 首末班」两行（renderLineDirections 画的），
        这里不再用详情页那套单行 chip 覆盖它 */
     if (state.lineView) {
@@ -3604,29 +3628,45 @@
   function renderDetailDirections() {
     var box = $("ddirs");
     box.innerHTML = "";
-    if (!view.directions || view.directions.length < 2) return;
+    if (!view.directions || !view.directions.length) return;
+    /* 当前方向：西昌这类数据源的 view.lineId 是「1|开往」合成串，
+       真正的方向 ID 在 view.routeDirId 里，两个都算 */
+    var activeId = String(view.routeDirId || view.lineId || "");
     view.directions.forEach(function (dir) {
+      var on = String(dir.lineId) === activeId || String(dir.lineId) === String(view.lineId);
       var chip = document.createElement("div");
-      chip.className = "chip" + (dir.lineId === view.lineId ? " on" : "");
-      chip.textContent = dirLabel(dir);
-      chip.onclick = function () {
-        if (dir.lineId !== view.lineId) switchDetailDirection(dir.lineId);
-      };
+      chip.className = "chip dirchip" + (on ? " on" : "");
+      /* 第一行方向，第二行这一方向的首末班（各方向不一样，得分开显示）。
+         只有一条方向时仍要画——首末班全靠它显示。 */
+      var nameEl = document.createElement("span");
+      nameEl.className = "dirname";
+      nameEl.textContent = dirLabel(dir) || "当前方向";
+      chip.appendChild(nameEl);
+      var timeEl = document.createElement("span");
+      timeEl.className = "dirtime";
+      timeEl.textContent = serviceTimeText(dir.firstTime, dir.lastTime);
+      chip.appendChild(timeEl);
+      if (!on && view.directions.length > 1) {
+        chip.onclick = function () {
+          switchDetailDirection(dir.lineId, dir.routeDirId || dir.lineId);
+        };
+      }
       box.appendChild(chip);
       centerActiveChip(box);
     });
   }
 
   /* 详情页切方向：同一物理站两个方向共用 sId，靠它把「当前站」带过去 */
-  async function switchDetailDirection(lineId) {
+  async function switchDetailDirection(lineId, routeDirId) {
     $("dbuses").innerHTML = "";
     $("dlist").innerHTML = '<div class="empty">切换方向…</div>';
     try {
-      var detail = await rpc("detail", { lineId: lineId });
+      var detail = await rpc("detail", { lineId: routeDirId || lineId });
       var st = detail.stations.find(function (x) { return x.stationId === view.stationId; }) ||
                detail.stations.find(function (x) { return x.name === view.stationName; }) ||
                detail.stations[0];
       view.lineId = lineId;
+      view.routeDirId = routeDirId || "";
       view.fromOrder = st ? st.order : 1;
       if (st) { view.stationName = st.name; view.stationId = st.stationId; }
       $("dtitle").textContent = detail.name + "路 · " + (view.stationName || "");
@@ -3643,7 +3683,11 @@
     /* scrollStations：强制/禁止站名条滚到最近站，覆盖默认规则 */
     var forceScrollStations = options && options.scrollStations;
     try {
-      var data = await rpc("matrix", { lineId: view.lineId, fromOrder: view.fromOrder, window: 80 });
+      var data = await rpc("matrix", {
+        lineId: view.routeDirId || view.lineId,
+        fromOrder: view.fromOrder,
+        window: 80
+      });
       view.data = data;
       /* 合并页：站名芯片、导航、收藏/盯站行都读 state.station，
          这里按当前站序把它对齐到 matrix 返回的站点（带经纬度）。 */
@@ -3705,14 +3749,27 @@
       });
       var lv = state.lineView || {};
       lv.lineId = data.line.lineId;
+      /* 方向 ID：西昌协议要数字 routeDirId，合成 lineId 查不动 */
+      lv.routeDirId = view.routeDirId || "";
       lv.name = data.line.name;
       lv.startSn = data.line.startSn || "";
       lv.endSn = data.line.endSn || "";
       lv.firstTime = data.line.firstTime || "";
       lv.lastTime = data.line.lastTime || "";
       lv.stations = lineStations;
+      /* 数据源自己给的换向方向（西昌等没有 lines 接口的城市）优先 */
+      if (data.directions && data.directions.length) {
+        view.directions = data.directions;
+        view.directionsFromSource = true;
+        if (!view.routeDirId && data.directions.length === 1) {
+          view.routeDirId = String(data.directions[0].lineId || "");
+        }
+      }
       if (view.directions && view.directions.length) lv.directions = view.directions;
       else if (!lv.directions) lv.directions = state.directions || [];
+      lv.routeDirId = view.routeDirId || lv.routeDirId || "";
+      renderLineDirections();
+      renderDetailDirections();
       if (!lv.buses) lv.buses = [];
       if (!lv.busesAt) lv.busesAt = 0;
       state.lineView = lv;
@@ -4106,6 +4163,7 @@
           chip.onclick = function () {
             openDetail({
               lineId: a.lineId,
+              routeDirId: a.routeDirId || "",
               lineName: a.lineName,
               stationId: a.stationId,
               stationName: stop.name,
@@ -4242,6 +4300,7 @@
         chip.onclick = function () {
           openDetail({
             lineId: a.lineId,
+            routeDirId: a.routeDirId || "",
             lineName: a.lineName,
             stationId: a.stationId,
             stationName: station.name,
@@ -4295,6 +4354,7 @@
       /* 用页面实际显示的线路（state.lineView），它来自 matrix 返回的 lineId；
          view.lineId 是「请求的线路」，换方向/别名时可能和显示的不一致 */
       lineId: (state.lineView && state.lineView.lineId) || view.lineId,
+      routeDirId: (state.lineView && state.lineView.routeDirId) || view.routeDirId || "",
       lineName: view.lineName,
       stationId: st.stationId,
       stationName: st.name,
@@ -4550,6 +4610,7 @@
       try {
         await openDetail({
           lineId: fav.lineId,
+          routeDirId: fav.routeDirId || "",
           lineName: fav.lineName || "",
           stationId: fav.stationId,
           stationName: fav.stationName || "",
@@ -4722,6 +4783,7 @@
       card.onclick = function () {
         openDetail({
           lineId: fav.lineId,
+          routeDirId: fav.routeDirId || "",
           lineName: fav.lineName,
           stationId: fav.stationId,
           stationName: fav.stationName,
@@ -5113,7 +5175,7 @@
   /* 由网关数据源登记的城市名 → 车来了节点，用于城市选择页的提示 */
   function nodeNoteOf(item) {
     if (item.covered === false) return item.note || "暂无实时数据";
-    if (item.transitOnly) return "有实时车辆 · 无线路搜索";
+    if (item.transitOnly) return item.note || "有实时车辆 · 无线路搜索";
     return item.level === "county" ? "区县节点" : "市本级";
   }
 
@@ -5146,7 +5208,7 @@
     南充:'N', 宜宾:'Y', 达州:'D', 雅安:'Y', 巴中:'B', 资阳:'Z',
     都江堰:'D', 崇州:'C', 彭州:'P', 简阳:'J', 温江:'W', 双流:'S', 广汉:'G', 江油:'J',
     隆昌:'L', 荣县:'R', 仁寿:'R', 荥经:'Y', 岳池:'Y', 道孚:'D', 甘孜县:'G',
-    德阳:'D', 广元:'G', 广安:'G', 阿坝:'A', 甘孜:'G', 凉山:'L',
+    德阳:'D', 广元:'G', 广安:'G', 阿坝:'A', 甘孜:'G', 凉山:'L', 西昌:'X',
     阿坝藏族羌族自治州:'A'
   };
   function cityInitial(name) {
@@ -5189,7 +5251,9 @@
         lastInitial = initial;
       }
       var disabled = item.covered === false && !item.fallbackName;
-      var active = item.cityId && String(item.cityId) === cityId();
+      /* 「凉山」和「西昌」指向同一个数据源：只有名字和当前城市一致的那行标「当前」 */
+      var active = item.cityId && String(item.cityId) === cityId() &&
+        (!city || !city.name || String(item.name) === String(city.name));
       html += '<div class="cityrow' + (active ? " active" : "") + (disabled ? " dim" : "") + '"' +
         ' data-id="' + (item.cityId || "") + '" data-name="' + item.name + '"' +
         (disabled ? ' data-disabled="1"' : '') + '>' +
@@ -5346,6 +5410,7 @@
       var t = watch.target;
       openDetail({
         lineId: t.lineId,
+        routeDirId: t.routeDirId || "",
         lineName: t.lineName,
         stationId: t.stationId,
         stationName: t.stationName,
@@ -5653,7 +5718,8 @@
     }
     alightDest = { name: target.name, order: target.order, stationId: target.stationId,
                    lat: target.lat || 0, lng: target.lng || 0 };
-    alightLine = { lineId: view.lineId, lineName: view.lineName || "", kind: "bus",
+    alightLine = { lineId: view.lineId, routeDirId: view.routeDirId || "",
+                   lineName: view.lineName || "", kind: "bus",
                    toward: (view.data && view.data.line && view.data.line.endSn) || "" };
     alightRunning = true;
     alightSpeakEvent = 0;
@@ -5874,6 +5940,7 @@
       }
       openDetail({
         lineId: alightLine.lineId,
+        routeDirId: alightLine.routeDirId || "",
         lineName: alightLine.lineName || "",
         stationId: dest.stationId,
         stationName: dest.name,
@@ -7655,6 +7722,7 @@
     }
     toggleFav({
       lineId: state.detail.lineId,
+      routeDirId: (state.lineView && state.lineView.routeDirId) || "",
       lineName: state.detail.name,
       endSn: state.detail.endSn || "",
       stationId: state.station.stationId,
@@ -7681,6 +7749,7 @@
     }
     toggleFav({
       lineId: view.lineId,
+      routeDirId: view.routeDirId || "",
       lineName: view.lineName,
       endSn: (view.data && view.data.line && view.data.line.endSn) || "",
       stationId: view.stationId,
