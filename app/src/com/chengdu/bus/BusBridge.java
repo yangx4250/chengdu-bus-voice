@@ -31,25 +31,41 @@ public final class BusBridge {
      * 换城市时从 map 里取，没有就新建一个。
      */
     private final ConcurrentHashMap<String, ChelaileClient> clients = new ConcurrentHashMap<>();
+    /** 掌上公交客户端缓存（车来了没覆盖的城市）。 */
+    private final ConcurrentHashMap<String, MyGolbsClient> mgClients = new ConcurrentHashMap<>();
+
+    /** 从参数里解析出 cityId（mygolbs 城市返回 mg- 前缀，其余是车来了数字 id）。 */
+    private String cityIdOf(JSONObject args) {
+        String id = args.optString("cityId", "");
+        if (id != null && !id.isEmpty()) return id;
+        String name = args.optString("city", "");
+        if (name != null && !name.isEmpty()) {
+            String mg = MyGolbsClient.cityIdOfName(name);
+            if (!mg.isEmpty()) return mg;
+            String cl = ChelaileClient.cityIdOf(name);
+            if (!cl.isEmpty()) return cl;
+        }
+        return ChelaileClient.CITY_ID;
+    }
 
     private ChelaileClient clientFor(JSONObject args) {
-        String id = args.optString("cityId", "");
-        String name = args.optString("city", "");
-        ChelaileClient probe = clients.get(ChelaileClient.CITY_ID);
-        String key = id;
-        if (key == null || key.isEmpty()) {
-            if (name != null && !name.isEmpty()) {
-                key = ChelaileClient.cityIdOf(name);
-            }
-        }
-        if (key == null || key.isEmpty()) {
-            key = (probe == null ? new ChelaileClient() : probe).cityId();
-        }
-        final String want = key;
+        String want = cityIdOf(args);
         ChelaileClient cached = clients.get(want);
         if (cached == null) {
             cached = new ChelaileClient().setCity(want);
             ChelaileClient prev = clients.putIfAbsent(want, cached);
+            if (prev != null) cached = prev;
+        }
+        return cached;
+    }
+
+    /** 掌上公交客户端（仅 mg- 城市调用）。 */
+    private MyGolbsClient mgClientFor(JSONObject args) {
+        String want = cityIdOf(args);
+        MyGolbsClient cached = mgClients.get(want);
+        if (cached == null) {
+            cached = new MyGolbsClient(want);
+            MyGolbsClient prev = mgClients.putIfAbsent(want, cached);
             if (prev != null) cached = prev;
         }
         return cached;
@@ -619,14 +635,21 @@ public final class BusBridge {
     }
 
     private Object dispatch(String method, JSONObject args) throws Exception {
+        /* 按城市分流：掌上公交城市（mg-）走 MyGolbsClient，其余走车来了。
+           两家输出 JSON 结构一致，页面无需感知数据源。 */
+        final boolean mg = MyGolbsClient.isMine(cityIdOf(args));
         switch (method) {
             case "lines":
-                return clientFor(args).searchLines(args.optString("key"));
+                return mg ? mgClientFor(args).searchLines(args.optString("key"))
+                          : clientFor(args).searchLines(args.optString("key"));
             case "stations":
-                return clientFor(args).searchStations(args.optString("key"));
+                return mg ? mgClientFor(args).searchStations(args.optString("key"))
+                          : clientFor(args).searchStations(args.optString("key"));
             case "pois":
+                if (mg) return new JSONArray();   // 掌上公交没有 POI 搜索
                 return clientFor(args).searchPois(args.optString("key"));
             case "transit": {
+                if (mg) throw new IllegalArgumentException("该城市暂不支持跨城换乘规划");
                 JSONObject from = args.optJSONObject("from");
                 JSONObject dest = args.optJSONObject("dest");
                 if (from == null || dest == null) throw new IllegalArgumentException("缺少起点或终点");
@@ -636,9 +659,11 @@ public final class BusBridge {
                         args.optString("strategy", "0"));
             }
             case "detail":
-                return clientFor(args).lineDetail(args.optString("lineId"));
+                return mg ? mgClientFor(args).lineDetail(args.optString("lineId"))
+                          : clientFor(args).lineDetail(args.optString("lineId"));
             case "arrivals":
-                return clientFor(args).arrivals(args.optString("lineId"), args.getJSONObject("station"));
+                return mg ? mgClientFor(args).arrivals(args.optString("lineId"), args.getJSONObject("station"))
+                          : clientFor(args).arrivals(args.optString("lineId"), args.getJSONObject("station"));
             case "synth": {
                 String base64 = speech.synthesizeBase64(args.optString("text"));
                 return new JSONObject().put("base64", base64).put("bytes", base64.length());
@@ -648,12 +673,13 @@ public final class BusBridge {
                 return new JSONObject().put("base64", base64).put("bytes", base64.length());
             }
             case "matrix":
-                return clientFor(args).stationMatrix(
-                        args.optString("lineId"),
-                        args.optInt("fromOrder", 1),
-                        args.optInt("window", 10));
+                return mg ? mgClientFor(args).stationMatrix(
+                        args.optString("lineId"), args.optInt("fromOrder", 1), args.optInt("window", 10))
+                          : clientFor(args).stationMatrix(
+                        args.optString("lineId"), args.optInt("fromOrder", 1), args.optInt("window", 10));
             case "nearby":
-                return clientFor(args).nearby(args.optDouble("lat"), args.optDouble("lng"), args.optInt("limit", 5));
+                return mg ? mgClientFor(args).nearby(args.optDouble("lat"), args.optDouble("lng"), args.optInt("limit", 5))
+                          : clientFor(args).nearby(args.optDouble("lat"), args.optDouble("lng"), args.optInt("limit", 5));
             case "location": {
                 long timeout = args.optLong("timeout", 12000);
                 Locator.Fix fix = Locator.current(activity, timeout);
@@ -661,10 +687,40 @@ public final class BusBridge {
             }
             case "permissions":
                 return new JSONObject().put("location", Locator.hasPermission(activity));
-            case "city":
-                return clientFor(args).assertCity(args.optDouble("lat"), args.optDouble("lng"));
-            case "citytable":
-                return ChelaileClient.cityTable();
+            case "city": {
+                JSONObject info = clientFor(args).assertCity(args.optDouble("lat"), args.optDouble("lng"));
+                /* 车来了没覆盖的市州（德阳/广元/广安/甘孜/阿坝），若掌上公交有数据，
+                   就转成 mg- 城市，让定位到这些地方的人也能查车。凉山维持无数据。 */
+                boolean covered;
+                try { covered = info.optBoolean("covered", true); }
+                catch (Exception e) { covered = true; }
+                if (!covered) {
+                    String cityName = info.optString("city", "");
+                    String mgId = MyGolbsClient.cityIdOfName(cityName);
+                    /* 甘孜州车来了返回的名字可能是「甘孜藏族自治州」或「甘孜」 */
+                    if (mgId.isEmpty() && cityName.contains("甘孜")) mgId = "mg-ganzi";
+                    if (mgId.isEmpty() && cityName.contains("阿坝")) mgId = "mg-aba";
+                    if (mgId.isEmpty() && cityName.contains("德阳")) mgId = "mg-deyang";
+                    if (mgId.isEmpty() && cityName.contains("广元")) mgId = "mg-guangyuan";
+                    if (mgId.isEmpty() && cityName.contains("广安")) mgId = "mg-guangan";
+                    if (!mgId.isEmpty()) {
+                        JSONObject out = new JSONObject();
+                        out.put("cityId", mgId);
+                        out.put("city", cityName);
+                        out.put("covered", true);
+                        out.put("source", "mygolbs");
+                        return out;
+                    }
+                }
+                return info;
+            }
+            case "citytable": {
+                /* 城市选择器：车来了城市 + 掌上公交补充城市合并 */
+                JSONArray all = ChelaileClient.cityTable();
+                JSONArray extra = MyGolbsClient.cityTable();
+                for (int i = 0; i < extra.length(); i++) all.put(extra.opt(i));
+                return all;
+            }
             default:
                 throw new IllegalArgumentException("未知方法 " + method);
         }

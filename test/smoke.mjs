@@ -13,6 +13,7 @@ import {
   isUrgent,
 } from '../lib/announce.mjs';
 import { splitForSpeech } from '../lib/speech.mjs';
+import { MyGolbsClient, isMine, cityNameOfId, cityIdOfName, MG_CITIES } from '../lib/mygolbs.mjs';
 
 let passed = 0;
 const check = async (name, fn) => {
@@ -185,6 +186,60 @@ await check('长文本切成 ≤180 字', async () => {
   assert.ok(chunks.length > 1);
   assert.ok(chunks.every((chunk) => chunk.length <= 180));
   assert.equal(chunks.join(''), long);
+});
+
+await check('掌上公交：城市识别（mg- 前缀与车来了数字 id 不冲突）', async () => {
+  assert.equal(isMine('mg-deyang'), true);
+  assert.equal(isMine('007'), false);          // 成都仍是车来了
+  assert.equal(isMine('mg-guangan'), true);
+  assert.equal(cityNameOfId('mg-deyang'), '德阳市');
+  assert.equal(cityIdOfName('德阳'), 'mg-deyang');
+  assert.equal(cityIdOfName('广安市'), 'mg-guangan');
+  assert.equal(MG_CITIES.length, 5);
+});
+
+await check('掌上公交：线路搜索按 lineName+方向去重，首末站正确', async () => {
+  const c = new MyGolbsClient('mg-deyang');
+  const lines = await c.searchLines('2路');
+  assert.ok(lines.length > 0, '应搜到线路');
+  const l = lines.find((x) => x.name === '2路');
+  assert.ok(l, '应含 2路');
+  assert.ok(l.startSn && l.endSn, '首末站不能为空');
+  assert.ok(l.lineId === '2路', 'lineId 是线路名');
+  assert.ok([0, 1].includes(l.direction));
+});
+
+await check('掌上公交：附近站点用坐标能拿到（CMD=106）', async () => {
+  const c = new MyGolbsClient('mg-deyang');
+  const r = await c.nearby(31.1289, 104.3979, 3);
+  assert.ok(r.stops.length >= 2, '应返回附近站点');
+  assert.ok(r.stops[0].name, '站点要有名字');
+  assert.ok(r.stops[0].lat && r.stops[0].lng, '站点要有坐标（导航要用）');
+  assert.ok(r.stops[0].lineNameList.length > 0, '站点要关联线路');
+  assert.ok(r.allArrivals.length > 0, '应有到站信息');
+});
+
+await check('掌上公交：线路站表与到站（CMD=103/104）', async () => {
+  const c = new MyGolbsClient('mg-deyang');
+  const detail = await c.lineDetail('2路|0');
+  assert.ok(detail.stations.length > 10, '站表应有多站');
+  assert.ok(detail.firstTime && detail.lastTime, '首末班时间要有');
+  assert.equal(detail.stations[0].order, 1, '站序从 1 开始');
+  const st = detail.stations[7];
+  const buses = await c.arrivals('2路|0', st);
+  assert.ok(Array.isArray(buses), '到站返回数组');
+  if (buses.length) {
+    assert.ok(buses[0].plate, '车辆要有车牌');
+    assert.ok(buses[0].stationsAway >= 0);
+  }
+});
+
+await check('掌上公交：三城线路目录都非空（德阳/广元/广安）', async () => {
+  for (const id of ['mg-deyang', 'mg-guangyuan', 'mg-guangan']) {
+    const c = new MyGolbsClient(id);
+    const lines = await c.searchLines('');
+    assert.ok(lines.length > 20, id + ' 应有多条线路，实际 ' + lines.length);
+  }
 });
 
 console.log(`\n全部通过：${passed} 项`);

@@ -4791,6 +4791,52 @@ if (stage21.length) {
 }
 console.log('✓ 更新源顺序通过：首次检测与下载都以 Gitee 为第一顺位、不会被占位符跳过');
 
+/* ---------------------- 掌上公交（mygolbs）：车来了没覆盖的城市 */
+
+{
+  const fail = [];
+  const br = readSafe('app/src/com/chengdu/bus/BusBridge.java');
+  const mg = readSafe('app/src/com/chengdu/bus/MyGolbsClient.java');
+
+  if (!/class MyGolbsClient/.test(mg)) fail.push('缺少 MyGolbsClient.java');
+  if (!/h5\.mygolbs\.com\/ApiData\.do/.test(mg)) fail.push('接口地址不对');
+  /* Origin 头是命门：错了返回 47 字节占位串，永远查不到 */
+  if (!/Origin.*h5\.mygolbs\.com/.test(mg) && !/setRequestProperty\("Origin", ORIGIN\)/.test(mg)) {
+    fail.push('没有设置正确的 Origin 头');
+  }
+  /* 城市必须用 mg- 前缀，和车来了数字 id 不冲突 */
+  if (!/mg-/.test(mg)) fail.push('mygolbs 城市没有用 mg- 前缀');
+  if (!/isMine/.test(mg)) fail.push('缺少 isMine() 判断');
+
+  /* BusBridge 要按城市分流 */
+  if (!/MyGolbsClient\.isMine/.test(br)) fail.push('BusBridge 没有按城市分流到掌上公交');
+  if (!/mgClientFor/.test(br)) fail.push('BusBridge 没有掌上公交客户端缓存');
+  /* 关键数据方法都要分流：nearby / detail / arrivals / lines */
+  for (const m of ['nearby', 'lineDetail', 'arrivals', 'searchLines']) {
+    if (!new RegExp('mgClientFor\\(args\\)\\.' + m).test(br)) {
+      fail.push('方法 ' + m + ' 没有分流到掌上公交');
+    }
+  }
+  /* 城市选择器要合并两家 */
+  if (!/MyGolbsClient\.cityTable\(\)/.test(br)) fail.push('城市选择器没有合并掌上公交城市');
+  /* 定位到无数据市州时要转成 mg- 城市 */
+  if (!/covered/.test(br) || !/mg-deyang/.test(br)) {
+    fail.push('定位到车来了未覆盖城市时没有转成掌上公交城市');
+  }
+
+  /* 覆盖的城市 */
+  for (const city of ['德阳市', '广元市', '广安市', '甘孜', '阿坝']) {
+    if (!mg.includes(city)) fail.push('掌上公交城市表缺少 ' + city);
+  }
+
+  if (fail.length) {
+    console.error('✗ UI 冒烟失败（掌上公交）：');
+    for (const f of fail) console.error('  - ' + f);
+    process.exit(1);
+  }
+  console.log('✓ 掌上公交通过：mg- 前缀分流、Origin 命门、四大数据方法都分流、城市表合并、定位转换');
+}
+
 console.log('✓ Gitee 版本选择通过：拉多条 release 按版本号取最大、跳过 prerelease');
 
 console.log('✓ 在线更新通过：入口与进度条、桥接方法、全状态处理、权限引导、启动静默检查、清单与版本比较');
