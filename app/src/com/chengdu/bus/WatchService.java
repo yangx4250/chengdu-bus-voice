@@ -468,7 +468,8 @@ public final class WatchService extends Service {
             Log.i(TAG, "亮屏前台，由页面播报（服务跳过避免重复）");
             return;
         }
-        String text = BusText.lineLabel(lineName) + "，" + stationName + "站，" + what + "。";
+        /* 念出来用口语数字（716 → 七幺六）；通知标题仍显示原文 */
+        String text = BusText.lineSpeech(lineName) + "，" + stationName + "站，" + what + "。";
         Log.i(TAG, "后台/息屏播报：" + text);
         /* 锁屏通知（v1.0.44）：前台服务自带的常驻通知是 IMPORTANCE_LOW，
            锁屏上只会折成一行灰字。这里另发一条高优先级通知，息屏时能直接看到

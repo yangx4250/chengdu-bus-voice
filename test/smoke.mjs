@@ -156,7 +156,7 @@ await check('播报文案可读', async () => {
     stationName: '天府广场南',
     buses: [{ stationsAway: 2, etaSeconds: 240, arrived: false }],
   });
-  assert.match(text, /16路/);
+  assert.match(text, /幺六路/);   // 多位数逐位念，不念成「十六路」
   assert.match(text, /2 站/);
   assert.match(text, /4 分钟/);
 
@@ -164,6 +164,25 @@ await check('播报文案可读', async () => {
     { name: '大业路', arrivals: [{ lineName: '8', stationsAway: 3, etaSeconds: 600, arrived: false }] },
   ]);
   assert.match(nearby, /大业路站/);
+});
+
+await check('播报线路号只念数字（716 → 七幺六，不念「七百一十六」）', async () => {
+  const { lineLabel, speakDigits } = await import('../lib/announce.mjs');
+  assert.equal(speakDigits('716'), '七幺六');
+  assert.equal(speakDigits('16'), '幺六');
+  assert.equal(speakDigits('1'), '一');          // 个位数照常念「一」
+  assert.equal(speakDigits('39A'), '三九A');      // 字母原样
+  assert.equal(speakDigits('K1'), 'K一');
+  assert.equal(speakDigits('1001M'), '幺零零幺M');
+  assert.equal(lineLabel('716'), '七幺六路');
+  assert.equal(lineLabel('1'), '一路');
+  assert.equal(lineLabel('1001M'), '幺零零幺M');  // 非纯数字不加「路」
+  const text = buildStationAnnouncement({
+    lineName: '716', toward: '火车南站', stationName: '天府广场南',
+    buses: [{ stationsAway: 2, etaSeconds: 240, arrived: false }],
+  });
+  assert.match(text, /^七幺六路，/);
+  assert.ok(!/七百一十六/.test(text), '不能念成中文数词：' + text);
 });
 
 await check('预估时间精确到 30 秒', async () => {
@@ -282,7 +301,10 @@ await check('西昌：换乘规划能拿到真实线路（含起终点/首末班
   const c = new XichangClient();
   let res;
   try {
-    res = await c.transit(27.8944, 102.2644, '州一医院', 27.9050, 102.2750, '武警州支队');
+    /* 上游 /search 会随运营调整返回空方案（2026-11-27 实测：
+       原「州一医院→武警州支队」已无方案，返回 {"result":[]}）；
+       换成当天实测仍有 2 条方案的市中心坐标对，继续验协议字段。 */
+    res = await c.transit(27.8861, 102.2820, '航天大道', 27.8950, 102.2650, '火把广场');
   } catch (e) {
     if (e.waf) { console.log('   （WAF 限流，跳过）'); return; }
     throw e;

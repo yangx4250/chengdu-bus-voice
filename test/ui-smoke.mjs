@@ -832,10 +832,10 @@ else {
 
   /* 设置页二级菜单：进入分类后按返回应回设置主页，而不是直接回首页 */
   {
-    document.getElementById('setVoice').onclick();
+    document.getElementById('setDiag').onclick();
     await new Promise((r) => setTimeout(r, 100));
-    if (String(document.getElementById('setPageVoice').className).includes('hidden')) {
-      failures.push('点「语音与播报」没有进入二级页');
+    if (String(document.getElementById('setPageDiag').className).includes('hidden')) {
+      failures.push('点「后台诊断」没有进入二级页');
     }
     // 模拟系统返回键
     window.cdBusBackView && window.cdBusBackView();
@@ -884,6 +884,15 @@ else {
     if (!mlist.includes('盯站') || !mlist.includes('下车提醒')) {
       failures.push('首次弹窗内容不完整：' + mlist.slice(0, 80));
     }
+    /* 只能点弹窗里的按钮关：点空白（遮罩）和返回键都不许 */
+    if (typeof modal.onclick === 'function') failures.push('弹窗还绑着点击关闭（点空白也能关）');
+    modal.click && modal.click();
+    await new Promise((r) => setTimeout(r, 30));
+    if (String(modal.className).includes('hidden')) failures.push('点弹窗空白处就关掉了（必须点按钮）');
+    window.cdBusBackView && window.cdBusBackView();
+    await new Promise((r) => setTimeout(r, 30));
+    if (String(modal.className).includes('hidden')) failures.push('按返回键就把弹窗关了（必须点按钮）');
+
     document.getElementById('guideOk').onclick();
     await new Promise((r) => setTimeout(r, 50));
     if (!String(modal.className).includes('hidden')) {
@@ -960,7 +969,7 @@ const spoken = typeof window.cdBusNearbyText === 'function'
   : '';
 if (!spoken) failures.push('附近播报文案为空');
 console.log('  实际播报：' + spoken);
-if (/716路/.test(spoken)) failures.push('播报念了已收班的线路：' + spoken);
+if (/716路|七幺六/.test(spoken)) failures.push('播报念了已收班的线路：' + spoken);
 if (/43 站/.test(spoken)) failures.push('播报念了收班线路的陈旧站数：' + spoken);
 if (!/往花园公交站/.test(spoken)) failures.push('播报没有念方向：' + spoken);
 if (!/待发车 09:24/.test(spoken)) failures.push('播报没有念待发车时间：' + spoken);
@@ -992,12 +1001,12 @@ if (!/\.searchgo\s*\{[^}]*width:\s*46px/.test(html)) {
 if (/查询并播报|自动播报开关|「当前位置」|id="near"/.test(html)) failures.push('使用说明里还在讲已删除的功能');
 if (/点击车辆看沿途各站/.test(html)) failures.push('使用说明里还在讲已合并的「车辆页」');
 const guideAll = (html.match(/var GUIDE_FULL = \[([\s\S]*?)\n  \];/) || ['', ''])[1];
-for (const need of ['🔍', '🔄', '三列', '吸顶', '锁屏通知', '字体大小', '盯站', '下车提醒', '导航', '同站其他']) {
+for (const need of ['🔍', '🔄', '三列', '方向', '锁屏通知', '字体大小', '盯站', '下车提醒', '导航', '同站其他']) {
   if (guideAll.indexOf(need) < 0) failures.push('使用说明缺少「' + need + '」相关说明');
 }
 const fullLen = (html.match(/var GUIDE_FULL = \[([\s\S]*?)\n  \];/) || [])[1] || '';
 const secCount = (fullLen.match(/\{ title:/g) || []).length;
-if (secCount < 7) failures.push('完整说明章节太少，实际 ' + secCount + ' 章');
+if (secCount < 5) failures.push('完整说明章节太少，实际 ' + secCount + ' 章');
 /* v1.0.53：首次弹窗和设置页共用同一份 —— 两处都渲染 guideSectionsHtml()，
    且 GUIDE_QUICK 已删除（否则又是两份各写一份）。 */
 if (/GUIDE_QUICK/.test(html)) failures.push('GUIDE_QUICK 没删干净，弹窗和设置页可能不一致');
@@ -4375,7 +4384,8 @@ console.log('✓ 地铁首末班通过：19 条线路双向齐备、时间合法
     fail.push('地铁开提醒前没有先收掉上一条（原生只跑一个服务）');
   }
   /* 地铁播报不能加「路」 */
-  if (!/kind === "metro"\) return alight\.lineName \+ "，"/.test(html)) {
+  /* 地铁的线路名自带「号线/线」，前缀不能再补「路」；数字照样逐位念 */
+  if (!/kind === "metro"\) return speakDigits\(alight\.lineName\) \+ "，"/.test(html)) {
     fail.push('地铁播报前缀没去掉「路」字（会说成「1号线路」）');
   }
   /* 界面：状态条 + 面板按钮 */

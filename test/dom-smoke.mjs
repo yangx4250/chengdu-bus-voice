@@ -191,6 +191,32 @@ for (const e of entries) {
   if (root.getAttribute('data-mode') !== before) fail.push('点整行第二次没切回去');
 }
 
+/* 播报念法：线路号逐位读数字，716 → 七幺六 */
+{
+  const f = dom.window.cdBusLineSpeech;
+  if (typeof f !== 'function') fail.push('没有导出 cdBusLineSpeech');
+  else {
+    const cases = [['716', '七幺六路'], ['16', '幺六路'], ['1', '一路'], ['39A', '三九A路']];
+    for (const [inp, want] of cases) {
+      const got = f(inp);
+      if (got !== want) fail.push('播报念法不对：' + inp + ' → ' + got + '（应为 ' + want + '）');
+    }
+    if (/七百一十六/.test(f('716'))) fail.push('716 还是念成了中文数词');
+  }
+}
+
+/* 设置页：语音入口已移除；「关于 ›」那行显示真实版本，不能留「v—」 */
+{
+  if (doc.getElementById('setVoice')) fail.push('设置页仍挂着「语音与播报」入口（#setVoice）');
+  if (doc.getElementById('setPageVoice')) fail.push('语音二级页 #setPageVoice 还在');
+  if (/class="setname">语音与播报/.test(html)) fail.push('页面里还残留「语音与播报」这一行');
+  const sub = doc.getElementById('setVersionSub');
+  if (!sub) fail.push('设置页找不到版本行 #setVersionSub');
+  else if (!/^版本 v\d+\.\d+/.test(sub.textContent.trim())) {
+    fail.push('「关于」下面的版本号没显示真实版本：' + JSON.stringify(sub.textContent.trim()));
+  }
+}
+
 if (fail.length) {
   console.error('✗ 真 DOM 冒烟失败：');
   for (const f of fail) console.error('  - ' + f);

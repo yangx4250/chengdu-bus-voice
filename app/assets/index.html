@@ -608,7 +608,9 @@
   .guidemodal .gmtext { min-width: 0; }
   .guidemodal .gmtitle { font-size: var(--fs-lg); font-weight: 700; }
   .guidemodal .gmsub { font-size: var(--fs-sm); color: var(--muted); margin-top: 3px; }
-  .guidemodal .gmbtns { display: flex; gap: 10px; margin-top: 16px; }
+  /* 说明变长后按钮要一直看得见：粘在弹窗底部，滚到哪都能点到 */
+  .guidemodal .gmbtns { display: flex; gap: 10px; margin-top: 14px; padding-top: 10px;
+    position: sticky; bottom: -18px; background: var(--card); }
   .guidemodal .gmbtns button { flex: 1; padding: 12px; font-size: var(--fs); }
   .guidemodal .gmprimary { background: var(--accent); color: #fff; border-color: var(--accent);
     font-weight: 600; }
@@ -944,12 +946,6 @@
           <div class="setsub" id="setModeSub">关 · 深色界面</div></div>
         <label class="switch"><input type="checkbox" id="modeSw"><span class="knob"></span></label>
       </div>
-      <div class="setitem" id="setVoice">
-        <div class="seticon">🔊</div>
-        <div class="setinfo"><div class="setname">语音与播报</div>
-          <div class="setsub">测试音量、扬声器、语音合成</div></div>
-        <div class="setarrow">›</div>
-      </div>
       <div class="setitem" id="setDiag">
         <div class="seticon">🛠</div>
         <div class="setinfo"><div class="setname">后台诊断</div>
@@ -991,41 +987,6 @@
           <div class="fp-sub">花园公交站 · P36 · 大约 3 分钟到站</div>
         </div>
         <div class="dhead">字号只影响 App 内文字，不跟随系统「字体大小」设置；改完立即生效。</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 二级：语音与播报 -->
-  <div id="setPageVoice" class="setpage hidden">
-    <div class="sethead">
-      <button id="voiceBack" class="setback">‹</button>
-      <div class="settitle">语音与播报</div>
-    </div>
-    <div class="setbody">
-      <div class="setcard">
-        <div class="kv" style="border:none">
-          <span>网页播放</span>
-          <span><label class="switch" style="display:inline-flex"><input type="checkbox" id="webMode"><span class="knob"></span>语音走 WebView</label></span>
-        </div>
-      </div>
-      <div class="setcard">
-        <div id="diagRows"></div>
-      </div>
-      <div class="setcard">
-        <div class="setcardtitle">播放测试</div>
-        <div class="btns">
-          <button id="dTone">测试音·播放器</button>
-          <button id="dSys">测试·系统音效</button>
-        </div>
-        <div class="btns">
-          <button id="dSpeak">试播一句话</button>
-          <button id="dSample">示例播报</button>
-        </div>
-        <div class="dhead">测试音不联网：能听到「嘀——」说明音量/扬声器正常；听不到就按音量键或检查静音。</div>
-      </div>
-      <div class="setcard">
-        <div class="setcardtitle">音量</div>
-        <div class="btns"><button id="dVolume">调大媒体音量</button></div>
       </div>
     </div>
   </div>
@@ -1098,11 +1059,6 @@
         <div class="updbar" id="updBarWrap" style="display:none">
           <div class="updbar-fill" id="updBarFill"></div>
         </div>
-      </div>
-      <div class="setcard">
-        <div class="setcardtitle">高级测试</div>
-        <div class="btns"><button id="dPcm">测试·PCM 直出</button><button id="dMp3">测试·MP3 网页</button></div>
-        <div class="btns"><button id="dSysWeb">测试·网页播放</button></div>
       </div>
     </div>
   </div>
@@ -1456,7 +1412,7 @@
     var name = state.detail ? state.detail.name : "";
     var toward = state.detail ? state.detail.endSn : "";
     var at = state.station ? state.station.name : "";
-    var head = name + "路，" + stationLabel(at);
+    var head = lineSpeech(name) + "，" + stationLabel(at);
     if (state.detail && outsideService(state.detail.firstTime, state.detail.lastTime)) {
       return head + "，不在运营时段。";
     }
@@ -1466,7 +1422,7 @@
     });
     var first = buses[0];
     var lead = (first.arrived || (first.stationsAway !== null && first.stationsAway <= 1))
-      ? "请注意，" + name + "路即将进站。" : "";
+      ? "请注意，" + lineSpeech(name) + "即将进站。" : "";
     return lead + head + "，" + spoken.join("；") + "。开往" + toward + "。";
   }
 
@@ -1736,13 +1692,31 @@
       var spoken = live.slice(0, 4).map(function (a) {
         var toward = a.toward ? "往" + a.toward : "";
         if (a.etaSeconds === null && a.preStartTime) {
-          return a.lineName + "路" + toward + "待发车 " + a.preStartTime;
+          return lineSpeech(a.lineName) + toward + "待发车 " + a.preStartTime;
         }
-        return a.lineName + "路" + toward + describe(a);
+        return lineSpeech(a.lineName) + toward + describe(a);
       });
       lines.push(stationLabel(group.name) + "，" + spoken.join("，"));
     });
     return lines.join("。") + (lines.length ? "。" : "");
+  }
+
+  /* 线路号的念法：用户要求「报数字」，不要念成「七百一十六」。
+     多位数逐位念（716 → 七幺六），个位数照常（1 → 一），字母原样（39A → 三九A）。
+     只用于播报文案，界面上的文字保持 716 不变。 */
+  var DIGIT_SPEECH = { "0": "零", "1": "幺", "2": "二", "3": "三", "4": "四",
+                       "5": "五", "6": "六", "7": "七", "8": "八", "9": "九" };
+  function speakDigits(value) {
+    return String(value == null ? "" : value).replace(/\d+/g, function (run) {
+      if (run.length === 1) return run === "1" ? "一" : DIGIT_SPEECH[run];
+      return run.split("").map(function (ch) { return DIGIT_SPEECH[ch]; }).join("");
+    });
+  }
+  /* 播报用的线路名（自带「路」；已经带「路/线」的不重复加） */
+  function lineSpeech(name) {
+    var spoken = speakDigits(String(name == null ? "" : name).trim());
+    if (!spoken) return "公交";
+    return /[路线]$/.test(spoken) ? spoken : spoken + "路";
   }
 
   function speak(text, force) {
@@ -2784,6 +2758,9 @@
   }
 
   function backHandler() {
+    /* 首次说明弹窗只能点「知道了 / 稍后再说」关：返回键和点空白都不生效 */
+    var gm = $("guideModal");
+    if (gm && !/\bhidden\b/.test(gm.className)) return true;
     /* 地图选择弹层开着时先关掉它 */
     if (navPickOpen) { closeNavPick(); return true; }
     /* 城市选择页是独立覆盖层，不在 viewStack 里：它开着时返回应该是关掉它、
@@ -5556,7 +5533,7 @@
       }
       var etaF = Number(first.etaSeconds);
       var awayF = Number(first.stationsAway);
-      var headF = t.lineName + "路，" + stationLabel(t.stationName) + "，";
+      var headF = lineSpeech(t.lineName) + "，" + stationLabel(t.stationName) + "，";
       /* 播报规则（v9.26 重置，与服务端一致）：只有四个节点，各播一次
            ① 10 分钟：0 < eta <= 600
            ② 5 分钟 ：0 < eta <= 300
@@ -5839,8 +5816,8 @@
   function alightLinePrefix() {
     if (!alight.lineName) return "";
     /* 地铁/有轨的车线名自带「号线」「线」「环线」，再加「路」就成「1号线路」了 */
-    if (alightLine && alightLine.kind === "metro") return alight.lineName + "，";
-    return alight.lineName + "路，";
+    if (alightLine && alightLine.kind === "metro") return speakDigits(alight.lineName) + "，";
+    return lineSpeech(alight.lineName) + "，";
   }
 
   /* 到站后的自动收尾：效果等同用户点了「取消」，但提示语不同 */
@@ -6103,55 +6080,24 @@
   window.cdBusStopMetroAlight = stopMetroAlight;
   window.cdBusMetroAlightRunning = metroAlightRunningFor;
 
-  /* ------------------------------------------------------------ 语音自检 */
+  /* ------------------------------------------------------------ 后台自检 */
 
   var diagTimer = null;
 
-  function renderDiag() {
-    if (!bridge || !bridge.status) return;
-    var info;
-    try { info = JSON.parse(bridge.status()); } catch (e) { return; }
+  /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
+  var APP_FALLBACK_VERSION = "1.7.5";
 
-    var mode = ["静音", "振动", "正常"][info.ringerMode] || ("未知(" + info.ringerMode + ")");
-    var volume = info.mediaVolume === undefined ? "?" : info.mediaVolume + " / " + info.mediaMax;
-    var rows = [
-      ["语音后端", info.backend || "-"],
-      ["系统 TTS", info.ttsReady ? "可用" : "不可用（走在线合成）"],
-      ["已装引擎", info.engines || "无"],
-      ["媒体音量", volume + (info.mediaVolume === 0 ? " ⚠ 为 0，按音量键调大" : "")],
-      ["铃声模式", mode],
-      ["输出设备", info.outputs || "-"],
-      ["最近结果", info.lastResult || "-"]
-    ];
-
-    /* 后台播报自检：盯站服务是否在跑、唤醒锁是否持有、上次轮询/播报时间 */
-    var ws = null;
-    try { ws = bridge.watchStatus ? JSON.parse(bridge.watchStatus()) : null; } catch (e) { ws = null; }
-    if (ws) {
-      function ago(ms) {
-        if (!ms) return "从未";
-        var s = Math.round((Date.now() - ms) / 1000);
-        if (s < 60) return s + " 秒前";
-        if (s < 3600) return Math.round(s / 60) + " 分钟前";
-        return Math.round(s / 3600) + " 小时前";
-      }
-      rows.push(["盯站服务", ws.running ? "运行中" : "未运行"]);
-      if (ws.running) {
-        rows.push(["唤醒锁", ws.wakeHeld ? "已持有（息屏可播）" : "⚠ 未持有，息屏可能不播"]);
-        rows.push(["上次轮询", ago(ws.lastTickAt)]);
-        rows.push(["上次播报", ago(ws.lastSpeakAt) + (ws.lastMessage ? " · " + ws.lastMessage : "")]);
-      }
-    }
-
-    $("diagRows").innerHTML = rows.map(function (row) {
-      return '<div class="kv"><span>' + row[0] + "</span><span>" + String(row[1]) + "</span></div>";
-    }).join("");
+  /* 设置主页「关于 ›」下面的版本号：直接显示 App 真实版本，别留「v—」 */
+  function paintVersionSub() {
+    var el = $("setVersionSub");
+    if (!el) return;
+    var info = null;
+    try { info = bridge && bridge.appInfo ? JSON.parse(bridge.appInfo()) : null; } catch (e) { info = null; }
+    el.textContent = "版本 v" + ((info && info.version) || APP_FALLBACK_VERSION);
   }
 
-  /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "1.0.60";
-
   function fillAbout() {
+    paintVersionSub();
     var verEl = $("abVersion");
     var envEl = $("abEnv");
     if (!verEl || !envEl) return;
@@ -6190,118 +6136,90 @@
   /* routeState 在下面才用 var 声明，这里直接赋引用会拿到 undefined，
      改成一个取值函数（测试读 window.cdBusRouteState().strategy）。 */
   window.cdBusRouteState = function () { return routeState; };
+  /* 播报念法（ui-smoke / dom-smoke 验证「716 → 七幺六」） */
+  window.cdBusLineSpeech = lineSpeech;
+  window.cdBusSpeakDigits = speakDigits;
 
   /* ------------------------------------------------------------ 使用说明 */
 
   /* 首次打开时弹窗里只放最关键的几条，避免一上来就信息过载 */
   /* 首次打开弹窗：只放最关键的几步 */
   /* 设置里「使用说明」页：完整版，分章节 */
+  /* 使用说明：只有这一份数据，设置页和首次弹窗都从它渲染，
+     两处永远一致。每条只写一句，图解只留最必要的。 */
   var GUIDE_FULL = [
-    { title: "首页 · 顶栏", items: [
+    { title: "首页", items: [
       { icon: "🔄", name: "刷新",
-        desc: "手动刷新附近站点和到站信息。每次刷新都会顺手重新定位，位置变了列表就跟着变。平时每 30 秒自动刷一次，从后台回来也会立即刷一次。",
-        demo: "公交来了              🔄  ⚙" },
-      { icon: "⚙", name: "设置",
-        desc: "进设置页：使用说明、字体大小、语音与播报、后台诊断、关于。",
-        demo: "公交来了              🔄  ⚙" },
-      { icon: "📍", name: "位置提示",
-        desc: "顶栏第二行显示当前定位到的位置和精度。定位失败或不准时，先去系统设置把「位置信息」权限给成「始终允许」并打开精确定位。",
-        demo: "● 天府广场南附近 · 精度 12 米" }
+        desc: "重新定位并刷新附近站点。平时每 30 秒自动刷新。",
+        demo: "公交来了        🔄  ⚙" },
+      { icon: "🔍", name: "搜索",
+        desc: "输线路号或站名，回车即可。只输数字会把 16、P36、T36 都列出来。",
+        demo: "[16        ] [🔍]" },
+      { icon: "▦", name: "站点卡片",
+        desc: "每站一张卡，三列格子列出这一站的所有线路。点格子进详情，点 ☆ 收藏站点。",
+        demo: "天府广场南      146 米  ☆\n[16路] [26路] [45路]" },
+      { icon: "🚇", name: "地铁",
+        desc: "查地铁站和线路，只有静态站点，没有实时到站。",
+        demo: "🚇 地铁 / 有轨电车   [查看]" }
     ]},
-    { title: "首页 · 查线路", items: [
-      { icon: "🔍", name: "线路输入框",
-        desc: "填线路号（16、2、P36）或站名（天府广场南）。只填数字会把所有匹配的线路列出来，包括 P36、T36、都江堰36 这些变体。",
-        demo: "[16              ] [🔍]" },
-      { icon: "🔍", name: "查询按钮",
-        desc: "搜索框右边的放大镜，按回车也行。查到一条就直接进详情页，查到多条先到搜索结果页让你挑。",
-        demo: "[16              ] [🔍]" },
-      { icon: "📋", name: "搜索结果页",
-        desc: "上半是匹配的线路，下半是匹配的站点。线路按自然顺序排（2 在 10 前面），同一条线只出现一次（不再按上下行拆成两条）。",
-        demo: "线路（17）\n  16路   26路   45路\n站点（3）\n  天府广场南   146 米" },
-      { icon: "🚇", name: "地铁 / 有轨电车",
-        desc: "查地铁站和线路，站点是静态数据，不含实时到站。",
-        demo: "🚇 地铁 / 有轨电车 · 站点查询   [查看]" }
-    ]},
-    { title: "首页 · 站点卡片", items: [
-      { icon: "▦", name: "三列线路格子",
-        desc: "每个站一张卡，卡里用三列格子把这一站停靠的线路全部列出来。格子只显示线路名——到站时间、首末班、播报按钮都已经去掉，一屏能看全。",
-        demo: "天府广场南            146 米  ☆\n┌──────┬──────┬──────┐\n│ 16路  │ 26路  │ 45路  │\n└──────┴──────┴──────┘" },
-      { icon: "👆", name: "点格子",
-        desc: "点任意一格进详情页，看这条线在你这一站的方向、首末班和沿途各站。收班（灰色）的线路也能点进去看。",
-        demo: "16路 → 详情页" },
-      { icon: "☆", name: "收藏站点",
-        desc: "点卡片右上角的星星收藏这个站。收藏会记住你在哪条线、哪一站，下次从首页收藏卡点进去直接回到「这条线 · 这一站」。",
-        demo: "天府广场南            146 米  ★" }
-    ]},
-    { title: "详情页 · 顶部（固定不滚）", items: [
-      { icon: "📌", name: "吸顶区",
-        desc: "详情页从顶栏到「同站其他」这一整块是固定的，不会跟着页面滚走——车牌、站名芯片、导航按钮一直看得见。只有它下面的发车预测和到站表会滚动。",
-        demo: "← 返回   标题   ☆  刷新\n方向芯片 / 🚌 在途 / 站名芯片\n🧭 导航  ☆ 收藏  📌 盯站\n车牌 川A12345 · 当前在第 5 站\n车辆芯片 / 同站其他\n──── 以下滚动 ────" },
+    { title: "详情页", items: [
       { icon: "⇄", name: "方向切换",
-        desc: "顶部的方向芯片切换上行/下行，每个方向下面写着它自己的首班和末班时间。切换后站序和到站都跟着变。",
-        demo: "[往 郫都区客运中心  首班 06:30 · 末班 19:30]\n[往 花园公交站      首班 06:00 · 末班 21:50]" },
-      { icon: "🚌", name: "在途车辆",
-        desc: "方向下面那行显示这条线当前有几辆车在路上和更新时间。站名芯片上的 🚌 标出车正在哪一站，一辆车一个图标，每 30 秒刷新。",
-        demo: "🚌 3 辆在途 · 12:34:56 更新\n[李冰广场 🚌] [花园场口] [龙溪村 🚌]" },
-      { icon: "🚏", name: "站名芯片",
-        desc: "点任意站名切换到这个站，下面的到站表跟着变。带「最近」徽标的是离你最近的站，进页面时会自动滚到它。",
-        demo: "[李冰广场] [花园场口 最近] [龙溪村]" }
-    ]},
-    { title: "详情页 · 导航与提醒", items: [
+        desc: "顶部两颗芯片是上下行，各写自己的首末班，点一下换方向。",
+        demo: "[往 A 首班 06:30 · 末班 19:30]\n[往 B 首班 06:00 · 末班 21:50]" },
+      { icon: "🚏", name: "站名与车辆",
+        desc: "点站名切站，点车辆看那辆车。带「最近」的是离你最近的那个。",
+        demo: "[李冰广场] [花园场口 最近] [龙溪村]" },
+      { icon: "⏱", name: "到站表",
+        desc: "逐站列出还有几站、几分钟到；已经过站的会变淡。",
+        demo: "花园场口  还有 3 站  11 分 30 秒" },
       { icon: "🧭", name: "导航",
-        desc: "点开选地图 App（高德/百度/腾讯/谷歌/Here/花瓣），固定走步行导航，不会切成驾车。只传站点坐标、不传站名，所以不会把你导到同名的小区或村委会。",
-        demo: "导航到  [🧭 高德] [🗺 百度] [🗺 腾讯] …" },
-      { icon: "☆", name: "收藏站点",
-        desc: "和首页卡片上的星星是同一份收藏，收藏时记住当前线路和站序。",
-        demo: "🧭 导航   ★ 已收藏站点   📌 盯站" },
-      { icon: "📌", name: "盯站",
-        desc: "盯当前选中的这一站。车快到时在四个节点各播一次：约 10 分钟、约 5 分钟、还有 2 站、已到站。到站后自动取消。盯站中这一站的芯片会变成蓝色高亮。",
-        demo: "🧭 导航   ☆ 收藏站点   📌 盯站\n盯站后：[花园场口]  ← 蓝色高亮" },
-      { icon: "🔔", name: "下车提醒",
-        desc: "到站表每行右边的铃铛，把那一站设成目的地。设好后每 5 秒看一次定位，快到站时提醒你下车。",
-        demo: "花园永泉      12 分 30 秒   🔔" }
-    ]},
-    { title: "详情页 · 滚动区", items: [
-      { icon: "🔉", name: "车辆芯片",
-        desc: "点车辆原地切换到这一辆，下方到站表跟着变。带「最近」徽标的是离你最近的那辆。",
-        demo: "[10001 最近] [10002] [10003]" },
+        desc: "调起地图 App，一律步行导航，只传坐标不传站名。",
+        demo: "导航到  [🧭 高德] [🗺 百度] …" },
       { icon: "🚏", name: "同站其他",
-        desc: "这个站还有哪些别的线路。默认收起，点标题右边展开；展开状态会记住。",
-        demo: "同站其他 12 条                    展开 ▾" },
-      { icon: "⏱", name: "发车预测与到站表",
-        desc: "发车预测说明这辆车什么时候从起点发车。到站表逐站列出这辆车还有几站、几分钟到；已经过站的会变淡。当前车所在的站会高亮。",
-        demo: "发车预测：还有 2 站\n── 花园场口  还有 3 站  11 分 30 秒 ──\n── 龙溪村    还有 5 站  19 分 10 秒 ──" },
-      { icon: "🔊", name: "语音播报",
-        desc: "右下角喇叭单独念一遍这一站的到站情况。点站名芯片也会念一次。亮屏在前台时由页面念，息屏或退到后台由后台服务念，不会重复也不会漏。",
-        demo: "花园场口站，16路，还有 3 站，11 分 30 秒" }
+        desc: "这一站还有哪些别的线路，默认收起，点标题展开。",
+        demo: "同站其他 12 条   展开 ▾" },
+      { icon: "🔊", name: "播报",
+        desc: "右下角喇叭念当前这一站；点站名芯片也会念。",
+        demo: "16路，花园场口，还有 3 站，约 11 分钟" }
     ]},
-    { title: "提醒与后台", items: [
+    { title: "盯站与提醒", items: [
+      { icon: "📌", name: "盯站",
+        desc: "车快到时分四次播报：约 10 分钟、约 5 分钟、还有 2 站、已到站，到站后自动结束。",
+        demo: "📌 盯站 → 站名芯片变蓝" },
+      { icon: "🔔", name: "下车提醒",
+        desc: "到站表每行右边的铃铛，把那一站设成目的地，快到站时提醒你。",
+        demo: "花园场口   12 分 30 秒   🔔" },
+      { icon: "☆", name: "收藏站点",
+        desc: "首页卡片或详情页都能收藏，会记住是哪条线、哪一站。",
+        demo: "☆ 收藏站点" },
+      { icon: "🔇", name: "怎么取消",
+        desc: "盯站、下车提醒都是再点一次同一个按钮；车到了也会自己停。",
+        demo: "📌 已盯站 → 再点取消" }
+    ]},
+    { title: "后台", items: [
       { icon: "🔒", name: "锁屏通知",
-        desc: "设置 → 后台诊断 → 锁屏通知。开着的话，盯站和下车提醒的播报节点也会在锁屏上弹一条卡片。第一次用要点「检查通知权限 / 去开启」把通知权限打开，否则系统会静默丢弃。",
-        demo: "锁屏显示到站提醒          [开]\n[发一条测试通知] [检查通知权限 / 去开启]" },
-      { icon: "🔋", name: "息屏不播报怎么办",
-        desc: "先到设置 → 后台诊断点「加入电池优化白名单」，再用「开始后台心跳」确认后台服务还活着。国产 ROM 还需要在系统设置里允许「自启动」和「后台运行」。",
-        demo: "后台心跳：运行中 · 已报 12 次" },
-      { icon: "🔇", name: "如何取消",
-        desc: "盯站：再点一次「📌 已盯站」，或等车到站自动结束。下车提醒：再点一次 🔔。",
-        demo: "📌 已盯站 → 再点取消；🔔(亮) → 再点取消" }
+        desc: "设置 → 后台诊断里打开，第一次要顺手给通知权限。",
+        demo: "锁屏显示到站提醒   [开]" },
+      { icon: "🔋", name: "息屏不播报",
+        desc: "到后台诊断点「加入电池优化白名单」，再用「开始后台心跳」确认服务还活着。",
+        demo: "电池优化白名单 → 后台心跳" }
     ]},
     { title: "设置", items: [
-      { icon: "📖", name: "使用说明",
-        desc: "就是这一页，随时可以回来查按钮怎么用。",
-        demo: "使用说明  ›" },
+      { icon: "📍", name: "当前城市",
+        desc: "定位到哪就查哪；也可以手动选城市。",
+        demo: "当前城市  成都  ›" },
       { icon: "🔤", name: "字体大小",
-        desc: "六档字号（特小 85% ~ 超大 140%），只影响本 App，不跟随系统字体。选完立刻生效。",
-        demo: "特小 85%   小 92%   标准 100%\n大 112%   特大 125%   超大 140%" },
-      { icon: "🔊", name: "语音与播报",
-        desc: "看语音引擎状态、试播一句话、调媒体音量。默认走系统 TTS；「语音走 WebView」只在系统 TTS 没声音时才打开。",
-        demo: "语音与播报  ›" },
+        desc: "六档字号，只影响本 App，选完立即生效。",
+        demo: "特小 85% … 标准 100% … 超大 140%" },
+      { icon: "🌗", name: "浅色模式",
+        desc: "开关切换深浅色，记住你的选择。",
+        demo: "浅色模式   [开]" },
       { icon: "🛠", name: "后台诊断",
-        desc: "锁屏通知、后台心跳、盯站诊断、电池白名单——息屏不播报时来这里排查。",
+        desc: "锁屏通知、后台心跳、电池白名单，都在这里。",
         demo: "后台诊断  ›" },
       { icon: "ℹ️", name: "关于",
-        desc: "版本号、运行环境、数据来源。",
-        demo: "关于  ›" }
+        desc: "版本号、运行环境，以及在线更新。",
+        demo: "关于 · 版本 v1.7.4  ›" }
     ]}
   ];
 
@@ -6504,10 +6422,13 @@
   /* 启动即应用已保存的字号（不等设置页打开）。 */
   applyFontScale(fontScale());
 
+  /* 设置主页那行「关于」的版本号，启动时就填好 */
+  paintVersionSub();
+
   /* 设置页导航：主页 ↔ 分类面板。用一个简单栈管理返回。 */
   var setStack = [];
   function showSetPage(id) {
-    var ids = ["setHome", "setPageGuide", "setPageFont", "setPageVoice", "setPageDiag", "setPageAbout"];
+    var ids = ["setHome", "setPageGuide", "setPageFont", "setPageDiag", "setPageAbout"];
     ids.forEach(function (x) {
       var el = $(x);
       if (el) el.classList.toggle("hidden", x !== id);
@@ -6519,13 +6440,9 @@
     showSetPage("setHome");
     showView("diag");
     fillAbout();
-    renderDiag();
     renderHeartbeatInfo();
     if (diagTimer) clearInterval(diagTimer);
-    diagTimer = setInterval(function () {
-      renderDiag();
-      renderHeartbeatInfo();
-    }, 900);
+    diagTimer = setInterval(renderHeartbeatInfo, 900);
   }
 
   /* 从设置页返回：有子页先回主页，再返回则关闭设置 */
@@ -7391,16 +7308,12 @@
     if (id === "setPageAbout") { fillAbout(); updRefreshCurrent(); }
     if (id === "setPageGuide") renderGuide();
     if (id === "setPageFont") renderFontPage();
-    if (id === "setPageVoice") renderDiag();
     if (id === "setPageDiag") { renderHeartbeatInfo(); syncLockNotifySwitch(); }
   }
   /* 首次打开：进入首页后弹一次使用说明 */
   $("guideOk").onclick = function () { closeGuideModal(true); };
   $("guideLater").onclick = function () { closeGuideModal(false); };
   $("dnavpickCancel").onclick = function () { closeNavPick(); };
-  $("guideModal").onclick = function (ev) {
-    if (ev && ev.target === this) closeGuideModal(false);
-  };
   /* 首次打开：等定位/首页渲染完再弹，避免和首屏加载抢焦点。
      注意 view.name 初始是 undefined（只在 showView 里赋值），
      所以用「没有打开任何二级页」来判断当前在首页。 */
@@ -7426,7 +7339,6 @@
   $("guideBack").onclick = function () { backFromDiag(); };
   $("setFont").onclick = function () { enterSet("setPageFont"); };
   $("fontBack").onclick = function () { backFromDiag(); };
-  $("setVoice").onclick = function () { enterSet("setPageVoice"); };
   /* 浅色模式开关：点行也可以切（开关本身很窄，容易点不中） */
   if ($("modeSw")) {
     $("modeSw").onchange = function () { setMode(this.checked ? "light" : "dark", true); };
@@ -7464,33 +7376,8 @@
   $("updModal").onclick = function (ev) {
     if (ev && ev.target === this) updCloseModal();
   };
-  $("voiceBack").onclick = function () { backFromDiag(); };
   $("diagBack").onclick = function () { backFromDiag(); };
   $("aboutBack").onclick = function () { backFromDiag(); };
-  $("dVolume").onclick = function () { if (bridge && bridge.setVolume) bridge.setVolume(80); };
-  $("dTone").onclick = function () { if (bridge && bridge.testTone) bridge.testTone(); };
-  $("dPcm").onclick = function () { if (bridge && bridge.testPcm) bridge.testPcm(); };
-  $("dSysWeb").onclick = function () {
-    playUrl("data:audio/wav;base64," + testWavBase64(), "网页WAV测试", null);
-  };
-  $("dMp3").onclick = function () {
-    setStatus("MP3 合成中…");
-    rpc("synth", { text: "公交播报，语音测试。" }).then(function (res) {
-      if (!res || !res.base64) throw new Error("合成结果为空");
-      playBytes(res.base64, "audio/mpeg", "MP3测试", function () {
-        wavFallback("公交播报，语音测试。");
-      });
-    }).catch(function (e) {
-      note("MP3 合成失败：" + e.message);
-      setStatus("MP3 合成失败：" + e.message, true);
-    });
-  };
-  $("dSample").onclick = function () {
-    var text = SAMPLE_TEXTS[sampleIndex % SAMPLE_TEXTS.length];
-    sampleIndex++;
-    setStatus("示例 " + sampleIndex + "/" + SAMPLE_TEXTS.length);
-    speak(text, true);
-  };
   $("dBattery").onclick = function () {
     if (!bridge || !bridge.requestIgnoreBatteryOptimization) {
       setStatus("要在 App 里才能设置", true);
@@ -7617,15 +7504,6 @@
     return Math.round(s / 3600) + " 小时前";
   }
 
-  $("webMode").checked = (function () {
-    try { return localStorage.getItem(WEB_MODE_KEY) === "1"; } catch (e) { return false; }
-  })();
-  $("webMode").onchange = function () {
-    setWebAudio(this.checked);
-    setStatus(this.checked ? "语音已切到网页播放" : "语音已切回 App 播放");
-  };
-  $("dSys").onclick = function () { if (bridge && bridge.testSysTone) bridge.testSysTone(); };
-  $("dSpeak").onclick = function () { if (bridge && bridge.testSpeak) bridge.testSpeak(); };
 
   $("back").onclick = closeDetail;
   $("drefresh").onclick = function () { loadMatrix(); };

@@ -345,7 +345,7 @@ public final class AlightService extends Service implements LocationListener {
             return;
         }
         String text = what + "。" + destName + "站。";
-        if (!lineName.isEmpty()) text = BusText.lineLabel(lineName) + "，" + text;
+        if (!lineName.isEmpty()) text = BusText.lineSpeech(lineName) + "，" + text;
         Log.i(TAG, "下车提醒播报：" + text + "（界面可见=" + MainActivity.VISIBLE + "）");
         /* 锁屏通知（v1.0.44）：和盯站一样，后台/息屏时把这条提醒显示在锁屏上。 */
         Notify.post(this, (lineName.isEmpty() ? "" : BusText.lineLabel(lineName) + " · ") + "下车提醒",

@@ -56,7 +56,7 @@ $ cd-bus near --city 绵阳
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v1.7.4）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 742 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v1.7.5）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 742 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -491,6 +491,13 @@ WebView 加固：关掉 `AllowFileAccessFromFileURLs`/`AllowUniversalAccessFromF
 
 **装法**：把 APK 传到手机点开安装（首次会要求允许「安装未知应用」，给文件管理器/浏览器授权一次即可）。
 包名 `com.chengdu.bus`，用的本地自签名证书（debug keystore 在 `build/` 下，别用于正式分发）。
+
+### v1.7.5：设置精简 + 使用说明重写 + 播报念数字
+
+- **删掉「语音与播报」** 设置入口及其二级页、**「关于」里的「高级测试」**（PCM / MP3 / 网页播放三颗测试按钮）。播报功能本身不受影响，只是不再暴露测试入口。
+- **「关于」下面的版本号**：启动时读 `appInfo()`，直接显示真实版本 `版本 v1.7.5`，不再是写死的「版本 v—」。
+- **使用说明重写**：从 8 章 30 条压到 5 章 20 条，每条一句话 + 一行图解；设置页与首次弹窗共用 `GUIDE_FULL` 一份数据，内容永远一致。弹窗**只能点「知道了 / 稍后再说」关闭**，点空白、按返回键都不关；按钮粘在弹窗底部，长说明不用滚到底。
+- **播报线路号只念数字**：多位数逐位读（716 → 七幺六，16 → 幺六，1001M → 幺零零幺M），个位数照常（1 → 一），字母原样（39A → 三九A），地铁「号线/线」不重复加「路」。只改播报文案，界面文字仍是原始线路号。前端、`lib/announce.mjs`、原生 `BusText` 三处同步；smoke 新增一条、dom 新增一条验证。
 
 ### 西昌详情页「实时服务器没响应」（v1.7.4 修）
 
