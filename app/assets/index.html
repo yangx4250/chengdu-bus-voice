@@ -1429,6 +1429,16 @@
     var parts = [];
     if (stations !== null && stations > 0) parts.push("还有 " + stations + " 站");
     if (eta !== null && eta !== undefined && eta > 0) parts.push(fmtEta(eta));
+    /* 有站数没 ETA 时（比如车在停站），把手里的剩余距离也说清楚，
+       比硬说「正在接近本站」有用，也不编造到达时间。 */
+    var dm = bus.remainingMeters;
+    if (dm === null || dm === undefined) dm = bus.distanceMeters;
+    if (!parts.length && dm !== null && dm !== undefined && dm > 0) {
+      parts.push(dm < 1000 ? "距本站约 " + dm + " 米"
+                           : "距本站约 " + (dm / 1000).toFixed(1) + " 公里");
+    }
+    /* 车已经开过站 */
+    if (!parts.length && bus.passed) return "已过本站";
     return parts.length ? parts.join("，") : "正在接近本站";
   }
 
@@ -4917,21 +4927,23 @@
       }
     }
 
-    /* 西昌只有一个换乘接口，没有附近站点和实时到站。
-       这里不要发 nearby（会报错），直接告诉用户能用什么。 */
-    if (cityTransitOnly()) {
-      $("list").innerHTML = '<div class="empty">' +
-        (cityName() || "西昌") + ' 目前只支持<strong>换乘规划</strong>。<br>' +
-        '在下面「去哪儿」里填目的地，可以查公交方案；<br>' +
-        '附近站点和实时到站暂时没有数据。</div>';
-      setStatus(cityName() + " · 只支持换乘规划");
-      return;
-    }
-
     var lat = state.fix ? state.fix.lat : DEFAULT_LAT;
     var lng = state.fix ? state.fix.lng : DEFAULT_LNG;
 
     var data = await rpc("nearby", { lat: lat, lng: lng, limit: 8 });
+
+    /* 西昌的实时数据只在当地有效：人在外地（或定位没生效）时，
+       服务器只回一个空表头。这句要说清楚，别让人以为 App 坏了。 */
+    if (cityTransitOnly() && !(data.stops || []).length) {
+      $("list").innerHTML = '<div class="empty">附近没有实时车辆。<br>' +
+        (cityName() || "西昌") + ' 的实时数据只在当地有效，人不在当地时查不到。</div>';
+      setStatus(cityName() + " · 附近暂无实时车辆");
+      state.groups = [];
+      resetCountdown();
+      paintCountdown();
+      return;
+    }
+
     var groups = buildGroups(data.stops);
     renderStops(data.stops, budget);
     renderFavs();
@@ -5101,7 +5113,7 @@
   /* 由网关数据源登记的城市名 → 车来了节点，用于城市选择页的提示 */
   function nodeNoteOf(item) {
     if (item.covered === false) return item.note || "暂无实时数据";
-    if (item.transitOnly) return "仅换乘规划 · 无实时到站";
+    if (item.transitOnly) return "有实时车辆 · 无线路搜索";
     return item.level === "county" ? "区县节点" : "市本级";
   }
 
@@ -6966,14 +6978,51 @@
 
   function runSearchFromInput() {
     var key = $("line") ? String($("line").value || "").trim() : "";
-    /* 西昌没有线路/站名搜索接口（只有起终点换乘），
-       这里不能走 queryLine —— 一定搜不到，还会让人以为 App 坏了。 */
+    /* 西昌没有线路/站名搜索接口，但实时数据里带线路名 ——
+       用关键词筛「附近正在跑的线路」，比弹一句「去规划」有用。 */
     if (cityTransitOnly()) {
-      showToast((cityName() || "西昌") + " 只有换乘规划，请用「去哪儿」查目的地", true);
+      if (!key) { showToast("输入线路号，查附近正在跑的车", true); return; }
+      run(function () { return searchTransitOnly(key); });
       return;
     }
     if (key) recordHistory(key);
     run(function () { return queryLine(true); });
+  }
+
+  /* 只有实时车辆、没有线路接口的城市（西昌）：
+     拿附近实时数据按线路名筛一遍，结果直接铺到首页列表。 */
+  async function searchTransitOnly(key) {
+    var k = String(key).replace(/路$/, "").trim();
+    var lat = state.fix ? state.fix.lat : DEFAULT_LAT;
+    var lng = state.fix ? state.fix.lng : DEFAULT_LNG;
+    setStatus("搜索 " + k + " …");
+    var data = await rpc("nearby", { lat: lat, lng: lng, limit: 8 });
+    var kept = [];
+    (data.stops || []).forEach(function (stop) {
+      var hits = (stop.arrivals || []).filter(function (a) {
+        return String(a.lineName || "").indexOf(k) >= 0;
+      });
+      if (!hits.length) return;
+      kept.push({
+        stationId: stop.stationId,
+        name: stop.name,
+        distanceMeters: stop.distanceMeters,
+        arrivals: hits,
+        lineNameList: stop.lineNameList
+      });
+    });
+    renderStops(kept, 10);
+    state.groups = buildGroups(kept);
+    resetCountdown();
+    paintCountdown();
+    if (!kept.length) {
+      setStatus("附近没有正在跑的「" + k + "」", true);
+    } else {
+      var n = 0;
+      kept.forEach(function (s) { n += s.arrivals.length; });
+      setStatus("「" + k + "」附近 " + n + " 辆车 · " + kept.length + " 个站点");
+    }
+    return kept;
   }
 
   $("go").onclick = runSearchFromInput;
@@ -7027,7 +7076,7 @@
     var inp = $("line");
     if (inp) {
       inp.placeholder = cityTransitOnly()
-        ? "西昌只支持换乘，请用「去哪儿」"
+        ? "搜附近正在跑的线路号"
         : "线路号，如 16 或 2";
     }
   }

@@ -4854,30 +4854,63 @@ console.log('✓ 更新源顺序通过：首次检测与下载都以 Gitee 为�
   if (!/www\.xcycgj\.cn:7777/.test(xc)) fail.push('西昌接口地址不对');
   if (!/xc-/.test(xc)) fail.push('西昌城市没有用 xc- 前缀');
   /* 只做换乘：不能有 nearby/arrivals 这类假装有实时数据的方法 */
-  if (/public .* nearby\(/.test(xc)) fail.push('西昌不该有 nearby（拿不到附近站点）');
-  if (/public .* arrivals\(/.test(xc)) fail.push('西昌不该有 arrivals（拿不到实时到站）');
   if (!/transit/.test(xc)) fail.push('西昌缺少 transit()');
 
   if (!/XichangClient\.isMine/.test(br)) fail.push('BusBridge 没有分流西昌');
   if (!/xcClientFor/.test(br)) fail.push('BusBridge 没有西昌客户端缓存');
-  if (!/只支持换乘规划/.test(br)) fail.push('西昌的其他方法没有明确提示，可能冒充成「没有数据」');
+  /* 实时车辆走裸 TCP：Java 侧必须有帧编解码 */
+  if (!/0000babe|RT_MAGIC/.test(xc)) fail.push('XichangClient 没有实时协议帧魔数');
+  if (!/1787/.test(xc)) fail.push('XichangClient 没有实时数据端口');
+  if (!/public JSONObject nearby\(/.test(xc)) fail.push('XichangClient 缺少 nearby（实时车辆）');
+  /* 站表和速率：seq=7 / seq=95 */
+  if (!/public JSONObject lineDetail\(/.test(xc)) fail.push('XichangClient 缺少 lineDetail（seq=7 站表）');
+  if (!/public JSONArray vehicles\(/.test(xc)) fail.push('XichangClient 缺少 vehicles（seq=95 速率）');
+  if (!/public JSONArray arrivals\(/.test(xc)) fail.push('XichangClient 缺少 arrivals');
+  /* seq=95 少参数服务器不回包，必须带 距离/站序/坐标 */
+  if (!/;\" \+ dist \+ \";\" \+ order/.test(xc) && !/dist \+ \";\" \+ order/.test(xc)) {
+    fail.push('vehicles 没带 seq=95 必需的距离/站序参数（少了服务器不回包）');
+  }
+  /* 停站不能编 ETA */
+  if (!/speed < 5/.test(xc)) fail.push('arrivals 没有「车速过低不给 ETA」的保护');
+  /* 字段 4 / seq=95 字段 7 是站点 ID，曾被当成米数显示 */
+  if (!/nextStationId/.test(xc)) fail.push('seq=95 字段 7 应按站点 ID 解析（不该叫 nextDistance）');
+  if (/nextDistance/.test(xc)) fail.push('仍残留 nextDistance（字段 7 不是距离）');
+  if (!/remainingMeters/.test(xc)) fail.push('缺少 remainingMeters（剩余距离要用坐标算）');
+  /* 详情页要 matrix，不给就会被白名单拦成「只支持…」 */
+  if (!/public JSONObject stationMatrix\(/.test(xc)) fail.push('XichangClient 缺少 stationMatrix（详情页会空白）');
+  if (!/"matrix"\.equals\(method\)/.test(br)) fail.push('BusBridge 没给西昌放行 matrix');
+  /* 线路名必须剥「路」，否则界面显示「39路路」 */
+  if (!/normalizeLineName/.test(xc)) fail.push('缺少线路名规范化（界面会显示「39路路」）');
+  /* 协议里「环湖（建昌古城-建昌古城）」用全角括号，只认半角会漏 */
+  if (!/indexOf\('（'\)|indexOf\("（"\)/.test(xc)) fail.push('线路名规范化没处理全角括号');
+  if (!/西昌只支持附近实时车辆、线路详情和换乘规划/.test(br)) fail.push('西昌不支持的方法没有明确提示，可能冒充成「没有数据」');
 
   if (!/function cityTransitOnly/.test(html)) fail.push('前端缺少 cityTransitOnly()');
-  if (!/只支持<strong>换乘规划<\/strong>/.test(html)) fail.push('前端没有西昌的引导文案');
   /* 西昌不能走线路搜索（没有 lines/stations 接口），搜索按钮要直接拦下来 */
   const searchFn = (html.match(/function runSearchFromInput\(\)[\s\S]*?\n  \}/) || [''])[0];
-  if (!/cityTransitOnly\(\)/.test(searchFn)) fail.push('西昌模式没有拦截线路搜索（会一直搜不到）');
-  if (!/只有换乘规划/.test(searchFn)) fail.push('西昌搜索拦截没有给出明确提示');
+  if (!/cityTransitOnly\(\)/.test(searchFn)) fail.push('西昌模式没有单独处理搜索');
+  if (!/searchTransitOnly/.test(searchFn)) fail.push('西昌搜索没走「筛附近实时车辆」（不能只弹一句提示）');
+  if (!/function searchTransitOnly/.test(html)) fail.push('缺少 searchTransitOnly()');
+  /* 当地没车时也要说清楚，不能只显示「附近没有查到站点」 */
+  if (!/只在当地有效/.test(html)) fail.push('西昌「当地没车」缺少解释文案');
+  /* 筛出来的结果要按线路名过滤，且不能编造站数/ETA */
+  const st = (html.match(/async function searchTransitOnly\([\s\S]*?\n  \}/) || [''])[0];
+  if (!/lineName/.test(st)) fail.push('西昌搜索没有按线路名过滤');
+  if (!/renderStops/.test(st)) fail.push('西昌搜索结果没有铺到列表');
   /* 搜索框提示要跟着城市变 */
-  if (!/只有换乘/.test(html) || !/线路号，如 16 或 2/.test(html)) fail.push('搜索框没有按城市切换提示');
-  if (!/仅换乘规划 · 无实时到站/.test(html)) fail.push('城市选择器没有标注西昌仅换乘');
+  if (!/搜附近正在跑的线路号/.test(html) || !/线路号，如 16 或 2/.test(html)) fail.push('搜索框没有按城市切换提示');
+  if (!/有实时车辆 · 无线路搜索/.test(html)) fail.push('城市选择器没有标注西昌的实际情况（有实时车辆、无线路搜索）');
+  /* 西昌只有「车距本站米数」，没有站数/ETA：describe() 必须退到距离显示，不能瞎编 */
+  const desc = (html.match(/function describe\(bus\)[\s\S]*?\n  \}/) || [''])[0];
+  if (!/distanceMeters/.test(desc)) fail.push('describe() 没有距离兜底分支（西昌会显示成「正在接近本站」）');
+  if (!/距本站约/.test(desc)) fail.push('describe() 没有「距本站约 N 米」文案');
 
   if (fail.length) {
     console.error('✗ UI 冒烟失败（西昌）：');
     for (const f of fail) console.error('  - ' + f);
     process.exit(1);
   }
-  console.log('✓ 西昌通过：xc- 分流、只做换乘不冒充实时、前端引导与标注齐全');
+  console.log('✓ 西昌通过：xc- 分流、实时车辆/站表/速率走裸 TCP、站数公式与停站 ETA 保护');
 
 /* ---------------------- 搜索缓存必须按城市隔离
    曾经的 bug：cacheKey 只有 key（如 "2路"），在成都搜过再切到德阳搜 "2路"，

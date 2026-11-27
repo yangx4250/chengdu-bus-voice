@@ -14,7 +14,7 @@ import {
 } from '../lib/announce.mjs';
 import { splitForSpeech } from '../lib/speech.mjs';
 import { MyGolbsClient, isMine, cityNameOfId, cityIdOfName, MG_CITIES } from '../lib/mygolbs.mjs';
-import { XichangClient, isMine as xcIsMine, XICHANG } from '../lib/xichang.mjs';
+import { XichangClient, isMine as xcIsMine, XICHANG, nearby as xcNearby, lineDetail as xcLineDetail, vehicles as xcVehicles, arrivals as xcArrivals, progress as xcProgress, distanceMeters as xcDist, normalizeLineName as xcNorm } from '../lib/xichang.mjs';
 
 let passed = 0;
 const check = async (name, fn) => {
@@ -296,6 +296,158 @@ await check('西昌：换乘规划能拿到真实线路（含起终点/首末班
   assert.ok(!b.name.includes('('), '线路名要去掉括号：' + b.name);
   assert.ok(b.from && b.to, '起终点站都要有');
   assert.ok(b.firstTime && b.lastTime, '首末班时间要有');
+});
+
+await check('西昌：实时车辆要走裸 TCP 协议（不是 HTTP），且无需签名', async () => {
+  let r;
+  try { r = await xcNearby(27.886099, 102.282078, 3); }
+  catch (e) { console.log('   （服务器不可达，跳过）', e.message); return; }
+  assert.ok(r.stops.length > 0, '应返回附近站点');
+  assert.ok(r.allArrivals.length > 0, '应返回车辆记录');
+  const s0 = r.stops[0];
+  assert.ok(s0.name, '站点名不能为空');
+  assert.ok(Number.isFinite(s0.distanceMeters), '站点自身距离要有');
+  const a = s0.arrivals[0];
+  assert.ok(a.lineName, '线路名不能为空');
+  assert.ok(a.toward, '方向不能为空');
+  assert.match(a.firstTime, /^\d{2}:\d{2}$/, '首班要格式化成 HH:MM：' + a.firstTime);
+  assert.match(a.lastTime, /^\d{2}:\d{2}$/, '末班要格式化成 HH:MM：' + a.lastTime);
+  /* 协议没有站表：算不出站数和 ETA。必须留 null，不能拿距离除臆测车速编一个 */
+  assert.equal(a.etaSeconds, null, 'ETA 拿不到就必须 null，不能编造');
+  assert.equal(a.stationsAway, null, '站数拿不到就必须 null，不能编造');
+  assert.ok(Number.isFinite(a.distanceMeters), '必须给出「车距本站」米数，界面靠它显示');
+});
+
+await check('西昌：外地坐标回空表头，要当「当地没车」而不是超时', async () => {
+  let r;
+  try { r = await xcNearby(30.657, 104.065, 5); }
+  catch (e) { console.log('   （服务器不可达，跳过）', e.message); return; }
+  /* 这曾经是个真 bug：解析器只认 >200 字节的帧，
+     于是 16 字节的「没车」空响应被当成没收到，一路等到 soTimeout。 */
+  assert.equal(r.stops.length, 0, '外地坐标应返回 0 个站点，不能抛超时');
+  assert.equal(r.allArrivals.length, 0, '外地坐标不该有车辆记录');
+});
+
+await check('西昌：站表（seq=7）能拿到完整站点序列', async () => {
+  let d;
+  try { d = await xcLineDetail('184'); }
+  catch (e) { console.log('   （服务器不可达，跳过）', e.message); return; }
+  assert.ok(d.stations.length > 5, '站表至少要有几站，实际：' + d.stations.length);
+  const s0 = d.stations[0];
+  assert.ok(s0.name, '站名不能为空');
+  assert.ok(s0.order >= 1, '站序从 1 开始');
+  assert.ok(Number.isFinite(s0.lat) && s0.lat !== 0, '站点要有纬度');
+  assert.match(d.firstTime, /^\d{2}:\d{2}$/, '首班要格式化');
+  assert.ok(Number(d.totalLength) > 0, '全程里程要有');
+  /* 站序必须连续递增，否则说明解析错位 */
+  for (let i = 1; i < d.stations.length; i++) {
+    assert.ok(d.stations[i].order > d.stations[i - 1].order, '站序应递增，第' + i + '项异常');
+  }
+});
+
+await check('西昌：速率（seq=95）能拿到车辆实时速度与站序', async () => {
+  let v;
+  try { v = await xcVehicles('184', 2991, 32, 27.885897, 102.281432); }
+  catch (e) { console.log('   （服务器不可达，跳过）', e.message); return; }
+  assert.ok(v.length > 0, '线路上应该有车');
+  const b = v[0];
+  assert.ok(b.plate, '车牌不能为空');
+  assert.ok(Number.isFinite(b.speedKmh) && b.speedKmh >= 0, '速率要是非负数');
+  assert.ok(b.order >= 0, '车辆当前站序要有');
+});
+
+await check('西昌：剩余站数按「目标站序−车辆站序+1」算，且停站不给 ETA', async () => {
+  let arr;
+  try { arr = await xcArrivals('184', { order: 32, lat: 27.885897, lng: 102.281432 }); }
+  catch (e) { console.log('   （服务器不可达，跳过）', e.message); return; }
+  assert.ok(arr.length > 0, '应该有到站记录');
+  for (const a of arr) {
+    if (a.stationsAway !== null) {
+      assert.equal(a.stationsAway, 32 - a.order + 1, '站数公式不对：' + a.order + '→' + a.stationsAway);
+    }
+    /* 停站（速率<5）不许给 ETA；给 0 或无穷都是假的 */
+    if (a.speedKmh < 5) assert.equal(a.etaSeconds, null, '停站时不该给 ETA');
+  }
+});
+
+await check('西昌：字段 4 与 seq=95 字段 7 是站点 ID，不是米数', async () => {
+  let nb;
+  try { nb = await xcNearby(27.886099, 102.282078, 2); }
+  catch (e) { console.log('   （服务器不可达，跳过）', e.message); return; }
+  const a = nb.stops[0].arrivals[0];
+  /* 曾经的 bug：把字段 4（站点 ID，如 2991）当「车距本站米数」显示，
+     界面上会出现「距本站约 2991 米」这种假数据。 */
+  const d = await xcLineDetail(a.routeDirId);
+  const ids = new Set(d.stations.map((x) => String(x.stationId)));
+  assert.ok(ids.has(String(a.stationId)), 'arrival.stationId 必须是站表里的真实站 ID，实际：' + a.stationId);
+  assert.ok(!ids.has('67'), '站 ID 不该是距离数字');
+
+  const v = await xcVehicles(a.routeDirId, a.stationId, a.targetOrder, 27.885897, 102.281432);
+  const bb = v[0];
+  assert.ok(ids.has(String(bb.nextStationId)), 'seq=95 字段 7 应是站 ID，实际：' + bb.nextStationId);
+  assert.equal(bb.nextDistance, undefined, '不该再有 nextDistance（字段 7 不是距离）');
+});
+
+await check('西昌：剩余距离用站表坐标算，随站序单调递减', async () => {
+  let nb;
+  try { nb = await xcNearby(27.886099, 102.282078, 2); }
+  catch (e) { console.log('   （服务器不可达，跳过）', e.message); return; }
+  const a = nb.stops[0].arrivals.find((x) => x.lineName === '107路');
+  if (!a) { console.log('   （附近没有 107 路，跳过）'); return; }
+  const d = await xcLineDetail(a.routeDirId);
+  const tgt = d.stations.find((x) => String(x.stationId) === String(a.stationId));
+  assert.ok(tgt, '目标站应能在站表里找到');
+
+  const v = await xcVehicles(a.routeDirId, a.stationId, tgt.order, tgt.lat, tgt.lng);
+  const rows = [];
+  for (const b of v) {
+    const p = await xcProgress(b, a.routeDirId, tgt.order);
+    if (p.remainingMeters) rows.push({ order: b.order, m: p.remainingMeters, p });
+  }
+  assert.ok(rows.length >= 2, '至少要有两辆车能算出距离，实际：' + rows.length);
+  rows.sort((x, y) => x.order - y.order);
+  for (let i = 1; i < rows.length; i++) {
+    assert.ok(rows[i].m <= rows[i - 1].m,
+      '站序越大剩余距离应越小：序' + rows[i - 1].order + '(' + rows[i - 1].m + 'm) → 序' + rows[i].order + '(' + rows[i].m + 'm)');
+  }
+  /* 已过站的车不该给 ETA */
+  for (const r of rows) if (r.p.passed) assert.equal(r.p.etaSeconds, null, '已过站的车不该给 ETA');
+});
+
+await check('西昌：坐标算出的线路总长与协议声明相差 <1%', async () => {
+  let d;
+  try { d = await xcLineDetail('184'); }
+  catch (e) { console.log('   （服务器不可达，跳过）', e.message); return; }
+  let sum = 0;
+  for (let i = 1; i < d.stations.length; i++) {
+    const p = d.stations[i - 1], q = d.stations[i];
+    sum += xcDist(p.lat, p.lng, q.lat, q.lng);
+  }
+  const claim = Number(d.totalLength);
+  assert.ok(claim > 0, '协议应给出全程里程');
+  const diff = Math.abs(sum - claim) / claim;
+  assert.ok(diff < 0.01, `坐标实算 ${Math.round(sum)}m 与声明 ${claim}m 差异 ${(diff * 100).toFixed(2)}% 过大`);
+});
+
+await check('西昌：线路名要去掉「路」和方向后缀（否则界面显示「39路路」）', async () => {
+  /* 其它数据源的 lineName 不带「路」，前端到处 lineName + "路" 拼接。
+     西昌协议里自带「路」，不剥掉会重复。 */
+  assert.equal(xcNorm('39路'), '39', '「39路」应规范成「39」');
+  assert.equal(xcNorm('107路下行(西宁-川兴车站)'), '107', '要剥掉方向和括号');
+  assert.equal(xcNorm('107路上行(川兴车站-西宁)'), '107', '上下行都要剥');
+  assert.equal(xcNorm('环湖（建昌古城-建昌古城）'), '环湖', '全角括号也要剥');
+  assert.equal(xcNorm('121路'), '121');
+});
+
+await check('西昌：附近返回的 lineName 已规范化，前端拼「路」不会重复', async () => {
+  let nb;
+  try { nb = await xcNearby(27.886099, 102.282078, 1); }
+  catch (e) { console.log('   （服务器不可达，跳过）', e.message); return; }
+  for (const a of nb.stops[0].arrivals) {
+    assert.ok(!/路$/.test(a.lineName), 'lineName 不该以「路」结尾：' + a.lineName);
+    assert.ok(!/[（(]/.test(a.lineName), 'lineName 不该带括号：' + a.lineName);
+    assert.ok(a.lineName, 'lineName 不能为空');
+  }
 });
 
 console.log(`\n全部通过：${passed} 项`);

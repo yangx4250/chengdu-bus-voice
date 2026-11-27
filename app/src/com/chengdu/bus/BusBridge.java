@@ -656,12 +656,15 @@ public final class BusBridge {
         /* 西昌只有换乘规划（/search 实测可用），实时到站/线路目录都拿不到。
            其余方法一律如实报「不支持」，不能返回空数组冒充「这条线没车」。 */
         final boolean xc = XichangClient.isMine(cityIdOf(args));
-        if (xc && !"transit".equals(method) && !"city".equals(method)
-                && !"citytable".equals(method) && !"location".equals(method)
-                && !"permissions".equals(method) && !"synth".equals(method)
-                && !"synthwav".equals(method) && !"appInfo".equals(method)
-                && !"backend".equals(method) && !"navApps".equals(method)) {
-            throw new IllegalArgumentException("西昌目前只支持换乘规划，暂无实时到站数据");
+        if (xc && !"transit".equals(method) && !"nearby".equals(method)
+                && !"detail".equals(method) && !"arrivals".equals(method)
+                && !"matrix".equals(method)
+                && !"city".equals(method) && !"citytable".equals(method)
+                && !"location".equals(method) && !"permissions".equals(method)
+                && !"synth".equals(method) && !"synthwav".equals(method)
+                && !"appInfo".equals(method) && !"backend".equals(method)
+                && !"navApps".equals(method)) {
+            throw new IllegalArgumentException("西昌只支持附近实时车辆、线路详情和换乘规划");
         }
         switch (method) {
             case "lines":
@@ -690,9 +693,14 @@ public final class BusBridge {
                         args.optString("strategy", "0"));
             }
             case "detail":
+                if (xc) return xcClientFor(args).lineDetail(args.optString("lineId"));
                 return mg ? mgClientFor(args).lineDetail(args.optString("lineId"))
                           : clientFor(args).lineDetail(args.optString("lineId"));
             case "arrivals":
+                if (xc) {
+                    return xcClientFor(args).arrivals(args.optString("lineId"),
+                            args.optJSONObject("station"));
+                }
                 return mg ? mgClientFor(args).arrivals(args.optString("lineId"), args.getJSONObject("station"))
                           : clientFor(args).arrivals(args.optString("lineId"), args.getJSONObject("station"));
             case "synth": {
@@ -704,11 +712,17 @@ public final class BusBridge {
                 return new JSONObject().put("base64", base64).put("bytes", base64.length());
             }
             case "matrix":
+                if (xc) return xcClientFor(args).stationMatrix(
+                        args.optString("lineId"), args.optInt("fromOrder", 1), args.optInt("window", 10));
                 return mg ? mgClientFor(args).stationMatrix(
                         args.optString("lineId"), args.optInt("fromOrder", 1), args.optInt("window", 10))
                           : clientFor(args).stationMatrix(
                         args.optString("lineId"), args.optInt("fromOrder", 1), args.optInt("window", 10));
             case "nearby":
+                if (xc) {
+                    return xcClientFor(args).nearby(args.optDouble("lat"), args.optDouble("lng"),
+                            args.optInt("limit", 5));
+                }
                 return mg ? mgClientFor(args).nearby(args.optDouble("lat"), args.optDouble("lng"), args.optInt("limit", 5))
                           : clientFor(args).nearby(args.optDouble("lat"), args.optDouble("lng"), args.optInt("limit", 5));
             case "location": {
