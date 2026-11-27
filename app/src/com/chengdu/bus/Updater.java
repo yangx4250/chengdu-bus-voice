@@ -221,8 +221,12 @@ public final class Updater {
         try {
             /* 注意：Gitee 的 releases 列表按创建时间**正序**返回（最老的排前面），
                和 GitHub 相反。实测 v1.3.1 排在 v1.3.2 之前，取 [0] 会拿到旧版本，
-               用户就永远收不到更新。所以这里取一页（20 条）再按版本号挑最大的。 */
-            String url = "https://gitee.com/api/v5/repos/" + GT_REPO + "/releases?page=1&per_page=20";
+               用户就永远收不到更新。所以这里按版本号挑最大的。
+
+               per_page 必须够大：本项目 release 已超过 20 条，用 20 时第一页只到
+               v1.5.0，最新的 v1.6.x 全在第二页之后 —— 结果就是「最新版本 v1.5.0、
+               当前 1.6.6 却显示已是最新」。Gitee 单页上限 100，当前 28 条一页够用。 */
+            String url = "https://gitee.com/api/v5/repos/" + GT_REPO + "/releases?page=1&per_page=100";
             conn = (HttpURLConnection) new URL(url).openConnection();
             conn.setConnectTimeout(CONNECT_TIMEOUT);
             conn.setReadTimeout(READ_TIMEOUT);

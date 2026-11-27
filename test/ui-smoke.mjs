@@ -3853,8 +3853,10 @@ const stage19 = [];
   if (!/int best = -1/.test(updaterSrc) || !/if \(v > best\)/.test(updaterSrc)) {
     stage19.push('Gitee 版本选择没有取「最大版本号」，取第 0 条会拿到旧版本');
   }
-  if (!/per_page=20/.test(updaterSrc)) {
-    stage19.push('Gitee 只拉 1 条 release，无法挑最大版本');
+  /* release 已超过 20 条，per_page=20 时第一页只到 v1.5.0，最新版本在第二页之后，
+     结果就是「最新版本显示 v1.5.0、当前 1.6.6 却显示已是最新」。必须拉够一页。 */
+  if (!/per_page=100/.test(updaterSrc)) {
+    stage19.push('Gitee 只拉 20 条 release，最新版本落在第二页之后会漏掉');
   }
   if (!/prerelease/.test(updaterSrc)) {
     stage19.push('没有跳过 prerelease 版本');
