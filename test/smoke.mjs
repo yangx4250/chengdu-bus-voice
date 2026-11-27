@@ -205,7 +205,7 @@ await check('掌上公交：线路搜索按 lineName+方向去重，首末站正
   const l = lines.find((x) => x.name === '2路');
   assert.ok(l, '应含 2路');
   assert.ok(l.startSn && l.endSn, '首末站不能为空');
-  assert.ok(l.lineId === '2路', 'lineId 是线路名');
+  assert.ok(l.lineId.startsWith('2路|'), 'lineId 必须带方向后缀：' + l.lineId);
   assert.ok([0, 1].includes(l.direction));
 });
 
@@ -247,6 +247,19 @@ await check('掌上公交：逐站矩阵必须带 line/stations（否则详情�
     assert.ok(Array.isArray(bus.times) && bus.times.length > 0, 'bus.times 必须是数组');
     for (const slice of bus.times) assert.equal(typeof slice.passed, 'boolean', 'time slice 必须有 passed 标记');
   }
+});
+
+await check('掌上公交：上下行 lineId 必须不同（否则详情页换向点不动）', async () => {
+  const c = new MyGolbsClient('mg-deyang');
+  const lines = await c.searchLines('2路');
+  const sameName = lines.filter((x) => x.name === '2路');
+  assert.ok(sameName.length >= 2, '2路应有上下行两个方向');
+  const ids = sameName.map((x) => x.lineId);
+  assert.equal(new Set(ids).size, ids.length, '上下行 lineId 不能相同：' + ids.join(','));
+  assert.ok(ids.every((id) => id.includes('|')), 'lineId 必须带方向后缀');
+  /* 带方向后缀的 lineId 仍能查详情 */
+  const detail = await c.lineDetail(ids[0]);
+  assert.ok(detail.stations.length > 10, '带 | 的 lineId 应能查到站表');
 });
 
 await check('掌上公交：三城线路目录都非空（德阳/广元/广安）', async () => {

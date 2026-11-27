@@ -173,7 +173,10 @@ public final class MyGolbsClient {
             String key = name + "|" + dir;
             if (!seen.add(key)) continue;
             JSONObject item = new JSONObject();
-            item.put("lineId", name);
+            /* lineId 带方向后缀：上下行必须是不同的 id，否则页面换向时
+               dir.lineId === lv.lineId 恒成立，所有方向都被当成当前方向、点不动。
+               detail/arrivals 已支持解析「线路名|方向」。 */
+            item.put("lineId", name + "|" + dir);
             item.put("name", name);
             item.put("direction", dir);
             item.put("startSn", line.optString("from", ""));
@@ -257,7 +260,8 @@ public final class MyGolbsClient {
                         arr.put("stationId", name);
                         arr.put("stationName", name);
                         arr.put("stationOrder", line.optInt("stationOrder", 0));
-                        arr.put("lineId", lineName);
+                        int d = "2".equals(line.optString("upperOrDown")) ? 1 : 0;
+                        arr.put("lineId", lineName + "|" + d);
                         arr.put("lineName", lineName);
                         arr.put("firstTime", line.optString("beginTime", ""));
                         arr.put("lastTime", line.optString("endTime", ""));
