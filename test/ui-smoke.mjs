@@ -972,10 +972,11 @@ if (!/暂无实时车辆/.test(spoken)) failures.push('播报没有说明无车�
 if (/id="near"/.test(html)) failures.push('首页还留着「当前位置」按钮');
 if (/>查询并播报</.test(html)) failures.push('首页还留着「查询并播报」按钮');
 if (/<button id="go"[^>]*>查询并播报/.test(html)) failures.push('查询按钮还是文字，不是 🔍');
-if (!/<input id="line"[\s\S]{0,200}?<button id="go" class="searchgo"[^>]*>🔍<\/button>/.test(html)) {
+/* 图标可以是 emoji 或内联 SVG（v1.7 起换成 SVG，去掉了搜索按钮的蓝底）。 */
+if (!/<input id="line"[\s\S]{0,260}?<button id="go" class="searchgo"[^>]*>[\s\S]{0,200}?(🔍|class="btn-icon")/.test(html)) {
   failures.push('搜索框右边没有 🔍 查询按钮');
 }
-if (!/id="refreshHome" class="iconbtn[^"]*"[^>]*>🔄</.test(html)) {
+if (!/id="refreshHome" class="iconbtn[^"]*"[^>]*>[\s\S]{0,200}?(🔄|class="btn-icon")/.test(html)) {
   failures.push('刷新按钮没有变成 🔄 图标');
 }
 /* 新布局：设置在最左、刷新在最右，标题在中间 —— 见下方「顶栏布局」专项断言 */
