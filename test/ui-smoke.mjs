@@ -4842,6 +4842,33 @@ console.log('✓ 更新源顺序通过：首次检测与下载都以 Gitee 为�
     process.exit(1);
   }
   console.log('✓ 掌上公交通过：mg- 前缀分流、Origin 命门、四大数据方法都分流、城市表合并、定位转换');
+
+/* ---------------------- 搜索缓存必须按城市隔离
+   曾经的 bug：cacheKey 只有 key（如 "2路"），在成都搜过再切到德阳搜 "2路"，
+   命中旧缓存 → 显示成都线路而不是德阳的。缓存 key 必须带 cityId。 */
+{
+  const fail = [];
+  const needKeys = [
+    ['cdbus.lines4.', '线路搜索'],
+    ['cdbus.stns1.', '站名搜索'],
+    ['cdbus.ld.', '线路详情'],
+    ['cdbus.pois1.', '地点搜索'],
+  ];
+  for (const [prefix, label] of needKeys) {
+    const re = new RegExp('"' + prefix.replace(/\./g, '\\.') + '"\\s*\\+\\s*cityId\\(\\)');
+    if (!re.test(html)) fail.push(label + '缓存 key 没有带 cityId（' + prefix + '）');
+  }
+  /* 切城市仍要清缓存（双保险） */
+  if (!/function clearCityCaches/.test(html)) fail.push('缺少 clearCityCaches()');
+  if (!/clearCityCaches\(\)/.test(html)) fail.push('切城市时没有清缓存');
+
+  if (fail.length) {
+    console.error('✗ UI 冒烟失败（搜索缓存隔离）：');
+    for (const f of fail) console.error('  - ' + f);
+    process.exit(1);
+  }
+  console.log('✓ 搜索缓存隔离通过：线路/站名/详情/地点四类缓存 key 都带 cityId，切城市另清缓存');
+}
 }
 
 console.log('✓ Gitee 版本选择通过：拉多条 release 按版本号取最大、跳过 prerelease');

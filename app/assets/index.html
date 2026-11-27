@@ -1993,7 +1993,9 @@
   async function searchLinesFuzzy(key) {
     /* v3：v2 缓存是「只查前缀」时代的产物（缺尾缀/区县线路），
        换 key 让老缓存自动失效，否则用户升级后仍然看到旧结果。 */
-    var cacheKey = "cdbus.lines4." + key;
+    /* 缓存必须带城市：同一个「2路」在成都和德阳是完全不同的线路。
+       切城市时虽然会 clearCityCaches，但带上 cityId 才不会在清理漏掉时串城市。 */
+    var cacheKey = "cdbus.lines4." + cityId() + "." + key;
     var hit = cacheGet(cacheKey);
     var pool;
 
@@ -2099,7 +2101,7 @@
        花园 → 花园桥/花园路/花园街
        再补 花园路 / 花园街 … 的下一层，能挖出 花园路中、下花园街 这些。 */
   async function searchStationsFuzzy(key) {
-    var cacheKey = "cdbus.stns1." + key;
+    var cacheKey = "cdbus.stns1." + cityId() + "." + key;
     var hit = cacheGet(cacheKey);
     if (hit && Date.now() - hit.at < 86400000 && Array.isArray(hit.list)) return hit.list;
 
@@ -2269,7 +2271,7 @@
 
   /* 线路详情（站点表很少变）：缓存 3 天，换向时只多 1 次到站请求 */
   async function getDetail(lineId) {
-    var key = "cdbus.ld." + lineId;
+    var key = "cdbus.ld." + cityId() + "." + lineId;
     var hit = cacheGet(key);
     if (hit && Date.now() - hit.at < 3 * 86400000) return hit.data;
     var data = await rpc("detail", { lineId: lineId });
@@ -6683,7 +6685,7 @@
      多轮收窄——拿第一轮拿到的地点名再各查一次，合并去重。实测「春熙路」
      3→10、「武侯祠」3→12、「环球中心」3→9。缓存 1 天。 */
   async function searchPoisFuzzy(key) {
-    var cacheKey = "cdbus.pois1." + key;
+    var cacheKey = "cdbus.pois1." + cityId() + "." + key;
     var hit = cacheGet(cacheKey);
     if (hit && Date.now() - hit.at < 86400000 && Array.isArray(hit.list)) return hit.list;
 
