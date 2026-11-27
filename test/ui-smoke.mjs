@@ -4819,6 +4819,12 @@ console.log('✓ 更新源顺序通过：首次检测与下载都以 Gitee 为�
   }
   /* 城市选择器要合并两家 */
   if (!/MyGolbsClient\.cityTable\(\)/.test(br)) fail.push('城市选择器没有合并掌上公交城市');
+  /* 已被掌上公交覆盖的城市，要移除车来了的「暂无数据」占位，否则出现两行德阳 */
+  if (!/optBoolean\("covered", true\)/.test(br) || !/continue;\s*\/\/ 已被掌上公交覆盖/.test(br)) {
+    fail.push('没有移除已被掌上公交覆盖的旧「暂无数据」占位城市');
+  }
+  /* 底部文案要提两家 */
+  if (!/车来了 \+ 掌上公交/.test(html)) fail.push('城市选择器底部文案没提掌上公交');
   /* 定位到无数据市州时要转成 mg- 城市 */
   if (!/covered/.test(br) || !/mg-deyang/.test(br)) {
     fail.push('定位到车来了未覆盖城市时没有转成掌上公交城市');

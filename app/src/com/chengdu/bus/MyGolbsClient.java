@@ -361,6 +361,22 @@ public final class MyGolbsClient {
         p.put("STATIONORDER", String.valueOf(order));
         JSONObject data = cmd(p);
 
+        /* list[]：每辆车的当前位置，index 就是车所在的站序（和 CMD=103 的 stationOrder 同量纲）。
+           按车牌建索引，给下面的预测补上「车当前在第几站」。 */
+        java.util.HashMap<String, Integer> busOrder = new java.util.HashMap<>();
+        java.util.HashMap<String, Double> busDist = new java.util.HashMap<>();
+        JSONArray positions = data.optJSONArray("list");
+        if (positions != null) {
+            for (int i = 0; i < positions.length(); i++) {
+                JSONObject b = positions.optJSONObject(i);
+                if (b == null) continue;
+                String plate = b.optString("busNumber", "");
+                if (plate.isEmpty()) continue;
+                busOrder.put(plate, b.optInt("index", 0));
+                busDist.put(plate, b.optDouble("busToStationNiheDistance", -1));
+            }
+        }
+
         /* routeOnStationRTimeInfoList：每辆车到「目标站」的预测 */
         JSONArray forecasts = data.optJSONArray("routeOnStationRTimeInfoList");
         JSONArray out = new JSONArray();
@@ -374,11 +390,13 @@ public final class MyGolbsClient {
                 int away = parseAway(f.optString("busToStationTips", ""));
                 if (f.has("busToStationCount")) away = f.optInt("busToStationCount", away);
                 int etaMin = f.optInt("busToStationTime", -1);
+                int curOrder = busOrder.containsKey(plate) ? busOrder.get(plate) : Math.max(0, order - away);
                 JSONObject item = new JSONObject();
                 item.put("busId", plate);
                 item.put("plate", plate);
-                item.put("order", away);
-                item.put("stationsAway", away);
+                /* order = 车当前所在站序（不是距目标站站数），和车来了语义一致 */
+                item.put("order", curOrder);
+                item.put("stationsAway", Math.max(0, order - curOrder));
                 item.put("distanceMeters", f.optInt("busToStationDistance", -1));
                 item.put("etaSeconds", etaMin > 0 ? etaMin * 60 : JSONObject.NULL);
                 item.put("arrivalAt", JSONObject.NULL);
@@ -387,14 +405,16 @@ public final class MyGolbsClient {
         }
         java.util.Collections.sort(list, new Comparator<JSONObject>() {
             @Override public int compare(JSONObject a, JSONObject b) {
-                return Integer.compare(a.optInt("stationsAway"), b.optInt("stationsAway"));
+                return Integer.compare(a.optInt("order"), b.optInt("order"));
             }
         });
         for (JSONObject item : list) out.put(item);
         return out;
     }
 
-    /** 单车逐站矩阵：按站表逐站查 arrivals，按车牌串起来。 */
+    /** 单车逐站矩阵：按站表逐站查 arrivals，按车牌串起来。
+     *  输出结构必须和 ChelaileClient.stationMatrix 完全一致（line/stations/buses/queriedFrom/queriedTo），
+     *  页面会读 data.line.firstTime 等字段——缺了会直接报 undefined.firstTime。 */
     public JSONObject stationMatrix(String lineId, int fromOrder, int window) throws Exception {
         JSONObject detail = lineDetail(lineId);
         JSONArray all = detail.getJSONArray("stations");
@@ -403,6 +423,8 @@ public final class MyGolbsClient {
             JSONObject st = all.optJSONObject(i);
             if (st != null && st.optInt("order", 0) >= fromOrder) targets.add(st);
         }
+        if (targets.isEmpty()) throw new ApiException("这条线路上没有可查询的站点");
+
         LinkedHashMap<String, JSONObject> buses = new LinkedHashMap<>();
         LinkedHashMap<String, java.util.TreeMap<Integer, JSONObject>> times = new LinkedHashMap<>();
         for (JSONObject st : targets) {
@@ -428,16 +450,78 @@ public final class MyGolbsClient {
                 times.get(key).put(st.optInt("order"), slice);
             }
         }
-        JSONArray outBuses = new JSONArray();
-        for (String key : buses.keySet()) {
-            JSONObject b = buses.get(key);
-            JSONArray t = new JSONArray();
-            for (JSONObject slice : times.get(key).values()) t.put(slice);
-            b.put("times", t);
-            outBuses.put(b);
+
+        int terminusOrder = all.optJSONObject(all.length() - 1).optInt("order", 0);
+        int queriedFrom = targets.get(0).optInt("order", 0);
+        int queriedTo = targets.get(targets.size() - 1).optInt("order", 0);
+
+        List<JSONObject> busList = new ArrayList<>(buses.values());
+        java.util.Collections.sort(busList, new Comparator<JSONObject>() {
+            @Override public int compare(JSONObject a, JSONObject b) {
+                return Integer.compare(b.optInt("order"), a.optInt("order"));
+            }
+        });
+        JSONArray busesOut = new JSONArray();
+        for (JSONObject meta : busList) {
+            JSONObject item = new JSONObject(meta.toString());
+            int busOrder = meta.optInt("order");
+            java.util.TreeMap<Integer, JSONObject> map = times.get(meta.optString("busId"));
+            JSONArray slices = new JSONArray();
+            for (JSONObject st : targets) {
+                int order = st.optInt("order");
+                JSONObject slice = map == null ? null : map.get(order);
+                if (slice == null) {
+                    slice = new JSONObject();
+                    slice.put("order", order);
+                    slice.put("name", st.optString("name"));
+                    slice.put("etaSeconds", JSONObject.NULL);
+                    slice.put("arrivalAt", JSONObject.NULL);
+                }
+                slice.put("passed", order < busOrder);
+                slices.put(slice);
+            }
+            item.put("times", slices);
+            item.put("stationsAway", Math.max(0, fromOrder - busOrder));
+            item.put("stationsToEnd", Math.max(0, terminusOrder - busOrder));
+            item.put("passedSelected", busOrder > fromOrder);
+            item.put("terminusOrder", terminusOrder);
+            busesOut.put(item);
         }
+
+        JSONArray stationsOut = new JSONArray();
+        for (int i = 0; i < all.length(); i++) {
+            JSONObject st = all.optJSONObject(i);
+            stationsOut.put(new JSONObject()
+                    .put("order", st.optInt("order"))
+                    .put("name", st.optString("name"))
+                    .put("stationId", st.optString("stationId"))
+                    .put("lat", st.optDouble("lat", 0))
+                    .put("lng", st.optDouble("lng", 0))
+                    .put("suspended", st.optBoolean("suspended", false))
+                    .put("loop", st.optBoolean("loop", false))
+                    .put("loopLen", st.optInt("loopLen", 0)));
+        }
+        JSONObject lineOut = new JSONObject();
+        lineOut.put("lineId", detail.optString("lineId"));
+        lineOut.put("name", detail.optString("name"));
+        lineOut.put("startSn", detail.optString("startSn"));
+        lineOut.put("endSn", detail.optString("endSn"));
+        lineOut.put("firstTime", detail.optString("firstTime"));
+        lineOut.put("lastTime", detail.optString("lastTime"));
+        lineOut.put("depDesc", detail.optString("depDesc", ""));
+        lineOut.put("depIntervalM", detail.optInt("depIntervalM", -1));
+        lineOut.put("departLeft", detail.optLong("departLeft", 0));
+        lineOut.put("departRight", detail.optLong("departRight", 0));
+        lineOut.put("intervalLeft", detail.optInt("intervalLeft", -1));
+        lineOut.put("intervalRight", detail.optInt("intervalRight", -1));
+        lineOut.put("preArrivalTime", detail.optString("preArrivalTime", ""));
+
         JSONObject out = new JSONObject();
-        out.put("buses", outBuses);
+        out.put("line", lineOut);
+        out.put("stations", stationsOut);
+        out.put("buses", busesOut);
+        out.put("queriedFrom", queriedFrom);
+        out.put("queriedTo", queriedTo);
         return out;
     }
 

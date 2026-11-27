@@ -234,6 +234,21 @@ await check('掌上公交：线路站表与到站（CMD=103/104）', async () =>
   }
 });
 
+await check('掌上公交：逐站矩阵必须带 line/stations（否则详情页报 undefined.firstTime）', async () => {
+  const c = new MyGolbsClient('mg-deyang');
+  const detail = await c.lineDetail('2路|0');
+  const m = await c.stationMatrix('2路|0', 8, 5);
+  assert.ok(m.line, 'matrix 必须带 line');
+  assert.ok(m.line.firstTime, 'matrix.line.firstTime 必须有值');
+  assert.ok(Array.isArray(m.stations) && m.stations.length > 10, 'matrix 必须带 stations');
+  assert.ok(m.queriedFrom && m.queriedTo, '必须有 queriedFrom/To');
+  for (const bus of m.buses) {
+    assert.ok(Number.isFinite(bus.order), 'bus.order 必须是车当前站序（数字）');
+    assert.ok(Array.isArray(bus.times) && bus.times.length > 0, 'bus.times 必须是数组');
+    for (const slice of bus.times) assert.equal(typeof slice.passed, 'boolean', 'time slice 必须有 passed 标记');
+  }
+});
+
 await check('掌上公交：三城线路目录都非空（德阳/广元/广安）', async () => {
   for (const id of ['mg-deyang', 'mg-guangyuan', 'mg-guangan']) {
     const c = new MyGolbsClient(id);

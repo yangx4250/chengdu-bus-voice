@@ -715,11 +715,26 @@ public final class BusBridge {
                 return info;
             }
             case "citytable": {
-                /* 城市选择器：车来了城市 + 掌上公交补充城市合并 */
+                /* 城市选择器：车来了城市 + 掌上公交补充城市合并。
+                   车来了表里有几条 covered=false 的占位（德阳/广元/广安/甘孜/阿坝），
+                   这些地方掌上公交已经有数据了，必须移除旧的「暂无数据」条目，
+                   否则同一个城市出现两行、用户点到灰的那行。凉山没数据，保留。 */
                 JSONArray all = ChelaileClient.cityTable();
+                JSONArray kept = new JSONArray();
+                for (int i = 0; i < all.length(); i++) {
+                    JSONObject item = all.optJSONObject(i);
+                    if (item != null && !item.optBoolean("covered", true)) {
+                        String n = item.optString("name", "");
+                        String mgId = MyGolbsClient.cityIdOfName(n);
+                        if (mgId.isEmpty() && n.contains("甘孜")) mgId = "mg-ganzi";
+                        if (mgId.isEmpty() && n.contains("阿坝")) mgId = "mg-aba";
+                        if (!mgId.isEmpty()) continue;      // 已被掌上公交覆盖，丢掉旧占位
+                    }
+                    kept.put(all.opt(i));
+                }
                 JSONArray extra = MyGolbsClient.cityTable();
-                for (int i = 0; i < extra.length(); i++) all.put(extra.opt(i));
-                return all;
+                for (int i = 0; i < extra.length(); i++) kept.put(extra.opt(i));
+                return kept;
             }
             default:
                 throw new IllegalArgumentException("未知方法 " + method);
