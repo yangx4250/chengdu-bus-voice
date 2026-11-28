@@ -4951,6 +4951,43 @@ console.log('✓ 更新源顺序通过：首次检测与下载都以 Gitee 为�
   }
   console.log('✓ 西昌通过：xc- 分流、实时车辆/站表/速率走裸 TCP、站数公式与停站 ETA 保护');
 
+/* ---------------------- 盯站：回前台不重播 / 请上车 / 通知锁屏常驻 */
+{
+  const fail = [];
+  const htmlStr = String(html);
+
+  /* ① 回前台去重：原生 statusJson 暴露已播节点，页面回前台时同步 */
+  const ws = readSafe('app/src/com/chengdu/bus/WatchService.java');
+  if (!/spokeBusId/.test(ws) || !/out\.put\("spoke10m"/.test(ws)) {
+    fail.push('原生 watchStatus 没有暴露已播节点，页面回前台无法去重');
+  }
+  if (!/syncWatchMarksFromNative/.test(htmlStr)) {
+    fail.push('页面没有在回前台时同步原生已播节点（会重复播报）');
+  }
+  /* ② 到站播报加「请上车」：原生和页面两处 */
+  if (!/已到站，请上车/.test(ws)) fail.push('原生到站播报没加「请上车」');
+  if (!/已到站，请上车/.test(htmlStr)) fail.push('页面到站播报没加「请上车」');
+  /* ③ 盯站 / 下车提醒通知锁屏常驻：渠道换成 HIGH 且换 ID */
+  const al = readSafe('app/src/com/chengdu/bus/AlightService.java');
+  if (!/cdbus_watch_v2/.test(ws) || !/IMPORTANCE_HIGH/.test(ws)) {
+    fail.push('盯站通知渠道没升级为锁屏常驻（HIGH + 新 ID）');
+  }
+  if (!/cdbus_alight_v2/.test(al) || !/IMPORTANCE_HIGH/.test(al)) {
+    fail.push('下车提醒通知渠道没升级为锁屏常驻（HIGH + 新 ID）');
+  }
+  /* 常驻通知已能锁屏显示，就不要再 Notify.post() 另发一条 ——
+     否则锁屏会叠两条通知（用户实测截图确认过）。 */
+  if (/Notify\.post\(/.test(ws)) fail.push('盯站还在另发一条提醒通知，锁屏会叠两条');
+  if (/Notify\.post\(/.test(al)) fail.push('下车提醒还在另发一条通知，锁屏会叠两条');
+
+  if (fail.length) {
+    console.error('✗ UI 冒烟失败（盯站通知/去重）：');
+    for (const f of fail) console.error('  - ' + f);
+    process.exit(1);
+  }
+  console.log('✓ 盯站通过：回前台不重播、到站加请上车、盯站/下车通知锁屏常驻');
+}
+
 /* ---------------------- 搜索缓存必须按城市隔离
    曾经的 bug：cacheKey 只有 key（如 "2路"），在成都搜过再切到德阳搜 "2路"，
    命中旧缓存 → 显示成都线路而不是德阳的。缓存 key 必须带 cityId。 */

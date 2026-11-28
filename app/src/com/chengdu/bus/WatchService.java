@@ -23,8 +23,10 @@ import org.json.JSONObject;
 public final class WatchService extends Service {
 
     private static final String TAG = "CdBusWatch";
-    private static final String CHANNEL_ID = "cdbus_watch";
-    private static final String CHANNEL_NAME = "公交盯站";
+    /* v2：锁屏常驻可见。老渠道 IMPORTANCE_LOW 在锁屏只折成一行灰字，
+       Android 不允许原地提高渠道重要度，只能换 ID 重建。 */
+    private static final String CHANNEL_ID = "cdbus_watch_v2";
+    private static final String CHANNEL_NAME = "公交盯站（锁屏常驻）";
     private static final int NOTIFICATION_ID = 1001;
     private static final long INTERVAL_MS = 30000;
 
@@ -51,13 +53,16 @@ public final class WatchService extends Service {
     private double lat = 0;
     private double lng = 0;
 
-    private String currentBusId = "";
-    private boolean spoke10m = false;
-    private boolean spoke5m = false;
-    private boolean spoke2s = false;
-    private boolean spokeArrived = false;
+    private static volatile String currentBusId = "";
+    /* static：这些「已播节点」要暴露给页面 —— 后台/锁屏播过之后，
+       页面接手前台时必须知道哪些节点已经念过，否则回到 App 会再念一遍。
+       页面通过 watchStatus() 读走它们，与自己的 watchMarks 对齐。 */
+    private static volatile boolean spoke10m = false;
+    private static volatile boolean spoke5m = false;
+    private static volatile boolean spoke2s = false;
+    private static volatile boolean spokeArrived = false;
     /** 起点站发车提醒：盯的站离起点 1~3 站时，起点一有车发出就播一次。 */
-    private boolean spokeDepart = false;
+    private static volatile boolean spokeDepart = false;
     private String lastMessage = "准备开始盯站…";
 
     /* 给「后台播报自检」面板用的运行状态 */
@@ -88,6 +93,13 @@ public final class WatchService extends Service {
             out.put("lastSpeakAt", LAST_SPEAK_AT);
             out.put("wakeHeld", WAKE_HELD);
             out.put("diag", DIAG_SPEAK);
+            /* 已播节点：页面回前台时读取，避免后台播过的节点再播一遍 */
+            out.put("spokeBusId", currentBusId == null ? "" : currentBusId);
+            out.put("spoke10m", spoke10m);
+            out.put("spoke5m", spoke5m);
+            out.put("spoke2s", spoke2s);
+            out.put("spokeArrived", spokeArrived);
+            out.put("spokeDepart", spokeDepart);
         } catch (Exception ignored) {
         }
         return out.toString();
@@ -230,9 +242,10 @@ public final class WatchService extends Service {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
         NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         if (manager == null) return;
+        /* IMPORTANCE_HIGH：锁屏上作为常驻卡片一直显示，不是折成灰字 */
         NotificationChannel channel = new NotificationChannel(
-                CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW);
-        channel.setDescription("盯站时在后台刷新到站并播报");
+                CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_HIGH);
+        channel.setDescription("盯站时在后台刷新到站并播报，锁屏常驻显示");
         channel.enableVibration(false);
         channel.setSound(null, null);
         /* 锁屏可见（v1.0.45）：重要度保持 LOW（常驻通知不该响），
@@ -351,8 +364,8 @@ public final class WatchService extends Service {
                     spoke10m = true;   // 标记为已播，防止后续 tick 再补
                     spoke5m = true;
                     spoke2s = true;
-                    updateNotification(stationName + " · 已到站，盯站结束");
-                    announce("已到站");
+                    updateNotification(stationName + " · 已到站，请上车");
+                    announce("已到站，请上车");
                     finishAndStop(4 * 1000);   // 留 4 秒让语音播完再停
                 }
             } else {
@@ -471,10 +484,10 @@ public final class WatchService extends Service {
         /* 念出来用口语数字（716 → 七幺六）；通知标题仍显示原文 */
         String text = BusText.lineSpeech(lineName) + "，" + stationName + "站，" + what + "。";
         Log.i(TAG, "后台/息屏播报：" + text);
-        /* 锁屏通知（v1.0.44）：前台服务自带的常驻通知是 IMPORTANCE_LOW，
-           锁屏上只会折成一行灰字。这里另发一条高优先级通知，息屏时能直接看到
-           「还有 2 站」。只在后台/息屏这条分支发 —— 亮屏时页面自己会显示。 */
-        Notify.post(this, BusText.lineLabel(lineName) + " · " + stationName, what);
+        /* 不再另发一条通知：前台服务的常驻通知已升级为 HIGH + 锁屏常驻，
+           直接更新它就够了。以前另外发一条独立提醒会在锁屏上叠出两条
+           （常驻的「还有 3 站」+ 另发的「大约 4 分钟」），用户看到重复。 */
+        updateNotification(what);
         LAST_SPEAK = text;
         LAST_SPEAK_AT = System.currentTimeMillis();
         if (speech != null) {

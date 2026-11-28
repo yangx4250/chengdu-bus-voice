@@ -5505,6 +5505,27 @@
   /* 30 秒一刷；同一辆车只在 10 分钟 / 5 分钟 / 2 站 各播一次 */
   var watchMarks = { busId: "", ten: false, five: false, two: false, arrived: false, depart: false };
 
+  /* 回前台去重：后台/锁屏期间由 WatchService 播过的节点，会记在它的 statusJson 里。
+     页面接手前台播报前先把这些标记同步过来，否则同一节点会再念一遍
+     （用户 complaint：后台已经播过，回到 App 又播一次）。 */
+  function syncWatchMarksFromNative() {
+    if (!bridge || !bridge.watchStatus) return null;
+    var st;
+    try { st = JSON.parse(bridge.watchStatus()); } catch (e) { return null; }
+    if (!st || !st.spokeBusId) return st;   // 老服务/还没播过
+    /* 只有盯的是同一辆车才同步；换了车就各算各的 */
+    if (String(watchMarks.busId) !== String(st.spokeBusId)) {
+      watchMarks = { busId: String(st.spokeBusId), ten: false, five: false,
+                     two: false, arrived: false, depart: false };
+    }
+    if (st.spoke10m) watchMarks.ten = true;
+    if (st.spoke5m) watchMarks.five = true;
+    if (st.spoke2s) watchMarks.two = true;
+    if (st.spokeArrived) watchMarks.arrived = true;
+    if (st.spokeDepart) watchMarks.depart = true;
+    return st;
+  }
+
   /* 查起点站的到站情况，判断是否刚发车。
      返回 { departed: bool, away: number }；拿不到数据时返回 null（不播）。 */
   async function checkDeparture(t) {
@@ -5538,6 +5559,9 @@
                  lat: t.lat || 0, lng: t.lng || 0 }
     });
     var first = buses && buses.length ? buses[0] : null;
+
+    /* 回前台时先把后台已播的节点同步过来，避免重复播报 */
+    if (!document.hidden) syncWatchMarksFromNative();
 
     /* 【回退到可靠版本】页面自己播报。
        之前把播报交给原生服务，结果服务因各种原因不播（frontAndScreenOn 判断、
@@ -5579,7 +5603,7 @@
           watchMarks.ten = true;    // 到站后不再补播前面的节点
           watchMarks.five = true;
           watchMarks.two = true;
-          speak(headF + "已到站，请准备上车。", true);
+          speak(headF + "已到站，请上车。", true);
           /* 车到了就结束盯站：不再盯下一辆。
              延迟 4 秒让语音播完，再收掉页面状态和服务。 */
           setTimeout(function () { watchArrivedCleanup(); }, 4000);
@@ -6102,7 +6126,7 @@
   var diagTimer = null;
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "2.0.0";
+  var APP_FALLBACK_VERSION = "2.0.1";
 
   /* 设置主页「关于 ›」下面的版本号：直接显示 App 真实版本，别留「v—」 */
   function paintVersionSub() {

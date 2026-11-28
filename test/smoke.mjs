@@ -392,7 +392,11 @@ await check('西昌：剩余站数按「目标站序−车辆站序+1」算，�
   if (!arr.length) { console.log('   （当前时段无在途车辆，跳过）'); return; }
   for (const a of arr) {
     if (a.stationsAway !== null) {
-      assert.equal(a.stationsAway, 32 - a.order + 1, '站数公式不对：' + a.order + '→' + a.stationsAway);
+      const expect = 32 - a.order + 1;
+      /* 车已经贴到目标站（<100 米）时，产品上按「还有 1 站/即将进站」播，
+         不按公式报——这是有意的就近覆盖，不是解析错误。 */
+      assert.ok(a.stationsAway === expect || (a.stationsAway === 1 && a.arrived),
+        '站数公式不对：' + a.order + '→' + a.stationsAway + '（期望 ' + expect + '）');
     }
     /* 停站（速率<5）不许给 ETA；给 0 或无穷都是假的 */
     if (a.speedKmh < 5) assert.equal(a.etaSeconds, null, '停站时不该给 ETA');

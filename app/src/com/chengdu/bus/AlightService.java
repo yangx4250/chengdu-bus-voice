@@ -30,8 +30,9 @@ import org.json.JSONObject;
 public final class AlightService extends Service implements LocationListener {
 
     private static final String TAG = "CdBusAlight";
-    private static final String CHANNEL_ID = "cdbus_alight";
-    private static final String CHANNEL_NAME = "下车提醒";
+    /* v2：锁屏常驻可见（同盯站，换 ID 才能提高重要度） */
+    private static final String CHANNEL_ID = "cdbus_alight_v2";
+    private static final String CHANNEL_NAME = "下车提醒（锁屏常驻）";
     private static final int NOTIFICATION_ID = 1002;
     private static final String PREFS = "cdbus_alight";
     private static final long TICK_MS = 15000;
@@ -347,9 +348,9 @@ public final class AlightService extends Service implements LocationListener {
         String text = what + "。" + destName + "站。";
         if (!lineName.isEmpty()) text = BusText.lineSpeech(lineName) + "，" + text;
         Log.i(TAG, "下车提醒播报：" + text + "（界面可见=" + MainActivity.VISIBLE + "）");
-        /* 锁屏通知（v1.0.44）：和盯站一样，后台/息屏时把这条提醒显示在锁屏上。 */
-        Notify.post(this, (lineName.isEmpty() ? "" : BusText.lineLabel(lineName) + " · ") + "下车提醒",
-                what + "（" + destName + "站）");
+        /* 不再另发一条通知：常驻通知已是锁屏常驻，直接更新它，
+           避免锁屏叠出两条（用户看到重复）。 */
+        updateNotification(what + "（" + destName + "站）");
         if (speech != null) {
             speech.speak(text, new Speech.Callback() {
                 @Override
@@ -433,9 +434,10 @@ public final class AlightService extends Service implements LocationListener {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
         NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         if (manager == null) return;
+        /* IMPORTANCE_HIGH：锁屏上常驻显示 */
         NotificationChannel channel = new NotificationChannel(
-                CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW);
-        channel.setDescription("下车提醒时在后台持续定位并播报");
+                CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_HIGH);
+        channel.setDescription("下车提醒时在后台持续定位并播报，锁屏常驻显示");
         channel.enableVibration(false);
         channel.setSound(null, null);
         /* 锁屏可见（v1.0.45） */

@@ -56,7 +56,7 @@ $ cd-bus near --city 绵阳
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v2.0.0）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 742 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v2.0.1）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 742 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -491,6 +491,14 @@ WebView 加固：关掉 `AllowFileAccessFromFileURLs`/`AllowUniversalAccessFromF
 
 **装法**：把 APK 传到手机点开安装（首次会要求允许「安装未知应用」，给文件管理器/浏览器授权一次即可）。
 包名 `com.chengdu.bus`，用的本地自签名证书（debug keystore 在 `build/` 下，别用于正式分发）。
+
+### v2.0.1：盯站播报与锁屏通知
+
+- **回前台不重播**：后台/锁屏期间由 `WatchService` 播过的节点，写进 `watchStatus()`（`spokeBusId/spoke10m/spoke5m/spoke2s/spokeArrived/spokeDepart`）；页面 `watchTick` 在前台播报前调 `syncWatchMarksFromNative()` 同步，只在同一辆车时对齐，避免回到 App 又念一遍。
+- **到站加「请上车」**：盯站到站播报改成「…已到站，请上车。」（通知栏同步）。
+- **盯站 / 下车提醒通知改锁屏常驻**：两个前台服务通知渠道换成新 ID（`cdbus_watch_v2` / `cdbus_alight_v2`）并升到 `IMPORTANCE_HIGH`——Android 不允许原地提升渠道重要度，只能换 ID；它们本来就是 `setOngoing(true)` + `VISIBILITY_PUBLIC`。
+- **锁屏只留一条通知**：去掉两个 `announce()` 里另外发的 `Notify.post()` 提醒卡片，改为只在常驻通知上更新。常驻通知升级后已能锁屏显示，独立提醒就成了重复（实测截图锁屏叠两条）。
+- 测试：新增静态断言锁定以上四点；西昌「站数公式」断言补上「车距 <100m 归 1 站」的就近覆盖例外，避免夜间真实接口偶发误报。
 
 ### v2.0.0：界面适配 Miuix 设计语言
 
