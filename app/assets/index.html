@@ -1027,7 +1027,9 @@
         </div>
         <div class="btns"><button id="lockNotifyTest">发一条测试通知</button></div>
         <div class="btns"><button id="lockNotifyPerm">检查通知权限 / 去开启</button></div>
-        <div id="lockNotifyInfo" class="dhead">关掉后只在后台念，不弹锁屏。测试时先锁屏再点。</div>
+        <div class="btns"><button id="lockNotifyWatchCh">打开盯站通知设置</button></div>
+        <div class="btns"><button id="lockNotifyAlightCh">打开下车提醒通知设置</button></div>
+        <div id="lockNotifyInfo" class="dhead">小米/荣耀：点上面两个按钮，把「在锁定屏幕上」改成显示、并打开声音和震动。锁屏看不到时先来这里检查。</div>
       </div>
       <div class="setcard">
         <div class="setcardtitle">后台心跳</div>
@@ -6126,7 +6128,7 @@
   var diagTimer = null;
 
   /* 「关于」里的版本/环境信息；拿不到就用页面内常量兜底 */
-  var APP_FALLBACK_VERSION = "2.0.1";
+  var APP_FALLBACK_VERSION = "2.0.5";
 
   /* 设置主页「关于 ›」下面的版本号：直接显示 App 真实版本，别留「v—」 */
   function paintVersionSub() {
@@ -7504,6 +7506,22 @@
       try { bridge.askNotificationPermission(); } catch (e) { /* 忽略 */ }
     }
     setStatus(text || "已请求通知权限", false);
+  };
+
+  /* 直达渠道设置：一步跳到「在锁定屏幕上」那个开关，省得用户在长列表里翻 */
+  $("lockNotifyWatchCh").onclick = function () {
+    if (!bridge || !bridge.openWatchChannelSettings) {
+      setStatus("要在 App 里才能用", true);
+      return;
+    }
+    try { bridge.openWatchChannelSettings(); } catch (e) { /* 忽略 */ }
+  };
+  $("lockNotifyAlightCh").onclick = function () {
+    if (!bridge || !bridge.openAlightChannelSettings) {
+      setStatus("要在 App 里才能用", true);
+      return;
+    }
+    try { bridge.openAlightChannelSettings(); } catch (e) { /* 忽略 */ }
   };
 
   $("dWatchDiag").onclick = function () {

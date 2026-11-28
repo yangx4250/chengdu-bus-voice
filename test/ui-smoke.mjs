@@ -579,6 +579,8 @@ const bridge = {
   testLockNotify() { lockNotifyLog.push(['test', true]); },
   lockNotifyDiag() { return '开关：开；通知权限：已授权；通道重要度：4；锁屏可见性：1；系统通知总开关：正常'; },
   askNotificationPermission() { lockNotifyLog.push(['perm', true]); },
+  openWatchChannelSettings() { lockNotifyLog.push(['watchch', true]); },
+  openAlightChannelSettings() { lockNotifyLog.push(['alightch', true]); },
   heartbeatStatus() {
     return JSON.stringify({ running: heartbeatRunning, count: heartbeatRunning ? 1 : 3,
       lastAt: Date.now(), lastText: '后台心跳第 1 次', lastResult: '✅ 系统 TTS' });
@@ -3089,6 +3091,18 @@ else {
   if (lockNotifyLog.length <= before) stage10.push('点测试通知没有调用 testLockNotify');
 }
 
+// 直达渠道设置按钮：小米/荣耀的「锁屏显示」是 ROM 开关，必须能一步跳过去
+{
+  const wc = document.getElementById('lockNotifyWatchCh');
+  const ac = document.getElementById('lockNotifyAlightCh');
+  if (!wc || typeof wc.onclick !== 'function') stage10.push('缺少「打开盯站通知设置」按钮');
+  else { wc.onclick(); await new Promise((r) => setTimeout(r, 80));
+    if (!lockNotifyLog.some((x) => x[0] === 'watchch')) stage10.push('点盯站通知设置没有调用 openWatchChannelSettings'); }
+  if (!ac || typeof ac.onclick !== 'function') stage10.push('缺少「打开下车提醒通知设置」按钮');
+  else { ac.onclick(); await new Promise((r) => setTimeout(r, 80));
+    if (!lockNotifyLog.some((x) => x[0] === 'alightch')) stage10.push('点下车通知设置没有调用 openAlightChannelSettings'); }
+}
+
 // 重新进入设置页时开关状态要跟着原生走
 lockNotifyOn = true;
 document.getElementById('diagBack').onclick();
@@ -4969,12 +4983,23 @@ console.log('✓ 更新源顺序通过：首次检测与下载都以 Gitee 为�
   if (!/已到站，请上车/.test(htmlStr)) fail.push('页面到站播报没加「请上车」');
   /* ③ 盯站 / 下车提醒通知锁屏常驻：渠道换成 HIGH 且换 ID */
   const al = readSafe('app/src/com/chengdu/bus/AlightService.java');
-  if (!/cdbus_watch_v2/.test(ws) || !/IMPORTANCE_HIGH/.test(ws)) {
+  if (!/cdbus_watch_v3/.test(ws) || !/IMPORTANCE_HIGH/.test(ws)) {
     fail.push('盯站通知渠道没升级为锁屏常驻（HIGH + 新 ID）');
   }
-  if (!/cdbus_alight_v2/.test(al) || !/IMPORTANCE_HIGH/.test(al)) {
+  if (!/cdbus_alight_v3/.test(al) || !/IMPORTANCE_HIGH/.test(al)) {
     fail.push('下车提醒通知渠道没升级为锁屏常驻（HIGH + 新 ID）');
   }
+  /* 小米坑：完全静默的渠道会被默认设成「锁屏完全不显示通知」。
+     所有渠道必须有声音+震动（用户也要求自动开震动），且震动 pattern 要能真震。 */
+  for (const [name, src] of [['盯站', ws], ['下车提醒', al]]) {
+    if (!/enableVibration\(true\)/.test(src)) fail.push(name + '渠道没开震动');
+    if (!/setVibrationPattern\(new long\[\]\{0, 120\}\)/.test(src)) {
+      fail.push(name + '渠道震动 pattern 不对（{120} 小米会解析成静音）');
+    }
+    if (/setSound\(null, null\)/.test(src)) fail.push(name + '渠道无声，小米会默认锁屏不显示');
+  }
+  const hb = readSafe('app/src/com/chengdu/bus/HeartbeatService.java');
+  if (!/enableVibration\(true\)/.test(hb)) fail.push('心跳渠道没开震动（用户要求所有通知震动）');
   /* 常驻通知已能锁屏显示，就不要再 Notify.post() 另发一条 ——
      否则锁屏会叠两条通知（用户实测截图确认过）。 */
   if (/Notify\.post\(/.test(ws)) fail.push('盯站还在另发一条提醒通知，锁屏会叠两条');
@@ -4986,6 +5011,36 @@ console.log('✓ 更新源顺序通过：首次检测与下载都以 Gitee 为�
     process.exit(1);
   }
   console.log('✓ 盯站通过：回前台不重播、到站加请上车、盯站/下车通知锁屏常驻');
+
+  /* 首次启动：定位 + 通知权限合并成一次请求，首次就能拿到通知权限 */
+  const ma = readSafe('app/src/com/chengdu/bus/MainActivity.java');
+  const mergedBlock = (ma.match(/if \(!need\.isEmpty\(\)\) \{[\s\S]{0,120}/) || [''])[0];
+  if (!/need\.add\(Manifest\.permission\.POST_NOTIFICATIONS\)/.test(ma)) {
+    fail.push('首次启动没有把通知权限加进权限请求列表');
+  }
+  if (!/need\.add\(Manifest\.permission\.ACCESS_FINE_LOCATION\)/.test(ma)) {
+    fail.push('首次启动的权限列表里没有定位权限');
+  }
+  if (!/requestPermissions\(need\.toArray/.test(mergedBlock)) {
+    fail.push('定位和通知没有合并成一次请求（会变成第一次只弹定位、第二次才弹通知）');
+  }
+  console.log('✓ 首次启动权限通过：定位 + 通知合并成一次请求');
+
+  /* 首次拿到通知权限后，自动预热两个常驻通知渠道（发一次 3 秒自停的通知），
+     让系统通知设置里出现这两个渠道，用户能去开「锁屏显示」。 */
+  const wsSrc = readSafe('app/src/com/chengdu/bus/WatchService.java');
+  const alSrc = readSafe('app/src/com/chengdu/bus/AlightService.java');
+  const bdSrc = readSafe('app/src/com/chengdu/bus/BusBridge.java');
+  if (!/ACTION_PRIME/.test(wsSrc) || !/ACTION_PRIME/.test(alSrc)) {
+    fail.push('盯站/下车服务缺少预热 ACTION_PRIME（渠道不会自动创建）');
+  }
+  if (!/primeNotificationChannels/.test(bdSrc)) {
+    fail.push('BusBridge 缺少预热通知渠道的桥接方法');
+  }
+  if (!/notificationPrimed/.test(ma)) {
+    fail.push('首次授权后没有「只预热一次」的标记（会每次启动都弹通知）');
+  }
+  console.log('✓ 首次通知权限通过：自动预热盯站/下车常驻通知渠道（只一次）');
 }
 
 /* ---------------------- 搜索缓存必须按城市隔离

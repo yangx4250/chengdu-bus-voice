@@ -24,7 +24,7 @@ import android.util.Log;
 final class Notify {
 
     private static final String TAG = "CdBusNotify";
-    private static final String CHANNEL_ID = "cdbus_alert";
+    private static final String CHANNEL_ID = "cdbus_alert_v2";
     private static final String CHANNEL_NAME = "到站提醒（锁屏显示）";
     private static final String PREFS = "cdbus_notify";
     private static final String KEY_ON = "lockOn";

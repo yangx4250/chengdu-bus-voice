@@ -31,7 +31,7 @@ public final class AlightService extends Service implements LocationListener {
 
     private static final String TAG = "CdBusAlight";
     /* v2：锁屏常驻可见（同盯站，换 ID 才能提高重要度） */
-    private static final String CHANNEL_ID = "cdbus_alight_v2";
+    private static final String CHANNEL_ID = "cdbus_alight_v3";
     private static final String CHANNEL_NAME = "下车提醒（锁屏常驻）";
     private static final int NOTIFICATION_ID = 1002;
     private static final String PREFS = "cdbus_alight";
@@ -44,6 +44,8 @@ public final class AlightService extends Service implements LocationListener {
 
     public static final String ACTION_START = "com.chengdu.bus.ALIGHT_START";
     public static final String ACTION_STOP = "com.chengdu.bus.ALIGHT_STOP";
+    /** 首次授权后预热：只建渠道+发常驻通知，不做定位/播报，几秒后自停。 */
+    public static final String ACTION_PRIME = "com.chengdu.bus.ALIGHT_PRIME";
 
     /** 服务是否在跑，以及给页面轮询用的状态 JSON。 */
     private static volatile boolean RUNNING = false;
@@ -102,6 +104,15 @@ public final class AlightService extends Service implements LocationListener {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null && ACTION_PRIME.equals(intent.getAction())) {
+            /* 预热：只发常驻通知，让系统生成这个渠道。不定位、不播报。 */
+            destName = "";
+            startForeground(NOTIFICATION_ID, buildNotification("通知已就绪，可在系统设置里开启锁屏显示"));
+            handler.postDelayed(new Runnable() {
+                @Override public void run() { stopSelf(); }
+            }, 3000);
+            return START_NOT_STICKY;
+        }
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
             // 手动取消：持久化数据一并清掉，页面别再恢复出一条旧提醒
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().clear().apply();
@@ -430,6 +441,9 @@ public final class AlightService extends Service implements LocationListener {
 
     /* ------------------------------------------------------- 通知 */
 
+    /** 供设置页跳转渠道设置用。 */
+    static String channelId() { return CHANNEL_ID; }
+
     private void createChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
         NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
@@ -438,9 +452,18 @@ public final class AlightService extends Service implements LocationListener {
         NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_HIGH);
         channel.setDescription("下车提醒时在后台持续定位并播报，锁屏常驻显示");
-        channel.enableVibration(false);
-        channel.setSound(null, null);
-        /* 锁屏可见（v1.0.45） */
+        /* 小米/HyperOS 的坑：完全静默（无声无震动）的渠道，会被默认设成
+           「在锁定屏幕上 = 完全不显示通知」，代码设的 VISIBILITY_PUBLIC 会被忽略。
+           给一条极短的提示音 + 轻震动，让它被归类成「重要通知」，锁屏才会显示。
+           所有渠道统一开震动（用户要求）。 */
+        channel.enableVibration(true);
+        channel.setVibrationPattern(new long[]{0, 120});
+        android.media.AudioAttributes atts = new android.media.AudioAttributes.Builder()
+                .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build();
+        channel.setSound(android.provider.Settings.System.DEFAULT_NOTIFICATION_URI, atts);
+        /* 锁屏上显示完整内容 */
         channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
         manager.createNotificationChannel(channel);
     }

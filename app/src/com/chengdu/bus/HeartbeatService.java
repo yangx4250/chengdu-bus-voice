@@ -27,7 +27,7 @@ import org.json.JSONObject;
 public final class HeartbeatService extends Service {
 
     private static final String TAG = "CdBusHeartbeat";
-    private static final String CHANNEL_ID = "cdbus_heartbeat";
+    private static final String CHANNEL_ID = "cdbus_heartbeat_v2";
     private static final String CHANNEL_NAME = "后台心跳测试";
     private static final int NOTIFICATION_ID = 1003;
     private static final long INTERVAL_MS = 30000;
@@ -146,8 +146,17 @@ public final class HeartbeatService extends Service {
         NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW);
         channel.setDescription("每 30 秒播报一次，用来检测后台/锁屏播报");
-        channel.enableVibration(false);
-        channel.setSound(null, null);
+        /* 小米/HyperOS 的坑：完全静默（无声无震动）的渠道，会被默认设成
+           「在锁定屏幕上 = 完全不显示通知」，代码设的 VISIBILITY_PUBLIC 会被忽略。
+           给一条极短的提示音 + 轻震动，让它被归类成「重要通知」，锁屏才会显示。
+           所有渠道统一开震动（用户要求）。 */
+        channel.enableVibration(true);
+        channel.setVibrationPattern(new long[]{0, 120});
+        android.media.AudioAttributes atts = new android.media.AudioAttributes.Builder()
+                .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build();
+        channel.setSound(android.provider.Settings.System.DEFAULT_NOTIFICATION_URI, atts);
         manager.createNotificationChannel(channel);
     }
 

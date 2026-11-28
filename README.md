@@ -56,7 +56,7 @@ $ cd-bus near --city 绵阳
 
 | 产物 | 说明 |
 |---|---|
-| **[APK（v2.0.1）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 742 KB，自签名；首次安装需允许「安装未知应用」 |
+| **[APK（v2.0.5）](https://github.com/yangx4250/chengdu-bus-voice/releases/latest)** | Android 7.0+，约 742 KB，自签名；首次安装需允许「安装未知应用」 |
 | [源码 zip](https://github.com/yangx4250/chengdu-bus-voice/archive/refs/heads/main.zip) | 含 App / CLI / 测试 / 构建脚本 |
 
 APK 签名指纹（后续版本可直接覆盖安装）：
@@ -491,6 +491,23 @@ WebView 加固：关掉 `AllowFileAccessFromFileURLs`/`AllowUniversalAccessFromF
 
 **装法**：把 APK 传到手机点开安装（首次会要求允许「安装未知应用」，给文件管理器/浏览器授权一次即可）。
 包名 `com.chengdu.bus`，用的本地自签名证书（debug keystore 在 `build/` 下，别用于正式分发）。
+
+### v2.0.2 ~ v2.0.5：小米锁屏通知与首次权限
+
+- **v2.0.2**：所有通知渠道（盯站 v3 / 下车 v3 / 心跳 v2 / 到站提醒 v2）加默认提示音 + 轻震动。
+  小米/HyperOS 会把「完全静默」的渠道默认设成「在锁定屏幕上 = 完全不显示通知」，
+  代码设的 `VISIBILITY_PUBLIC` 会被忽略；给一点声音震动才会被认成重要通知、锁屏可见。
+  震动 pattern 用 `{0,120}`（ `{120}` 会被小米解析成静音段）。
+- **v2.0.3**：设置页加「打开盯站通知设置 / 打开下车提醒通知设置」两个按钮，
+  用 `ACTION_CHANNEL_NOTIFICATION_SETTINGS` 深链直达具体渠道设置页——
+  「锁屏显示」是 ROM 级开关，App 无法代开，只能把用户一步带到开关处。
+- **v2.0.4**：首次启动把「定位 + 通知」权限合并成**一次**请求。
+  以前先申请定位再申请通知，Android 不允许连续弹两个权限框，第二个会被忽略——
+  表现为「第一次打开只弹定位，第二次才弹通知」。
+- **v2.0.5**：首次拿到通知权限后**自动预热**两个常驻通知渠道：
+  服务以 `ACTION_PRIME` 启动，只发一条 3 秒自停的通知（不定位、不播报），
+  让系统生成渠道，用户第一次进通知设置就能看到并开启「锁屏显示」。
+  用 SharedPreferences 标记只做一次；已有权限的老用户升级后也预热一次。
 
 ### v2.0.1：盯站播报与锁屏通知
 

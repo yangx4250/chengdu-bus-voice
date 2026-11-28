@@ -419,6 +419,47 @@ public final class BusBridge {
         }
     }
 
+    /**
+     * 首次拿到通知权限后预热两个前台服务渠道。
+     *
+     * <p>只启动服务发一条常驻通知（让系统生成 cdbus_watch_v3 / cdbus_alight_v3
+     * 渠道），3 秒后自停，不做盯站/定位/播报。这样用户第一次进系统通知设置
+     * 就能看到这两个渠道、去开「锁屏显示」——不用等真正用过盯站才有渠道。
+     */
+    @JavascriptInterface
+    public void primeNotificationChannels() {
+        try {
+            Intent wi = new Intent(activity, WatchService.class);
+            wi.setAction(WatchService.ACTION_PRIME);
+            Intent ai = new Intent(activity, AlightService.class);
+            ai.setAction(AlightService.ACTION_PRIME);
+            if (android.os.Build.VERSION.SDK_INT >= 26) {
+                activity.startForegroundService(wi);
+                activity.startForegroundService(ai);
+            } else {
+                activity.startService(wi);
+                activity.startService(ai);
+            }
+            Log.i(TAG, "已预热盯站/下车通知渠道");
+        } catch (Throwable e) {
+            Log.w(TAG, "预热通知渠道失败", e);
+        }
+    }
+
+    /** 直接打开盯站通知渠道的系统设置页，让用户一步打开「锁屏显示」。 */
+    @JavascriptInterface
+    public void openWatchChannelSettings() {
+        try { activity.openChannelSettings(WatchService.channelId()); }
+        catch (Throwable e) { Log.w(TAG, "打开盯站渠道设置失败", e); }
+    }
+
+    /** 直接打开下车提醒通知渠道的系统设置页。 */
+    @JavascriptInterface
+    public void openAlightChannelSettings() {
+        try { activity.openChannelSettings(AlightService.channelId()); }
+        catch (Throwable e) { Log.w(TAG, "打开下车渠道设置失败", e); }
+    }
+
     /** 申请「忽略电池优化」，让息屏后后台服务不被系统清掉。 */
     @JavascriptInterface
     public void requestIgnoreBatteryOptimization() {

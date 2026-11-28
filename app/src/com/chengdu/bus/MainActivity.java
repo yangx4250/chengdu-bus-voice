@@ -116,18 +116,29 @@ public final class MainActivity extends Activity {
         setContentView(web);
         web.loadUrl("file:///android_asset/index.html");
 
-        if (!Locator.hasPermission(this)) {
-            requestPermissions(new String[]{
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-            }, 1001);
+        /* 首次启动：把「定位 + 通知」合并成一次权限请求。
+           以前是申请定位后紧接着申请通知，Android 不允许连续弹两个权限框，
+           第二个会被系统直接忽略 —— 表现就是「第一次打开只弹定位，
+           第二次打开才弹通知」。一次申请全部，首次就能拿到通知权限。 */
+        java.util.List<String> need = new java.util.ArrayList<String>();
+        boolean needLoc = !Locator.hasPermission(this);
+        if (needLoc) {
+            need.add(Manifest.permission.ACCESS_FINE_LOCATION);
+            need.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+        }
+        boolean needNotify = android.os.Build.VERSION.SDK_INT >= 33 && !hasNotificationPermission();
+        if (needNotify) need.add(Manifest.permission.POST_NOTIFICATIONS);
+
+        if (!need.isEmpty()) {
+            requestPermissions(need.toArray(new String[0]), 1001);
         } else {
             notifyPermission(true);
         }
-
-        // Android 13+ 需要单独申请通知权限（前台服务通知要用）
-        if (android.os.Build.VERSION.SDK_INT >= 33 && !hasNotificationPermission()) {
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1002);
+        /* 已有通知权限（老用户升级 / 之前已授权）：也预热一次渠道，
+           让系统通知设置里出现这两个渠道，用户能去开「锁屏显示」。 */
+        if (hasNotificationPermission() && !notificationPrimed()) {
+            setNotificationPrimed();
+            if (bridge != null) bridge.primeNotificationChannels();
         }
     }
 
@@ -157,6 +168,37 @@ public final class MainActivity extends Activity {
             }
         } catch (Throwable e) {
             android.util.Log.w("CdBusMain", "申请通知权限失败", e);
+        }
+    }
+
+    /**
+     * 直接打开「盯站通知」渠道的设置页。
+     *
+     * <p>小米/荣耀的「在锁定屏幕上显示通知」是 ROM 级的渠道开关，
+     * Android API 没法替用户打开（不是运行时权限）。能做的是把用户
+     * 一步带到这个渠道的设置页，而不是笼统的应用通知页——
+     * 用户不用自己在长列表里翻「公交盯站（锁屏常驻）」这一条。</p>
+     *
+     * @param channelId 渠道 ID（盯站/下车提醒/到站提醒/心跳）
+     */
+    void openChannelSettings(String channelId) {
+        try {
+            Intent intent = new Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS);
+            intent.putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, getPackageName());
+            intent.putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, channelId);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+            toastOnUi("请在本页打开「锁屏显示」，并允许声音/震动");
+        } catch (Throwable e) {
+            /* 个别 ROM 不认这个 action，退回应用通知设置页 */
+            android.util.Log.w("CdBusMain", "打开渠道设置失败，退回应用通知页", e);
+            try {
+                Intent intent = new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                intent.putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, getPackageName());
+                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(intent);
+            } catch (Throwable ignored) {
+            }
         }
     }
 
@@ -206,13 +248,20 @@ public final class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(requestCode, permissions, results);
-        if (requestCode == 1002) return;   // 通知权限，不影响页面
+        if (requestCode == 1002) return;   // 单独补申请的通知权限，不影响页面
         if (requestCode != 1001) return;
-        boolean granted = false;
-        for (int result : results) {
-            if (result == android.content.pm.PackageManager.PERMISSION_GRANTED) granted = true;
+        /* 现在 1001 里可能有定位权限和通知权限混在一起。
+           页面只关心定位：两个定位权限都拿到才通知页面去定位。
+           通知权限由 WatchService/前台服务自己读，不靠这个回调。 */
+        boolean locGranted = Locator.hasPermission(this);
+        notifyPermission(locGranted);
+        /* 首次拿到通知权限：预热两个常驻通知渠道（发一次 3 秒自停的通知），
+           让用户在系统设置里能看到这两个渠道、去开「锁屏显示」。
+           只做一次，用 SharedPreferences 记住，避免每次启动都弹通知。 */
+        if (hasNotificationPermission() && !notificationPrimed()) {
+            setNotificationPrimed();
+            if (bridge != null) bridge.primeNotificationChannels();
         }
-        notifyPermission(granted);
     }
 
     private void notifyPermission(boolean granted) {
@@ -224,6 +273,22 @@ public final class MainActivity extends Activity {
                         "window.cdBusPermission && window.cdBusPermission(" + granted + ")", null);
             }
         });
+    }
+
+    /** 是否已预热过通知渠道（只做一次）。 */
+    private boolean notificationPrimed() {
+        try {
+            return getSharedPreferences("cdbus_notify", MODE_PRIVATE)
+                    .getBoolean("primed", false);
+        } catch (Throwable e) { return false; }
+    }
+
+    private void setNotificationPrimed() {
+        try {
+            getSharedPreferences("cdbus_notify", MODE_PRIVATE)
+                    .edit().putBoolean("primed", true).apply();
+        } catch (Throwable ignored) {
+        }
     }
 
     /**

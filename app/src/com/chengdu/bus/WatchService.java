@@ -25,13 +25,15 @@ public final class WatchService extends Service {
     private static final String TAG = "CdBusWatch";
     /* v2：锁屏常驻可见。老渠道 IMPORTANCE_LOW 在锁屏只折成一行灰字，
        Android 不允许原地提高渠道重要度，只能换 ID 重建。 */
-    private static final String CHANNEL_ID = "cdbus_watch_v2";
+    private static final String CHANNEL_ID = "cdbus_watch_v3";
     private static final String CHANNEL_NAME = "公交盯站（锁屏常驻）";
     private static final int NOTIFICATION_ID = 1001;
     private static final long INTERVAL_MS = 30000;
 
     public static final String ACTION_START = "com.chengdu.bus.WATCH_START";
     public static final String ACTION_STOP = "com.chengdu.bus.WATCH_STOP";
+    /** 首次授权后预热：只建渠道+发常驻通知，不做盯站/定位/播报，几秒后自停。 */
+    public static final String ACTION_PRIME = "com.chengdu.bus.WATCH_PRIME";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     /** 网络请求必须离开主线程（Android 会抛 NetworkOnMainThreadException）。 */
@@ -75,6 +77,9 @@ public final class WatchService extends Service {
     private static volatile boolean DIAG_SPEAK = false;
     private volatile boolean autoStopping = false;
     private static volatile int diagCount = 0;
+
+    /** 供设置页跳转渠道设置用。 */
+    static String channelId() { return CHANNEL_ID; }
 
     /** 切换诊断模式（每轮轮询都出声）。 */
     static boolean toggleDiag() {
@@ -148,6 +153,17 @@ public final class WatchService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
             stopSelf();
+            return START_NOT_STICKY;
+        }
+        if (intent != null && ACTION_PRIME.equals(intent.getAction())) {
+            /* 预热：createChannel() 已在 onCreate 调用；这里只发常驻通知，
+               让系统在通知设置里生成这个渠道，用户才能去开「锁屏显示」。
+               不启动 ticker、不定位、不播报。 */
+            startForeground(NOTIFICATION_ID,
+                    buildNotification("通知已就绪，可在系统设置里开启锁屏显示"));
+            handler.postDelayed(new Runnable() {
+                @Override public void run() { stopSelf(); }
+            }, 3000);
             return START_NOT_STICKY;
         }
         if (intent == null || intent.getStringExtra("lineId") == null) {
@@ -246,10 +262,18 @@ public final class WatchService extends Service {
         NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_HIGH);
         channel.setDescription("盯站时在后台刷新到站并播报，锁屏常驻显示");
-        channel.enableVibration(false);
-        channel.setSound(null, null);
-        /* 锁屏可见（v1.0.45）：重要度保持 LOW（常驻通知不该响），
-           但内容允许在锁屏上显示 —— 两个是独立的设置。 */
+        /* 小米/HyperOS 的坑：完全静默（无声无震动）的渠道，会被默认设成
+           「在锁定屏幕上 = 完全不显示通知」，代码设的 VISIBILITY_PUBLIC 会被忽略。
+           给一条极短的提示音 + 轻震动，让它被归类成「重要通知」，锁屏才会显示。
+           所有渠道统一开震动（用户要求）。 */
+        channel.enableVibration(true);
+        channel.setVibrationPattern(new long[]{0, 120});
+        android.media.AudioAttributes atts = new android.media.AudioAttributes.Builder()
+                .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build();
+        channel.setSound(android.provider.Settings.System.DEFAULT_NOTIFICATION_URI, atts);
+        /* 锁屏上显示完整内容 */
         channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
         manager.createNotificationChannel(channel);
     }
